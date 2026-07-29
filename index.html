@@ -101,9 +101,9 @@
   .spacer{flex:1}
 
   /* list */
-  .listhead,.row .main{display:grid;grid-template-columns:34px minmax(170px,1.5fr) 118px 158px 118px 64px minmax(170px,1.3fr) 30px;
-    gap:10px;align-items:center}
-  .listhead{padding:4px 16px 8px;font-size:11.5px;color:var(--sub);font-weight:700}
+  .listhead,.row .main{display:grid;grid-template-columns:32px minmax(150px,1.35fr) 106px 150px 150px 108px 58px minmax(150px,1.15fr) 26px;
+    gap:9px;align-items:center}
+  .listhead{padding:4px 16px 8px;font-size:11px;color:var(--sub);font-weight:700}
   .row{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
        margin-bottom:8px;overflow:hidden;transition:border-color .15s}
   .row:hover{border-color:#c9d4ec}
@@ -122,6 +122,27 @@
   .scorecell .badge{font-size:10.5px;padding:2px 7px}
   .gauge i{position:absolute;left:0;top:0;bottom:0;border-radius:99px}
   .scorev{font-weight:800;font-size:14px;width:44px;text-align:right}
+  /* 2점수 셀(리스트) */
+  .twoscore{display:flex;flex-direction:column;gap:5px}
+  .ts-row{display:flex;align-items:center;gap:6px}
+  .ts-lab{font-size:9px;font-weight:800;color:var(--sub);width:26px;letter-spacing:-.3px}
+  .ts-bar{flex:1;min-width:26px;height:6px;border-radius:99px;background:var(--gray-soft);position:relative;overflow:hidden}
+  .ts-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:99px}
+  .ts-val{font-weight:800;font-size:12px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
+  .gradecell{display:flex;align-items:center;justify-content:center}
+  /* 등급/게이트 상세 칩 */
+  .qa-chip{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap;background:var(--gray-soft);color:var(--sub)}
+  .qa-chip.qa-q{background:#eaf0ff;color:#3352c9}
+  .qa-chip.qa-a{background:#e3f5ec;color:#1f8a53}
+  .qa-chip.qa-u{background:var(--amber-soft);color:var(--amber)}
+  .qa-chip.qa-x{background:var(--up-soft);color:var(--up)}
+  .gate-lbl{font-size:11.5px;color:var(--sub);font-weight:700;margin-top:2px}
+  .gate-lbl b{color:var(--text)}
+  /* 배지 상세: 실적/악재 경고 */
+  .warnpill{font-size:11px;font-weight:800;padding:3px 8px;border-radius:999px;display:inline-flex;gap:4px;align-items:center}
+  .warnpill.earn{background:#fff2e0;color:#c1720c}
+  .warnpill.hz{background:var(--up-soft);color:var(--up)}
+  .warnpill.crash{background:#f0e9fb;color:var(--violet)}
   .fv .v{font-weight:700;font-size:13.5px}
   .fv .u{font-size:11.5px;font-weight:700}
   .rsi{font-weight:700;font-size:13.5px;text-align:center}
@@ -178,6 +199,31 @@
   .simnote{font-size:12px;color:var(--accent);font-weight:700}
   .detail .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 
+  /* 악재 보류 박스 */
+  .hazbox{background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin:2px 0}
+  .hazbox.on{background:var(--up-soft);border-color:#f0c2c7}
+  .hazhead{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:800;font-size:13px}
+  .hazbox.on .hazhead{color:var(--up)}
+  .hazdesc{font-size:12px;color:var(--sub);margin-top:5px;line-height:1.55}
+  .hazbox.on .hazdesc{color:#a23b44}
+  .hazmemo{width:100%;margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;outline:none;font-size:12.5px}
+  .hazmemo:focus{border-color:var(--up)}
+  .grade-note{font-size:12px;color:var(--sub);margin:4px 0 2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;line-height:1.6}
+
+  /* 뉴스 */
+  .newsbox{background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px 4px 4px}
+  .newslist{display:flex;flex-direction:column}
+  .newsitem{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:8px;text-decoration:none;color:var(--text);transition:background .12s}
+  .newsitem:hover{background:#f5f7fc}
+  .newsitem+.newsitem{border-top:1px solid #f0f2f7}
+  .newsitem .nt{font-size:12.8px;font-weight:600;line-height:1.4}
+  .newsitem .nm{font-size:11px;color:var(--sub);font-weight:600}
+  .newshint{font-size:12px;color:var(--sub);padding:8px 10px;line-height:1.55}
+  .newsfoot{font-size:11px;color:var(--sub);padding:7px 10px 4px;border-top:1px solid #f0f2f7;margin-top:2px;line-height:1.5}
+  .newslinks{font-size:11.5px;padding:6px 10px 4px}
+  .newslinks a{color:var(--accent);text-decoration:none;font-weight:700}
+  .newslinks a:hover{text-decoration:underline}
+
   .empty{background:var(--card);border:1px dashed var(--line);border-radius:var(--radius);padding:38px 20px;
          text-align:center;color:var(--sub)}
   .note{background:#fafbfe;border:1px dashed var(--line);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--sub);margin:10px 0}
@@ -208,8 +254,10 @@
 
   @media (max-width:880px){
     .listhead{display:none}
-    .row .main{grid-template-columns:26px 1fr 100px 30px;grid-template-areas:"rk nm pr ch" "rk sc sc ch" "rk st st ch" "rk fv rs ch";row-gap:7px}
+    .row .main{grid-template-columns:26px 1fr 108px 30px;
+      grid-template-areas:"rk nm pr ch" "rk sc gr ch" "rk fv rs ch" "rk st st ch";row-gap:8px}
     .g-rk{grid-area:rk}.g-nm{grid-area:nm}.g-pr{grid-area:pr;text-align:right}.g-sc{grid-area:sc}
+    .g-gr{grid-area:gr;justify-content:flex-end}
     .g-fv{grid-area:fv}.g-rs{grid-area:rs;text-align:right}.g-st{grid-area:st}.g-ch{grid-area:ch}
     .rsi{text-align:right}
   }
@@ -236,7 +284,9 @@
 
   <div class="controls">
     <select id="sortSel" title="정렬 기준">
-      <option value="score">종목점수순</option>
+      <option value="grade">매수등급순</option>
+      <option value="score">가격매력순</option>
+      <option value="quality">종합점수순</option>
       <option value="upside">상승여력순</option>
       <option value="rsi">RSI 낮은순</option>
       <option value="chg">등락률순</option>
@@ -260,13 +310,14 @@
   </div>
 
   <div class="listhead">
-    <div>#</div><div>종목</div><div>현재가</div><div>종목점수</div><div>기대 적정가</div><div style="text-align:center">RSI</div><div>포지션 (52주 범위)</div><div></div>
+    <div>#</div><div>종목</div><div>현재가</div><div>종합 · 가격매력</div><div>기대적정가 · 여력</div><div style="text-align:center">매수등급</div><div style="text-align:center">RSI</div><div>포지션 (52주 범위)</div><div></div>
   </div>
   <div id="list"></div>
 
   <footer>
-    데이터: Yahoo Finance (지연 시세 가능) · 캐시: Firebase Firestore · 계산 지표: 매물대 VP(6M/1Y)·EMA20·SMA50·SMA200·RSI14·BB(20,2)<br>
-    본 도구는 개인 참고용 기술적 지표 계산기이며, 투자 자문 및 매매 권유가 아닙니다. 투자 판단과 책임은 본인에게 있습니다.
+    <b>종합점수</b>(기업 자체 품질: 추세·재무·성장·애널·안정) · <b>가격매력도</b>(현재가 매력: 상승여력·기술적 위치, 급락 허수 자동 감쇠) · <b>매수등급</b>(손실 최소화 하드 게이트 + 저평가 확증)의 3축 분리 모델<br>
+    데이터: Yahoo Finance(시세·재무·실적일·애널) · Google News(헤드라인) · 캐시: Firebase Firestore<br>
+    본 도구는 개인 참고용 계산기이며, 투자 자문 및 매매 권유가 아닙니다. 어떤 지표 조합도 수익을 보장하지 않으며 투자 판단과 책임은 본인에게 있습니다.
   </footer>
 </div>
 
@@ -289,9 +340,11 @@
 <div class="mask" id="maskSet">
   <div class="modal">
     <h2>설정 — 점수 가중치 · 갱신</h2>
-    <div class="dsec" style="margin-top:0">종목점수 가중치 <small>합계 기준 자동 정규화</small></div>
-    <div id="wComp"></div>
-    <div class="dsec">기대 적정가 혼합 비중 <small>값이 없는 항목은 자동 제외·재정규화</small></div>
+    <div class="dsec" style="margin-top:0">종합점수 가중치 <small>기업 자체 품질 (가격 무관)</small></div>
+    <div id="wQ"></div>
+    <div class="dsec">가격매력도 가중치 <small>지금 이 가격의 매력</small></div>
+    <div id="wA"></div>
+    <div class="dsec">기대 적정가 혼합 비중 <small>내 적정가 미입력 시 자동 제외·재정규화</small></div>
     <div id="wFv"></div>
     <div class="mrow" style="margin-top:12px"><label>실시간 시세 주기 (초) — 활성 탭 현재가 · 미국 프리/정규/애프터, 한국 네이버 실시간</label>
       <input type="number" id="setQuote" min="10" max="600" step="5"></div>
@@ -407,7 +460,9 @@ const S = {
   idx:{},               // 지수 칩
   quote:{},             // id -> 실시간 시세 {price,ts,session,src,base}
   settings:{
-    weights:{rsi:20,bb:20,ma:20,vp:15,up:25},
+    weights:{rsi:20,bb:20,ma:20,vp:15,up:25}, // (구) 하위호환 보존
+    qw:{trend:26,fin:26,growth:20,ana:16,stab:12}, // 종합점수(기업품질) 가중치
+    aw:{up:46,rsi:16,bb:14,vp:14,prox:10},        // 가격매력도 가중치
     fvw:{tech:40,target:30,mine:30},
     refreshMin:10, quoteSec:30, proxy:''
   },
@@ -548,7 +603,27 @@ function pl(x,pts){ // piecewise-linear
 }
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 
-/* ---------------- 점수 · 적정가 ---------------- */
+/* ======================================================================
+ * v3 점수 아키텍처 — 세 축을 엄격히 분리
+ *   ① 종합점수(Company Quality) : "이 기업 자체가 얼마나 좋은가"
+ *       — 추세 건전성 · 재무 품질(ROE·마진 등) · 성장성 · 애널 신뢰 · 리스크
+ *       — 가격이 싼지와 무관. 급락했다고 올라가지 않음.
+ *   ② 가격매력도(Price Attractiveness) : "지금 이 가격이 매력적인가"
+ *       — 상승여력(유니버설 모델) 중심 + 기술적 위치(과매도/매물대) 보정
+ *       — 단, '악재성 급락 vs 저평가'를 구분하는 안정화·품질 게이트 적용
+ *   ③ 매수등급(Buy Grade) : 여러 관문을 종합 만족하는가 (블랭크파인式 보수적)
+ * ==================================================================== */
+
+/* ---------- 상승여력 유니버설 모델 ----------
+ * 요구사항: 높을수록 꾸준히 가점(포화 없이 우상향), 단 '고점 대비 급락으로 부풀려진
+ * 허수 여력'은 신뢰 감쇠. → 원점수는 로그-준선형으로 무한 우상향에 가깝게 하되,
+ * (A) 목표가 분산·신뢰(별도 tgtQ 승수)와 (B) 급락 허수 페널티(별도 게이트)로 보정. */
+function scoreUpsideRaw(u){
+  if(u==null||!isFinite(u))return null;
+  // -30%→6, 0%→40, +20%→64(관문 임계), +50%→80, +100%→92, +200%→98 … 완만히 우상향(포화X)
+  return pl(u,[[-40,2],[-30,6],[-15,20],[0,40],[10,52],[20,64],[35,72],[50,80],[75,87],[100,92],[150,96],[200,98],[300,100]]);
+}
+/* ---------- 기술적 위치(가격매력도 보정용) ---------- */
 function scoreRSI(r,lo,hi){
   if(r==null)return null; lo=lo==null?30:lo; hi=hi==null?70:hi;
   const x=(r-lo)/Math.max(hi-lo,1e-9);
@@ -556,36 +631,100 @@ function scoreRSI(r,lo,hi){
 }
 function rsiBandAuto(vol){ return vol==null?[30,70]:(vol>=0.55?[20,80]:(vol>=0.38?[25,75]:[30,70])); }
 function scoreBB(b){ return b==null?null:pl(b,[[-0.3,78],[-0.05,86],[0.02,95],[0.2,82],[0.5,58],[0.8,32],[1,12],[1.2,4]]); }
-function scoreMA(p,e20,s50,s200,slope50){
-  if(p==null||s50==null)return null;
-  let trend=0;
-  if(s200!=null){ if(p>s200)trend+=40; if(s50>s200)trend+=30; } else trend+=35;
-  if(slope50!=null&&slope50>0)trend+=30;
-  const d50=(p-s50)/s50*100;
-  const prox=pl(d50,[[-25,52],[-12,72],[-3,88],[0,85],[3,80],[8,55],[15,25],[30,6]]);
-  return 0.45*trend+0.55*prox;
-}
 function scoreVP(p,vp){
   if(p==null||!vp)return null;
   const z=(p-vp.val)/Math.max(vp.vah-vp.val,1e-9);
   return pl(z,[[-0.6,68],[-0.1,84],[0,88],[0.35,72],[0.5,60],[0.8,42],[1,30],[1.6,14]]);
 }
-function scoreUpside(u){ return u==null?null:pl(u,[[-25,6],[-10,28],[0,50],[10,70],[20,85],[35,96]]); }
+/* SMA50 근접도만 따로 (가격매력도의 '눌림목' 성분) */
+function scoreProx(p,s50){
+  if(p==null||s50==null)return null;
+  const d=(p-s50)/s50*100;
+  return pl(d,[[-25,58],[-12,74],[-3,88],[0,85],[3,80],[8,58],[15,30],[30,10]]);
+}
+
+/* ---------- 종합점수(Company Quality) 성분 ----------
+ * 추세 건전성: 가격이 장기추세 위에 있고 우상향인가 (모멘텀=기업이 시장에서 인정받는 정도) */
+function qTrend(p,s50,s200,slope50,slope200){
+  if(p==null)return null;
+  let sc=50, has=false;
+  if(s200!=null){ has=true; sc += p>s200? 18:-18; }
+  if(s50!=null&&s200!=null){ sc += s50>s200? 12:-12; }
+  if(slope50!=null){ sc += slope50>0? 10:-10; }
+  if(slope200!=null){ sc += slope200>0? 10:-10; }   // 장기 우상향에 더 큰 가점
+  if(s50!=null&&!has){ sc += p>s50? 12:-12; }
+  return clamp(sc,0,100);
+}
+/* 재무 품질: ROE·영업이익률·부채 — 수동/자동 입력값 활용. 없으면 null(가중 제외) */
+function qFinance(m,auto){
+  const roe = numOr(m&&m.roe, auto&&auto.roe);        // %
+  const mg  = numOr(m&&m.margin, auto&&auto.margin);  // 영업이익률 %
+  const de  = numOr(m&&m.de, auto&&auto.de);          // 부채비율 debt/equity (배 또는 %)
+  const parts=[];
+  if(roe!=null) parts.push([pl(roe,[[-10,10],[0,30],[8,50],[15,68],[25,82],[40,92],[60,98]]), 0.45]);
+  if(mg!=null)  parts.push([pl(mg ,[[-20,8],[0,32],[8,52],[18,70],[30,84],[45,94]]), 0.35]);
+  if(de!=null){ const d=de>5?de/100:de; // 200(%) 형태도 허용
+                parts.push([pl(d,[[0,92],[0.5,82],[1,68],[2,48],[3,30],[5,12]]), 0.20]); }
+  if(!parts.length)return null;
+  const w=parts.reduce((s,x)=>s+x[1],0);
+  return clamp(parts.reduce((s,x)=>s+x[0]*x[1],0)/w,0,100);
+}
+/* 성장성: 매출성장률·EPS성장률 — 있으면 반영 */
+function qGrowth(m,auto){
+  const rg=numOr(m&&m.revG, auto&&auto.revG), eg=numOr(m&&m.epsG, auto&&auto.epsG);
+  const parts=[];
+  if(rg!=null) parts.push([pl(rg,[[-20,10],[0,34],[10,56],[20,72],[35,86],[60,96]]),0.5]);
+  if(eg!=null) parts.push([pl(eg,[[-30,8],[0,34],[15,58],[30,74],[60,88],[100,97]]),0.5]);
+  if(!parts.length)return null;
+  const w=parts.reduce((s,x)=>s+x[1],0);
+  return clamp(parts.reduce((s,x)=>s+x[0]*x[1],0)/w,0,100);
+}
+/* 애널리스트 신뢰: 커버리지 넓고(n) 의견 좋을수록(rec 낮을수록 매수) 가점 */
+function qAnalyst(n,rec){
+  if(n==null&&rec==null)return null;
+  let base=50;
+  if(n!=null)   base += pl(n,[[0,-20],[3,-6],[6,4],[12,12],[25,20],[45,26]]);
+  if(rec!=null) base += pl(rec,[[1,22],[1.6,14],[2,6],[2.5,-2],[3,-12],[4,-26],[5,-38]]); // 1=강력매수
+  return clamp(base,0,100);
+}
+/* 리스크(변동성) 감점 성분: 고변동일수록 종합점수에서 소폭 하향 */
+function qStability(annVol){
+  if(annVol==null)return null;
+  return clamp(pl(annVol*100,[[15,90],[30,78],[45,62],[60,46],[80,30],[120,14]]),0,100);
+}
+function numOr(a,b){
+  const f=x=>(x!=null&&x!==''&&isFinite(+x))?+x:null;
+  const va=f(a); if(va!=null)return va; return f(b);
+}
 
 /* 애널리스트 커버리지 기반 목표가 신뢰도 게이트
  * <3명: 컨센서스로 볼 수 없음 → 목표가 완전 제외
  * 3~5명: 평균은 유효하나 오차 큼 → 목표가 가중치 50% 축소
  * ≥6명: 정상 반영 / 미입력(null): 정상 반영 + '인원 미입력' 표기 */
 const ANA_MIN=3, ANA_FULL=6;
-function anaInfo(man,autoN){
+function anaInfo(man,autoN,rec){
   const raw=man&&man.analysts;
   let n=(raw!=null&&raw!==''&&isFinite(+raw))?Math.max(0,Math.floor(+raw)):null, src='수동';
   if(n==null&&autoN!=null&&isFinite(autoN)&&autoN>0){n=Math.floor(autoN);src='자동';}
-  if(n==null)return{n:null,f:1,src:null,label:'인원 미확인 · 정상 반영'};
+  // 의견(recommendationMean, 1=강력매수 … 5=강력매도) 승수: Hold(≈3) 이상이면 목표가 신뢰 완화
+  let fRec=1, recLbl='';
+  if(rec!=null&&isFinite(rec)){
+    fRec=clamp(pl(rec,[[1,1],[2,1],[2.7,0.85],[3,0.7],[3.5,0.5],[4,0.35]]),0.3,1);
+    if(fRec<1)recLbl=' · 의견 '+rec.toFixed(2)+'(보유권) 목표가 '+Math.round(fRec*100)+'%';
+  }
+  if(n==null){
+    const f=fRec;
+    return{n:null,f,fCov:1,fRec,src:null,label:'인원 미확인 · 정상 반영'+recLbl};
+  }
   const tag=' ('+src+')';
-  if(n<ANA_MIN)return{n,f:0,src,label:n+'명'+tag+' · 신뢰 부족 — 목표가 제외'};
-  if(n<ANA_FULL)return{n,f:0.5,src,label:n+'명'+tag+' · 신뢰 낮음 — 비중 50% 축소'};
-  return{n,f:1,src,label:n+'명'+tag+' · 정상 반영'};
+  let fCov;
+  if(n<ANA_MIN)fCov=0; else if(n<ANA_FULL)fCov=0.5; else fCov=1;
+  const f=fCov*fRec;
+  let lbl;
+  if(fCov===0)lbl=n+'명'+tag+' · 신뢰 부족 — 목표가 제외';
+  else if(fCov===0.5)lbl=n+'명'+tag+' · 신뢰 낮음 — 비중 50%'+recLbl;
+  else lbl=n+'명'+tag+' · 정상 반영'+recLbl;
+  return{n,f,fCov,fRec,src,label:lbl};
 }
 
 /* 목표가 신선도 게이트 — 기준일 = 실제 목표가 제시일: 수동 targetDate > 자동(최근 애널리스트 액션)
@@ -626,8 +765,14 @@ function targetFresh(man,ch,price){
   return{ts,src,age,f,label};
 }
 
-function fairValue(calc,man,tw){
-  const parts=[]; const t=[];
+/* 기대 적정가 산정
+ * - 기술앵커(POC·이평) / 애널 목표가(신뢰 승수 tw 반영) / 내 적정가(수동) 3원 혼합.
+ * - 요구사항: 내 적정가 미입력 시 그 비중을 배제하고 나머지로 재정규화(자동).
+ *   → parts 배열엔 '존재하는 성분'만 담고, 가중치 합으로 나눠 자연 재정규화.
+ * - 목표가 극단 허수 방어: 목표가가 기술앵커 대비 과도(±)하면 캡을 씌워
+ *   '분산 극단 컨센'이 적정가를 통째로 끌어올리지 못하게 함. */
+function fairValue(calc,man,tw,rec){
+  const t=[];
   if(calc.vp1&&calc.vp1.poc!=null)t.push([calc.vp1.poc,0.35]);
   if(calc.vp6&&calc.vp6.poc!=null)t.push([calc.vp6.poc,0.20]);
   if(calc.s200!=null)t.push([calc.s200,0.25]);
@@ -635,13 +780,24 @@ function fairValue(calc,man,tw){
   let tech=null;
   if(t.length){const w=t.reduce((s,x)=>s+x[1],0);tech=t.reduce((s,x)=>s+x[0]*x[1],0)/w;}
   const fw=S.settings.fvw;
+  const parts=[];
   if(tech!=null)parts.push([tech,fw.tech]);
-  if(man.target!=null&&man.target>0&&tw>0)parts.push([+man.target,fw.target*tw]);
-  if(man.myFair!=null&&man.myFair>0)parts.push([+man.myFair,fw.mine]);
+  // 목표가 처리: 신뢰 승수 tw(커버리지×신선도×의견) 곱하고, 기술앵커 대비 3배 초과분은 완충
+  let tgtUsed=null;
+  if(man.target!=null&&+man.target>0&&tw>0){
+    tgtUsed=+man.target;
+    if(tech!=null&&tech>0){
+      const cap=tech*3;               // 기술앵커의 3배가 상한(성장주도 이 이상은 허수로 간주)
+      if(tgtUsed>cap) tgtUsed=cap+(tgtUsed-cap)*0.15; // 초과분 15%만 반영
+    }
+    parts.push([tgtUsed,fw.target*tw]);
+  }
+  // 내 적정가: 있을 때만. 없으면 자동으로 비중 배제됨(재정규화)
+  if(man.myFair!=null&&+man.myFair>0)parts.push([+man.myFair,fw.mine]);
   let fv=null;
   if(parts.length){const w=parts.reduce((s,x)=>s+x[1],0);
     if(w>0)fv=parts.reduce((s,x)=>s+x[0]*x[1],0)/w;}
-  return {tech,fv};
+  return {tech,fv,tgtUsed};
 }
 
 /* 기존 엑셀 매수/매도/관망 체크리스트 신호 */
@@ -718,36 +874,103 @@ function compute(id,simPrice){
   const prevClose=(qt&&qt.base!=null&&priceSrc!=='cache')?qt.base:(ch.prevClose!=null?ch.prevClose:(n>1?c[ip]:null));
   const chg=prevClose?(price-prevClose)/prevClose*100:null;
 
-  const k={price,rsi,bbU,bbL,bbM:s20,pB,e20,s50,s200,s50b,slope50,vp6,vp1,
-    hi52,lo52,rvol,chg,prevClose,lastLow:l[i],lastHigh:h[i],
+  const s200b=smaAt(c,200,i-20);
+  const slope200=(s200!=null&&s200b!=null)?(s200-s200b):null;
+  // 상장 경과 봉수(데이터 신뢰) + 낙폭/안정화 지표
+  const listedBars=n;
+  const ret20=(n>21&&c[n-21]>0)?(price/c[n-21]-1)*100:null;   // 20거래일 수익률
+  const ret60=(n>61&&c[n-61]>0)?(price/c[n-61]-1)*100:null;
+  const ddFromHi=(hi52>0)?(price/hi52-1)*100:null;            // 52주 고점 대비 낙폭(음수)
+  // 최근 저점 갱신 여부: 마지막 봉 저가가 직전 10봉 최저와 같거나 더 낮으면 '하락 진행 중'
+  let recentLow=Infinity; for(let q=Math.max(0,n-11);q<n-1;q++){ if(l[q]<recentLow)recentLow=l[q]; }
+  const makingNewLow=(l[i]!=null&&isFinite(recentLow)&&l[i]<=recentLow*1.001);
+  const above5=(()=>{const s5=smaAt(c,5,i); return s5!=null?price>=s5:null;})(); // 5일선 회복
+  const s5v=smaAt(c,5,i);
+
+  const k={price,rsi,bbU,bbL,bbM:s20,pB,e20,s50,s200,s50b,s200b,slope50,slope200,vp6,vp1,
+    hi52,lo52,rvol,chg,prevClose,lastLow:l[i],lastHigh:h[i],s5:s5v,
     prevBBL:ps20!=null?ps20-2*psd20:null,prevBBU:ps20!=null?ps20+2*psd20:null,prevBBM:ps20,
     annVol,rsiLo,rsiHi,rsiBandSrc,priceSrc,priceTs,session:(priceSrc!=='cache'&&priceSrc!=='manual'&&qt)?qt.session:null,
-    currency:ch.currency||'USD',updatedAt:ch.updatedAt,lastClose:ch.c[n-1]};
+    currency:ch.currency||'USD',updatedAt:ch.updatedAt,lastClose:ch.c[n-1],
+    listedBars,ret20,ret60,ddFromHi,makingNewLow,above5};
   const man=man0;
   const autoN=(ch.ana&&ch.ana.n!=null)?ch.ana.n:null;
-  const anaI=anaInfo(man,autoN);
+  const recAuto=(ch.ana&&ch.ana.rec!=null)?ch.ana.rec:null;
+  // 의견: 수동 opinion(높을수록 좋음, 5점 척도)을 rec(1~5, 낮을수록 좋음)로 환산하거나 자동 rec 사용
+  let recEff=null;
+  if(man.opinion!=null&&man.opinion!==''&&isFinite(+man.opinion)) recEff=clamp(6-(+man.opinion),1,5);
+  else if(recAuto!=null) recEff=recAuto;
+  const anaI=anaInfo(man,autoN,recEff);
   const tgtF=targetFresh(man,ch,price);
   const tgtW=anaI.f*tgtF.f;
-  const fvr=fairValue({vp1,vp6,s200,s50},man,tgtW);
-  k.fvTech=fvr.tech; k.fv=fvr.fv; k.ana=anaI; k.tgtF=tgtF; k.tgtW=tgtW; k.anaRef=(ch.ana&&ch.ana.tgt!=null)?ch.ana.tgt:null;
+  const fvr=fairValue({vp1,vp6,s200,s50},man,tgtW,recEff);
+  k.fvTech=fvr.tech; k.fv=fvr.fv; k.tgtUsed=fvr.tgtUsed; k.ana=anaI; k.tgtF=tgtF; k.tgtW=tgtW; k.recEff=recEff;
+  k.anaRef=(ch.ana&&ch.ana.tgt!=null)?ch.ana.tgt:null;
+  k.earn=(ch.ana&&ch.ana.earn!=null)?ch.ana.earn:null;   // 다음 실적 예정일(epoch초)
+  k.rt=(ch.ana&&ch.ana.rt)?ch.ana.rt:null;               // 의견 분포
+  k.hasHardHazard=!!(man.hazard);                        // 수동 악재 플래그
+  k.hazardMemo=man.hazardMemo||null;
+  // 실적 임박 여부: 예정일 ±2일 이내 (블랙아웃)
+  if(k.earn!=null){ const d=(k.earn*1000-Date.now())/86400e3; k.earnDays=d; k.earnSoon=(d>=-2&&d<=2); }
+  else { k.earnDays=null; k.earnSoon=false; }
   k.upside=(k.fv!=null&&price)?(k.fv-price)/price*100:null;
 
-  const w=S.settings.weights;
-  const ss={rsi:scoreRSI(rsi,rsiLo,rsiHi),bb:scoreBB(pB),ma:scoreMA(price,e20,s50,s200,slope50),
-            vp:(scoreVP(price,vp1)!=null||scoreVP(price,vp6)!=null)
-               ?( (scoreVP(price,vp1)??scoreVP(price,vp6))*0.6 + (scoreVP(price,vp6)??scoreVP(price,vp1))*0.4 ):null,
-            up:scoreUpside(k.upside)};
-  let tw=0,acc=0;
-  for(const key of['rsi','bb','ma','vp','up']){
-    if(ss[key]!=null){tw+=w[key];acc+=ss[key]*w[key];}
+  /* ===== 낙폭 허수 페널티 (급락으로 부풀려진 여력 신뢰 감쇠) =====
+   * 고점 대비 크게 빠졌는데 아직 하락 진행 중(신저가 갱신·5일선 아래)이면
+   * '떨어지는 칼날' → 상승여력의 신뢰를 낮춰 가격매력도에서 감점. */
+  let crashPenalty=1, crashLbl=null;
+  const deepDD=(ddFromHi!=null&&ddFromHi<=-35);
+  const steepDrop=(ret20!=null&&ret20<=-20);
+  if((deepDD||steepDrop)){
+    if(k.makingNewLow){ crashPenalty=0.55; crashLbl='급락 진행(신저가 갱신) — 여력 신뢰 감쇠'; }
+    else if(k.above5===false){ crashPenalty=0.75; crashLbl='낙폭과대·미회복 — 여력 일부 감쇠'; }
+    else { crashPenalty=0.9; crashLbl='낙폭과대이나 단기 안정화 조짐'; }
   }
-  k.sub=ss;
-  k.score=tw>0?clamp(acc/tw,0,100):null;
-  k.tier=classify(k);
+  k.crashPenalty=crashPenalty; k.crashLbl=crashLbl;
+
+  /* ===== ① 종합점수 (Company Quality) — 가격 저평가와 독립 ===== */
+  const cw=S.settings.qw||QW_DEF;
+  const qParts={
+    trend:qTrend(price,s50,s200,slope50,slope200),
+    fin:qFinance(man,ch.fund),
+    growth:qGrowth(man,ch.fund),
+    ana:qAnalyst(anaI.n, recEff),
+    stab:qStability(annVol)
+  };
+  let qtw=0,qacc=0;
+  for(const key in qParts){ if(qParts[key]!=null){ qtw+=cw[key]; qacc+=qParts[key]*cw[key]; } }
+  k.qParts=qParts;
+  k.quality=qtw>0?clamp(qacc/qtw,0,100):null;
+
+  /* ===== ② 가격매력도 (Price Attractiveness) ===== */
+  const aw=S.settings.aw||AW_DEF;
+  const upRaw=scoreUpsideRaw(k.upside);
+  const upAdj=(upRaw!=null)?(50+(upRaw-50)*crashPenalty):null; // 급락 허수분만 50 기준으로 눌러줌
+  const aParts={
+    up:upAdj,
+    rsi:scoreRSI(rsi,rsiLo,rsiHi),
+    bb:scoreBB(pB),
+    vp:(scoreVP(price,vp1)!=null||scoreVP(price,vp6)!=null)
+       ?((scoreVP(price,vp1)??scoreVP(price,vp6))*0.6+(scoreVP(price,vp6)??scoreVP(price,vp1))*0.4):null,
+    prox:scoreProx(price,s50)
+  };
+  let atw=0,aacc=0;
+  for(const key in aParts){ if(aParts[key]!=null){ atw+=aw[key]; aacc+=aParts[key]*aw[key]; } }
+  k.aParts=aParts; k.upRaw=upRaw;
+  k.attract=atw>0?clamp(aacc/atw,0,100):null;
+
+  // 하위호환: 기존 코드가 참조하는 k.score/k.sub 유지(=가격매력도 매핑)
+  k.score=k.attract;
+  k.sub={up:aParts.up,rsi:aParts.rsi,bb:aParts.bb,vp:aParts.vp,ma:aParts.prox};
+
+  const cd=classifyDetail(k);
+  k.tier=cd.tier; k.grd=cd;
   k.flags=rubricFlags(k);
   k.sim=simPrice!=null;
   return k;
 }
+const QW_DEF={trend:26,fin:26,growth:20,ana:16,stab:12};
+const AW_DEF={up:46,rsi:16,bb:14,vp:14,prox:10};
 function recalcAll(){
   for(const id in S.stocks)S.calc[id]=compute(id);
 }
@@ -808,6 +1031,8 @@ function subscribe(){
     if(d.exists){ const x=d.data();
       S.settings={...S.settings,...x,
         weights:{...S.settings.weights,...(x.weights||{})},
+        qw:{...(S.settings.qw||QW_DEF),...(x.qw||{})},
+        aw:{...(S.settings.aw||AW_DEF),...(x.aw||{})},
         fvw:{...S.settings.fvw,...(x.fvw||{})}};
       recalcAll(); renderSoon();
     }
@@ -966,12 +1191,15 @@ function sortedIds(){
   const q=S.ui.search.trim().toLowerCase();
   if(q)ids=ids.filter(id=>{const s=S.stocks[id];
     return (s.name||'').toLowerCase().includes(q)||(s.symbol||'').toLowerCase().includes(q)||(s.code||'').includes(q);});
-  const key=S.ui.sort, nn=x=>x==null?-1e18:x;
+  let key=S.ui.sort; const nn=x=>x==null?-1e18:x;
+  const KEYMAP={score:'attract',quality:'quality',attract:'attract',up:'upside',upside:'upside',chg:'chg'};
   return ids.sort((a,b)=>{
     if(key==='name')return (S.stocks[a].name||'').localeCompare(S.stocks[b].name||'','ko');
     const A=S.calc[a]||{},B=S.calc[b]||{};
     if(key==='rsi')return (A.rsi==null?1e18:A.rsi)-(B.rsi==null?1e18:B.rsi);
-    return nn(B[key])-nn(A[key]);
+    if(key==='grade'){ const gv=t=>t==='상'?3:(t==='중'?2:(t==='하'?1:0)); const d=gv(B.tier)-gv(A.tier); return d!==0?d:nn(B.attract)-nn(A.attract); }
+    const kk=KEYMAP[key]||key;
+    return nn(B[kk])-nn(A[kk]);
   });
 }
 function renderCounts(){
@@ -986,7 +1214,8 @@ function renderCounts(){
     +'<span class="badge b-t3">추천 하 '+t3+'</span>'
     +'<span class="badge b-none">범위 밖 '+out+'</span>';
 }
-function gaugeColor(s){ return s>=76?'#c2323f':(s>=66?'#e2702e':(s>=56?'var(--amber)':'#9aa6bd')); }
+function gaugeColor(s){ return s>=72?'#c2323f':(s>=62?'#e2702e':(s>=54?'var(--amber)':'#9aa6bd')); }
+function qColor(s){ if(s==null)return '#9aa6bd'; return s>=70?'#2a6fd6':(s>=55?'#3b82c4':(s>=42?'#6b8fb8':'#9aa6bd')); }
 function catBadge(t){
   if(t==='상')return '<span class="badge b-t1">추천 상</span>';
   if(t==='중')return '<span class="badge b-t2">추천 중</span>';
@@ -1028,25 +1257,35 @@ function render(){
     const st=S.stocks[id], k=S.calc[id], open=!!S.ui.open[id];
     const err=(S.fetchErr||{})[id];
     const stale=k&&k.updatedAt&&(Date.now()-k.updatedAt>20*3600*1000);
+    const topSort=(S.ui.sort==='grade'||S.ui.sort==='score'||S.ui.sort==='quality');
     let main='<div class="main">'
-      +'<div class="rank g-rk '+(i<3&&S.ui.sort==='score'?'top':'')+'">'+(i+1)+'</div>'
+      +'<div class="rank g-rk '+(i<3&&topSort?'top':'')+'">'+(i+1)+'</div>'
       +'<div class="nm g-nm"><div class="k">'+esc(st.name)+'</div><div class="t"><span class="mono">'+esc(st.market==='KR'?(st.code||st.symbol):st.symbol)+'</span><span class="sec">'+esc(st.sector||'')+'</span></div></div>';
     if(k){
       const fi=freshInfo(k);
+      const qv=k.quality, av=k.attract;
+      const warn=[];
+      if(k.earnSoon)warn.push('<span class="warnpill earn" title="실적 발표 임박(±2일)">📅 실적</span>');
+      if(k.hasHardHazard)warn.push('<span class="warnpill hz" title="'+esc(k.hazardMemo||'수동 악재 플래그')+'">⚠ 악재</span>');
+      else if(k.crashPenalty<0.8)warn.push('<span class="warnpill crash" title="'+esc(k.crashLbl||'낙폭과대')+'">🪂 급락</span>');
       main+='<div class="price g-pr num"><div class="p">'+curSym(k.currency)+fmtP(k.price,k.currency)+'</div>'
         +'<div class="c '+chgCls(k.chg)+'">'+fmtPct(k.chg)+' <span class="live lv-'+fi.cls+'"><i class="ld"></i>'+fi.label+'</span></div>'
         +(stale&&fi.cls==='close'?'<div class="stale">캐시 '+ago(k.updatedAt)+'</div>':'')+'</div>'
-        +'<div class="scorecell g-sc"><div class="gauge"><i style="width:'+(k.score!=null?k.score.toFixed(0):0)+'%;background:'+gaugeColor(k.score||0)+'"></i></div>'
-        +'<span class="scorev num" style="color:'+gaugeColor(k.score||0)+'">'+(k.score!=null?k.score.toFixed(0):'—')+'</span>'+catBadge(k.tier)+'</div>'
+        +'<div class="twoscore g-sc">'
+          +'<div class="ts-row"><span class="ts-lab">종합</span><div class="ts-bar"><i style="width:'+(qv!=null?qv.toFixed(0):0)+'%;background:'+qColor(qv)+'"></i></div><span class="ts-val" style="color:'+qColor(qv)+'">'+(qv!=null?qv.toFixed(0):'—')+'</span></div>'
+          +'<div class="ts-row"><span class="ts-lab">매력</span><div class="ts-bar"><i style="width:'+(av!=null?av.toFixed(0):0)+'%;background:'+gaugeColor(av||0)+'"></i></div><span class="ts-val" style="color:'+gaugeColor(av||0)+'">'+(av!=null?av.toFixed(0):'—')+'</span></div>'
+        +'</div>'
         +'<div class="fv g-fv num"><div class="v">'+(k.fv!=null?curSym(k.currency)+fmtP(k.fv,k.currency):'—')+'</div>'
         +'<div class="u '+chgCls(k.upside)+'">'+(k.upside!=null?'여력 '+fmtPct(k.upside):'')+'</div></div>'
+        +'<div class="gradecell g-gr"><div style="display:flex;flex-direction:column;gap:4px;align-items:center">'+catBadge(k.tier)
+          +(warn.length?'<div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">'+warn.join('')+'</div>':'')+'</div></div>'
         +'<div class="rsi g-rs num" style="color:'+(k.rsi!=null?(k.rsi<30?'var(--up)':(k.rsi>70?'var(--down)':'inherit')):'inherit')+'">'+(k.rsi!=null?k.rsi.toFixed(1):'—')
         +'<small>'+(k.rsi==null?'':(k.rsi<30?'과매도':(k.rsi>70?'과매수':'중립')))+'</small></div>'
         +'<div class="g-st">'+stripHTML(k)+'</div>';
     }else{
       main+='<div class="price g-pr"><div class="p" style="color:var(--sub)">'+(err?'조회 실패':'로딩…')+'</div>'
         +(err?'<div class="stale" title="'+esc(err)+'">'+esc(err.slice(0,26))+'</div>':'')+'</div>'
-        +'<div class="g-sc muted" style="font-size:12px">데이터 수신 대기</div><div class="g-fv"></div><div class="g-rs"></div><div class="g-st"><div class="strip"></div></div>';
+        +'<div class="g-sc muted" style="font-size:12px">데이터 수신 대기</div><div class="g-fv"></div><div class="g-gr"></div><div class="g-rs"></div><div class="g-st"><div class="strip"></div></div>';
     }
     main+='<div class="chev g-ch">▼</div></div>';
     return '<div class="row'+(open?' open':'')+'" data-id="'+esc(id)+'">'+main+(open?detailHTML(id):'')+'</div>';
@@ -1092,22 +1331,47 @@ function detailHTML(id){
     +(k.anaRef!=null?' · 야후 평균목표 '+curSym(C)+fmtP(k.anaRef,C):''));
   g+=stat('기술적 적정가',k.fvTech!=null?curSym(C)+fmtP(k.fvTech,C):'—','VP·이평 가중혼합');
   g+=stat('기대 적정가 ★',k.fv!=null?curSym(C)+fmtP(k.fv,C):'—','<span class="'+chgCls(k.upside)+'">상승여력 '+fmtPct(k.upside)+'</span>');
-  g+=stat('캔들 데이터 갱신',ago(k.updatedAt),'일봉 지표 기준 · 실시간 시세와 별도');
+  // 실적 예정일 (자동)
+  if(k.earn!=null){
+    const dd=k.earnDays;
+    const lbl=dd==null?'':(dd<0?Math.abs(Math.round(dd))+'일 전':(dd<1?'오늘':Math.round(dd)+'일 후'));
+    g+=stat('다음 실적 예정',new Date(k.earn*1000).toLocaleDateString('ko-KR'),
+      (k.earnSoon?'<span style="color:#c1720c;font-weight:800">⚠ 블랙아웃('+lbl+')</span>':lbl+' · 자동'));
+  }
+  // 재무 품질 (자동/수동)
+  const roeV=numOr(m.roe,k && S.cache[id]&&S.cache[id].fund&&S.cache[id].fund.roe);
+  const mgV =numOr(m.margin,S.cache[id]&&S.cache[id].fund&&S.cache[id].fund.margin);
+  const rgV =numOr(m.revG,S.cache[id]&&S.cache[id].fund&&S.cache[id].fund.revG);
+  if(roeV!=null||mgV!=null)g+=stat('재무 품질',(roeV!=null?'ROE '+roeV.toFixed(0)+'%':'—'),(mgV!=null?'영업이익률 '+mgV.toFixed(0)+'%':'')+(rgV!=null?' · 매출성장 '+rgV.toFixed(0)+'%':''));
+  g+=stat('캔들 데이터 갱신',ago(k.updatedAt),'상장 '+k.listedBars+'봉 · 일봉 지표 기준');
 
-  const w=S.settings.weights;
-  const rows=[['RSI 반등 구간','RSI '+(k.rsi!=null?k.rsi.toFixed(1):'—'),k.sub.rsi,w.rsi],
-    ['볼린저 위치','%B '+(k.pB!=null?k.pB.toFixed(2):'—'),k.sub.bb,w.bb],
-    ['이동평균 추세·지지','SMA50 괴리 '+fmtPct(dev(k.price,k.s50)),k.sub.ma,w.ma],
-    ['매물대 위치','1Y POC 대비 '+fmtPct(dev(k.price,k.vp1?k.vp1.poc:null)),k.sub.vp,w.vp],
-    ['적정가 상승여력',fmtPct(k.upside),k.sub.up,w.up]];
-  let tw=0; rows.forEach(r=>{ if(r[2]!=null)tw+=r[3]; });
-  let brk='<table class="brk"><tr><th>항목</th><th>입력값</th><th>부분점수</th><th>가중치</th><th>기여</th></tr>';
-  rows.forEach(r=>{
-    const contrib=(r[2]!=null&&tw>0)?(r[2]*r[3]/tw):null;
-    brk+='<tr><td>'+r[0]+'</td><td class="num">'+r[1]+'</td><td class="num">'+(r[2]!=null?r[2].toFixed(0):'—')+'</td>'
-      +'<td class="num">'+r[3]+'%</td><td class="num">'+(contrib!=null?contrib.toFixed(1):'—')+'</td></tr>';
-  });
-  brk+='<tr><td>종목점수</td><td></td><td></td><td></td><td class="num" style="color:'+gaugeColor(k.score||0)+'">'+(k.score!=null?k.score.toFixed(1):'—')+'</td></tr></table>';
+  /* --- 점수 분해: ① 종합점수(기업품질) --- */
+  const cw=S.settings.qw||QW_DEF;
+  const qp=k.qParts||{};
+  const qLab={trend:['추세 건전성','가격>장기추세·우상향'],fin:['재무 품질','ROE·마진·부채'],
+    growth:['성장성','매출·EPS 성장률'],ana:['애널 신뢰','커버리지·의견'],stab:['안정성','변동성 역'] };
+  const qRows=Object.keys(qLab).map(key=>[qLab[key][0],qLab[key][1],qp[key],cw[key]]);
+  let qtw=0; qRows.forEach(r=>{ if(r[2]!=null)qtw+=r[3]; });
+  let brkQ='<table class="brk"><tr><th>성분</th><th>설명</th><th>점수</th><th>가중</th><th>기여</th></tr>';
+  qRows.forEach(r=>{ const c=(r[2]!=null&&qtw>0)?(r[2]*r[3]/qtw):null;
+    brkQ+='<tr><td>'+r[0]+'</td><td style="font-size:11px;color:var(--sub)">'+r[1]+'</td><td class="num">'+(r[2]!=null?r[2].toFixed(0):'<span style="color:#bbb">n/a</span>')+'</td><td class="num">'+r[3]+'%</td><td class="num">'+(c!=null?c.toFixed(1):'—')+'</td></tr>'; });
+  brkQ+='<tr><td>종합점수</td><td></td><td></td><td></td><td class="num" style="color:'+qColor(k.quality)+'">'+(k.quality!=null?k.quality.toFixed(1):'—')+'</td></tr></table>';
+
+  /* --- 점수 분해: ② 가격매력도 --- */
+  const aw=S.settings.aw||AW_DEF;
+  const ap=k.aParts||{};
+  const aRows=[['상승여력','적정가 대비 '+fmtPct(k.upside)+(k.crashPenalty<1?' <span style="color:var(--violet)">·급락감쇠 '+Math.round(k.crashPenalty*100)+'%</span>':''),ap.up,aw.up],
+    ['RSI 반등','RSI '+(k.rsi!=null?k.rsi.toFixed(1):'—'),ap.rsi,aw.rsi],
+    ['볼린저 위치','%B '+(k.pB!=null?k.pB.toFixed(2):'—'),ap.bb,aw.bb],
+    ['매물대 위치','1Y POC 대비 '+fmtPct(dev(k.price,k.vp1?k.vp1.poc:null)),ap.vp,aw.vp],
+    ['눌림목(MA50)','SMA50 괴리 '+fmtPct(dev(k.price,k.s50)),ap.prox,aw.prox]];
+  let atw=0; aRows.forEach(r=>{ if(r[2]!=null)atw+=r[3]; });
+  let brkA='<table class="brk"><tr><th>성분</th><th>입력값</th><th>점수</th><th>가중</th><th>기여</th></tr>';
+  aRows.forEach(r=>{ const c=(r[2]!=null&&atw>0)?(r[2]*r[3]/atw):null;
+    brkA+='<tr><td>'+r[0]+'</td><td class="num" style="font-size:11.5px">'+r[1]+'</td><td class="num">'+(r[2]!=null?r[2].toFixed(0):'—')+'</td><td class="num">'+r[3]+'%</td><td class="num">'+(c!=null?c.toFixed(1):'—')+'</td></tr>'; });
+  brkA+='<tr><td>가격매력도</td><td></td><td></td><td></td><td class="num" style="color:'+gaugeColor(k.attract||0)+'">'+(k.attract!=null?k.attract.toFixed(1):'—')+'</td></tr></table>';
+  const brk='<div class="dsec" style="margin-top:14px">종합점수 분해 <small>기업 자체 품질 — 가격이 싼지와 무관</small></div>'+brkQ
+    +'<div class="dsec">가격매력도 분해 <small>지금 이 가격의 매력 — 급락 허수는 자동 감쇠</small></div>'+brkA;
 
   const fl=k.flags||{buy:[],sell:[],hold:[]};
   const flags=(fl.buy.length+fl.sell.length+fl.hold.length)
@@ -1117,6 +1381,8 @@ function detailHTML(id){
     : '<div class="muted" style="font-size:12px;margin:6px 0">현재 체크리스트에 해당하는 신호가 없습니다.</div>';
 
   const F=(key,label,ph)=>'<div class="fld"><label>'+label+'</label><input type="text" inputmode="decimal" data-f="'+key+'" value="'+(m[key]!=null?esc(m[key]):'')+'" placeholder="'+(ph||'')+'"></div>';
+  const fnd=(S.cache[id]&&S.cache[id].fund)||{};
+  const autoHint=(v,unit)=>v!=null&&isFinite(v)?('자동 '+(+v).toFixed(0)+(unit||'')):'';
   const manual='<div class="manual">'
     +F('myFair','내 적정가 ('+curSym(C)+')','직접 산정 값')
     +F('target','애널리스트 목표가','컨센서스 목표가')
@@ -1127,6 +1393,11 @@ function detailHTML(id){
     +F('consensusDate','컨센서스 기준일 (표시용)','예: 2026-07-16')
     +F('per','PER','')+F('pbr','PBR','')+F('psr','PSR','')
     +SelVM('vmPer','PER 신뢰도',m)+SelVM('vmPbr','PBR 신뢰도',m)+SelVM('vmPsr','PSR 신뢰도',m)
+    +F('roe','ROE % (비우면 자동)',autoHint(fnd.roe,'%')||'예: 22')
+    +F('margin','영업이익률 % (자동)',autoHint(fnd.margin,'%')||'예: 25')
+    +F('de','부채비율 D/E (자동)',autoHint(fnd.de,'')||'예: 0.8')
+    +F('revG','매출성장률 % (자동)',autoHint(fnd.revG,'%')||'예: 15')
+    +F('epsG','EPS성장률 % (자동)',autoHint(fnd.epsG,'%')||'예: 20')
     +F('rsiLo','RSI 밴드 하단 (비우면 자동 '+(k.rsiBandSrc==='자동'?k.rsiLo:rsiBandAuto(k.annVol)[0])+')','')
     +F('rsiHi','RSI 밴드 상단 (비우면 자동 '+(k.rsiBandSrc==='자동'?k.rsiHi:rsiBandAuto(k.annVol)[1])+')','')
     +F('mcap','시가총액 (억)','')
@@ -1145,6 +1416,25 @@ function detailHTML(id){
   if(m.opinion!=null&&m.opinion!=='')fund.push('의견 '+esc(m.opinion));
   if(m.consensus!=null&&m.consensus!=='')fund.push('컨센 '+esc(m.consensus));
 
+  // 악재 플래그 토글 박스 (뉴스 해석은 사람이, 등급 반영은 시스템이)
+  const hzOn=!!m.hazard;
+  const hazardBox='<div class="hazbox'+(hzOn?' on':'')+'">'
+    +'<div class="hazhead"><span>'+(hzOn?'⚠ 악재 보류 설정됨':'악재 보류 (수동)')+'</span>'
+    +'<button class="btn sm '+(hzOn?'danger':'')+'" data-act="hztoggle">'+(hzOn?'해제':'보류 설정')+'</button></div>'
+    +'<div class="hazdesc">'+(hzOn
+        ?'이 종목은 매수 등급에서 <b>범위 밖</b>으로 강제됩니다.'+(m.hazardMemo?' 사유: <b>'+esc(m.hazardMemo)+'</b>':'')
+        :'뉴스·공시로 중대한 악재(수출규제·소송·회계·급락 촉발 이벤트 등)를 확인하면 설정하세요. 설정 시 등급이 즉시 범위 밖으로 내려갑니다.')+'</div>'
+    +(hzOn?'':'<input class="hazmemo" type="text" placeholder="사유 메모 (선택) — 예: 8/6 락업 해제, 수출규제" value="'+esc(m.hazardMemo||'')+'">')
+    +'</div>';
+
+  // 새 소식(뉴스) — 워커 연결 시 자동 로드, 미연결 시 검색 링크
+  const newsBox=newsSectionHTML(id,st);
+
+  const gradeExtra=(k.crashLbl||k.earnSoon)?'<div class="grade-note">'
+    +(k.earnSoon?'<span class="warnpill earn">📅 실적 임박</span> 발표 ±2일은 변동성이 커 등급에서 제외됩니다. ':'')
+    +(k.crashLbl?'<span class="warnpill crash">🪂</span> '+esc(k.crashLbl)+'. ':'')
+    +'</div>':'';
+
   return '<div class="detail">'
     +'<div class="dgrid">'+g+'</div>'
     +((fund.length||excl.length)?'<div class="muted" style="font-size:12px;margin-bottom:4px">가치지표: '+fund.join(' · ')
@@ -1152,9 +1442,10 @@ function detailHTML(id){
       +(excl.length?' <span style="text-decoration:line-through;opacity:.55">'+excl.join(' · ')+'</span> <span style="opacity:.7">← 이 사업모델에선 신뢰 낮아 제외</span>':'')+'</div>':'')
     +(vm.note?'<div class="vmnote">사업분야 분석 — '+esc(vm.note)+'</div>':'')
     +'<canvas class="chart" data-id="'+esc(id)+'"></canvas>'
-    +tierBoxHTML(k)
+    +tierBoxHTML(k)+gradeExtra
+    +newsBox
     +'<div class="dsec">체크리스트 신호 <small>기존 엑셀 매수·매도·관망 조건 자동 판정</small></div>'+flags
-    +'<div class="dsec">점수 분해</div>'+brk
+    +brk
     +'<div class="dsec">실시간 현재가 수동 입력 <small>자동 시세가 지연되면 직접 입력 — 저장 시각 기준으로 자동/수동 중 최신값을 채택</small></div>'
     +'<div class="livebox"><input class="liveinput" type="text" inputmode="decimal" placeholder="'+fmtP(k.price,C)+'">'
     +'<button class="btn sm primary" data-act="liveapply">적용·저장</button>'
@@ -1165,9 +1456,11 @@ function detailHTML(id){
     +'<input class="siminput" type="text" inputmode="decimal" value="'+(sim!=null?sim:'')+'" placeholder="'+fmtP(k.sim?S.calc[id]&&S.calc[id].price:k.price,C)+'">'
     +(sim!=null?'<span class="simnote">시뮬레이션 적용 중 (실제가 '+curSym(C)+fmtP(S.calc[id]?S.calc[id].price:null,C)+')</span><button class="btn sm" data-act="simclear">해제</button>':'<span class="muted" style="font-size:12px">입력 후 Enter</span>')
     +'</div>'
-    +'<div class="dsec">수동 입력 <small>실시간 조회가 어려운 값 — 저장 시 적정가·표시에 반영</small></div>'+manual
+    +'<div class="dsec">악재 보류 · 수동 리스크 <small>뉴스는 사람이 판단하고, 반영의 일관성은 시스템이 담당</small></div>'+hazardBox
+    +'<div class="dsec">수동 입력 <small>실시간 조회가 어려운 값 — 저장 시 적정가·표시에 반영. 재무는 워커 연결 시 자동</small></div>'+manual
     +'<div class="actions"><button class="btn sm primary" data-act="save">수동값 저장</button>'
     +'<button class="btn sm" data-act="refresh">⟳ 개별 갱신</button>'
+    +'<button class="btn sm" data-act="loadnews">📰 뉴스 새로고침</button>'
     +'<button class="btn sm danger" data-act="del">종목 삭제</button></div>'
     +'</div>';
 }
@@ -1357,42 +1650,79 @@ function SelVM(key,label,m){
     +opt(2,'핵심')+opt(1,'참고')+opt(0,'제외')+'</select></div>';
 }
 
-/* ---------------- 보수적 매수 등급 (상/중/하, 그 외 범위 밖) ---------------- */
+/* ---------------- 매수 등급 (블랭크파인式 손실최소화 · 상/중/하, 그 외 범위 밖) ----------------
+ * 철학: "중장기적으로 이익 볼 수밖에 없을 만큼 싼 순간"만 통과. 하나라도 결격이면 즉시 탈락.
+ * 두 종류의 관문:
+ *   A) 하드 게이트(전부 통과 필수) — 하나라도 실패 시 무조건 '범위 밖'
+ *      · 최소 안전마진 : 상승여력 ≥ +20%   (요구사항: 20% 마진 필수)
+ *      · 과열 아님     : RSI < 상단−5 · %B < 0.90
+ *      · 떨어지는 칼날 아님 : 낙폭과대(고점−35%↓ 또는 20봉−20%↓)이면서 신저가 갱신 중이면 탈락
+ *      · 데이터 충분   : 상장 120봉(≈6개월) 이상  (신규상장 통계 부족 방어)
+ *      · 최소 품질     : 종합점수(기업품질) ≥ 45 (부실기업 저가매수 방지)
+ *   B) 저평가 확증(개수 카운트) — 관문 통과 후 등급 강도 결정
+ * 등급: 상 = 매력≥72 ∧ 품질≥60 ∧ 여력≥30% ∧ 확증≥3
+ *       중 = 매력≥62 ∧ 품질≥50 ∧ 여력≥25% ∧ 확증≥2
+ *       하 = 매력≥54 ∧ 여력≥20% ∧ 확증≥1
+ */
+const MIN_MARGIN=20, MIN_BARS=120, DD_DEEP=-35, DROP_STEEP=-20;
 function classifyDetail(k){
-  if(!k||k.score==null)return{tier:null,gates:[],conf:[],n:0};
+  if(!k||k.attract==null)return{tier:null,gates:[],conf:[],n:0,blocked:null};
   const RL=k.rsiLo==null?30:k.rsiLo, RH=k.rsiHi==null?70:k.rsiHi;
-  const gates=[
-    ['상승여력 +8% 이상 (기대 적정가 대비)', k.upside!=null&&k.upside>=8],
-    ['과열 아님 (RSI < '+(RH-5)+' · %B < 0.90)', !((k.rsi!=null&&k.rsi>=RH-5)||(k.pB!=null&&k.pB>=0.9))]
-  ];
   const confLim=(RL+(RH-RL)*0.35);
+  const deepDD=(k.ddFromHi!=null&&k.ddFromHi<=DD_DEEP), steep=(k.ret20!=null&&k.ret20<=DROP_STEEP);
+  const fallingKnife=((deepDD||steep)&&k.makingNewLow===true);
+
+  const gates=[
+    ['최소 안전마진 — 상승여력 ≥ +'+MIN_MARGIN+'%', k.upside!=null&&k.upside>=MIN_MARGIN],
+    ['과열 아님 — RSI < '+(RH-5)+' · %B < 0.90', !((k.rsi!=null&&k.rsi>=RH-5)||(k.pB!=null&&k.pB>=0.9))],
+    ['떨어지는 칼날 아님 — 급락 중 신저가 갱신 아님', !fallingKnife],
+    ['데이터 충분 — 상장 '+MIN_BARS+'봉(≈6개월) 이상', k.listedBars>=MIN_BARS],
+    ['최소 품질 — 종합점수 ≥ 45', k.quality!=null&&k.quality>=45],
+    ['실적 임박 아님 — 발표 ±2일 블랙아웃', !k.earnSoon],
+    ['악재 플래그 없음 — 수동 보류 미설정', !k.hasHardHazard]
+  ];
   const conf=[
     ['RSI 하단권 (≤ '+confLim.toFixed(0)+')', k.rsi!=null&&k.rsi<=confLim],
     ['볼린저 하단권 (%B ≤ 0.30)', k.pB!=null&&k.pB<=0.30],
     ['1Y 매물대 POC 이하·근접 (≤ +2%)', !!(k.vp1&&k.vp1.poc&&k.price<=k.vp1.poc*1.02)],
     ['SMA200 지지권 (이하 또는 +5% 이내)', k.s200!=null&&k.price<=k.s200*1.05],
-    ['상승여력 +25% 이상', k.upside!=null&&k.upside>=25]
+    ['넉넉한 여력 — 상승여력 ≥ +35%', k.upside!=null&&k.upside>=35],
+    ['우량 품질 — 종합점수 ≥ 60', k.quality!=null&&k.quality>=60]
   ];
   const g=gates.every(x=>x[1]), n=conf.filter(x=>x[1]).length;
+  // 탈락 사유(가장 앞선 실패 게이트) — UI 배지 툴팁용
+  let blocked=null;
+  if(!g){ const f=gates.find(x=>!x[1]); blocked=f?f[0]:null; }
+
   let tier=null;
+  const A=k.attract, Q=k.quality!=null?k.quality:0, U=k.upside;
+  // 확립된 하락추세: 장기선(200) 아래 + 50·200 기울기 모두 하락 → '아직 추세 미전환'
+  // 딥밸류라도 상/중은 시기상조. 하(적립 시작)까지만 허용.
+  const downtrend=(k.s200!=null&&k.price<k.s200*0.94&&k.slope50!=null&&k.slope50<0&&k.slope200!=null&&k.slope200<0);
   if(g){
-    if(k.score>=76&&k.upside>=20&&n>=3)tier='상';
-    else if(k.score>=66&&k.upside>=14&&n>=2)tier='중';
-    else if(k.score>=56&&n>=1)tier='하';
+    if(A>=72&&Q>=60&&U>=30&&n>=3&&!downtrend)tier='상';
+    else if(A>=62&&Q>=50&&U>=25&&n>=2&&!downtrend)tier='중';
+    else if(A>=54&&U>=MIN_MARGIN&&n>=1)tier='하';
   }
-  return {tier,gates,conf,n};
+  return {tier,gates,conf,n,blocked,fallingKnife,downtrend};
 }
 function classify(k){ return classifyDetail(k).tier; }
 function tierBoxHTML(k){
-  const d=classifyDetail(k);
-  const mk=x=>'<span class="flag '+(x[1]?'b':'h')+'">'+(x[1]?'✓ ':'— ')+esc(x[0])+'</span>';
-  return '<div class="dsec">매수 권장 등급 <small>보수적 판정 — 필수 게이트 통과 + 저평가 확증 개수 충족 시에만 추천 (미충족은 범위 밖)</small></div>'
-    +'<div style="margin:2px 0 6px">'+catBadge(d.tier)
-    +' <span class="muted" style="font-size:12px">필수 게이트 '+d.gates.filter(x=>x[1]).length+'/'+d.gates.length
-    +' · 저평가 확증 '+d.n+'/'+d.conf.length
-    +' · 종합 '+(k.score!=null?k.score.toFixed(0):'—')+'점 · 여력 '+fmtPct(k.upside)+'</span></div>'
-    +'<div class="flags">'+d.gates.map(mk).join('')+d.conf.map(mk).join('')+'</div>'
-    +'<div class="muted" style="font-size:11.5px;margin:2px 0 4px">상: 종합≥76·여력≥20%·확증≥3 / 중: ≥66·≥14%·≥2 / 하: ≥56·확증≥1 — 모두 필수 게이트 통과 전제.</div>';
+  const d=k.grd||classifyDetail(k);
+  const mk=x=>'<span class="flag '+(x[1]?'b':'h')+'">'+(x[1]?'✓ ':'✕ ')+esc(x[0])+'</span>';
+  const mkc=x=>'<span class="flag '+(x[1]?'b':'h')+'">'+(x[1]?'✓ ':'— ')+esc(x[0])+'</span>';
+  return '<div class="dsec">매수 등급 <small>손실 최소화 우선 — 하드 게이트 전부 통과 + 저평가 확증 충족 시에만 추천</small></div>'
+    +'<div style="margin:2px 0 7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+catBadge(d.tier)
+    +'<span class="qa-chip qa-q" title="기업 자체 품질(가격 무관)">종합 '+(k.quality!=null?k.quality.toFixed(0):'—')+'</span>'
+    +'<span class="qa-chip qa-a" title="현재 가격의 매력도">가격매력 '+(k.attract!=null?k.attract.toFixed(0):'—')+'</span>'
+    +'<span class="qa-chip qa-u" title="기대적정가 대비 상승여력">여력 '+fmtPct(k.upside)+'</span>'
+    +(d.blocked?'<span class="qa-chip qa-x" title="이 관문에서 탈락">✕ '+esc(d.blocked)+'</span>':'')+'</div>'
+    +'<div class="gate-lbl">하드 게이트 <b>'+d.gates.filter(x=>x[1]).length+'/'+d.gates.length+'</b> · 전부 통과해야 후보</div>'
+    +'<div class="flags">'+d.gates.map(mk).join('')+'</div>'
+    +'<div class="gate-lbl" style="margin-top:6px">저평가 확증 <b>'+d.n+'/'+d.conf.length+'</b></div>'
+    +'<div class="flags">'+d.conf.map(mkc).join('')+'</div>'
+    +(d.downtrend?'<div class="grade-note" style="margin-top:4px"><span class="warnpill crash">📉</span> 장기 하락추세 미전환 — 딥밸류라도 상/중 대신 <b>하(적립 시작)</b>까지만 허용됩니다.</div>':'')
+    +'<div class="muted" style="font-size:11.5px;margin:6px 0 2px">상: 매력≥72·종합≥60·여력≥30%·확증≥3 / 중: ≥62·≥50·≥25%·≥2 / 하: ≥54·여력≥20%·확증≥1 — 모두 하드 게이트 통과 전제.</div>';
 }
 
 /* ---------------- 실시간 시세 (미국 프리/정규/애프터 · 한국 네이버) ---------------- */
@@ -1453,6 +1783,68 @@ async function fetchQuote(id){
     }
   }catch(e){}
 }
+/* ---------------- 새 소식(뉴스) — 구글뉴스 RSS via 워커 ---------------- */
+function newsURL(sym,q,hl){
+  const p=S.settings.proxy;
+  if(!p||!p.includes('{url}'))return null;
+  const base=p.split('?')[0].replace(/\/+$/,'');
+  if(!/^https:\/\//.test(base))return null;
+  return base+'/news?q='+encodeURIComponent(q)+'&hl='+(hl||'en');
+}
+function newsQuery(st){
+  if(st.market==='KR')return {q:(st.name||'')+' 주가', hl:'ko'};
+  return {q:(st.symbol||st.name)+' stock', hl:'en'};
+}
+async function loadNews(id,force){
+  const st=S.stocks[id]; if(!st)return;
+  S.news=S.news||{};
+  const cur=S.news[id];
+  if(!force&&cur&&cur.ts&&(Date.now()-cur.ts)<30*60e3&&cur.items)return;
+  const nq=newsQuery(st);
+  const u=newsURL(st.symbol,nq.q,nq.hl);
+  if(!u){ S.news[id]={items:null,ts:Date.now(),noProxy:true}; renderNewsInline(id); return; }
+  S.news[id]={items:cur&&cur.items||null,ts:cur&&cur.ts||0,loading:true};
+  renderNewsInline(id);
+  try{
+    const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),9000);
+    const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(to);
+    const j=await res.json();
+    const items=(j&&Array.isArray(j.items))?j.items:[];
+    S.news[id]={items,ts:Date.now(),loading:false};
+  }catch(e){
+    S.news[id]={items:null,ts:Date.now(),loading:false,err:true};
+  }
+  renderNewsInline(id);
+}
+function renderNewsInline(id){
+  const box=document.querySelector('.newsbox[data-id="'+CSS.escape(id)+'"]');
+  if(box)box.innerHTML=newsInnerHTML(id,S.stocks[id]);
+}
+function newsInnerHTML(id,st){
+  const nd=(S.news&&S.news[id])||null;
+  const nq=newsQuery(st);
+  const gnLink='https://news.google.com/search?q='+encodeURIComponent(nq.q)+(st.market==='KR'?'&hl=ko&gl=KR&ceid=KR:ko':'&hl=en-US&gl=US&ceid=US:en');
+  const yfLink=st.market==='US'?('https://finance.yahoo.com/quote/'+encodeURIComponent(st.symbol)+'/news'):null;
+  const links='<div class="newslinks"><a href="'+gnLink+'" target="_blank" rel="noopener">Google 뉴스 전체 ↗</a>'
+    +(yfLink?' · <a href="'+yfLink+'" target="_blank" rel="noopener">Yahoo Finance ↗</a>':'')+'</div>';
+  if(!nd)return '<div class="newshint">아래 [📰 뉴스 새로고침]을 누르면 최신 헤드라인을 불러옵니다. (워커 프록시 연결 시)</div>'+links;
+  if(nd.loading)return '<div class="newshint">불러오는 중…</div>'+links;
+  if(nd.noProxy)return '<div class="newshint">자동 뉴스는 커스텀 워커 프록시 연결 후 표시됩니다. 지금은 아래 링크로 확인하세요.</div>'+links;
+  if(nd.err)return '<div class="newshint">뉴스 조회 실패 — 워커가 /news 지원 최신 버전인지 확인하세요. 아래 링크로 확인 가능합니다.</div>'+links;
+  if(!nd.items||!nd.items.length)return '<div class="newshint">최근 헤드라인을 찾지 못했습니다.</div>'+links;
+  const rows=nd.items.slice(0,6).map(it=>{
+    const t=esc(it.t||''); const src=esc(it.s||''); const when=it.ts?ago(it.ts*1000):'';
+    return '<a class="newsitem" href="'+esc(it.u||'#')+'" target="_blank" rel="noopener">'
+      +'<span class="nt">'+t+'</span>'
+      +'<span class="nm">'+(src?src:'')+(when?(src?' · ':'')+when:'')+'</span></a>';
+  }).join('');
+  return '<div class="newslist">'+rows+'</div>'
+    +'<div class="newsfoot">헤드라인은 참고용 — 악재/호재 판단 후 필요하면 위의 <b>악재 보류</b>로 등급에 반영하세요. <span style="opacity:.7">'+ago(nd.ts)+' 갱신</span></div>'+links;
+}
+function newsSectionHTML(id,st){
+  return '<div class="dsec">새 소식 <small>구글뉴스 최신 헤드라인 — 정성 이벤트는 사람이 판단</small></div>'
+    +'<div class="newsbox" data-id="'+esc(id)+'">'+newsInnerHTML(id,st)+'</div>';
+}
 /* 애널리스트 요약 자동 조회 — 개인 워커의 /summary 엔드포인트 (야후 quoteSummary,
  * 쿠키·크럼 인증을 워커가 서버 측에서 대행). 값 변화가 느려 3일 캐시. */
 function summaryURL(sym){
@@ -1473,23 +1865,36 @@ async function fetchSummary(id,force){
     const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(to);
     if(!res.ok){ if(force)toast('애널리스트 자동 조회 실패(HTTP '+res.status+') — 워커가 /summary 지원 최신 버전인지 확인하세요','err'); return; }
     const j=await res.json();
-    let ana=null;
-    if(j&&(j.n!==undefined||j.tgt!==undefined||j.lg!==undefined)){ // 워커 v3 축약형
-      ana={n:isFinite(j.n)?j.n:null,tgt:isFinite(j.tgt)?j.tgt:null,
-           rec:isFinite(j.rec)?j.rec:null,lg:isFinite(j.lg)?j.lg:null,ts:Date.now()};
-    }else{ // 구버전 워커(quoteSummary 원본) 호환 — 기준일(lg) 없음
+    let ana=null, fund=null;
+    const gn=x=>(x!=null&&isFinite(x))?x:null;
+    if(j&&(j.n!==undefined||j.tgt!==undefined||j.lg!==undefined)){ // 워커 v3/v4 축약형
+      ana={n:gn(j.n),tgt:gn(j.tgt),rec:gn(j.rec),lg:gn(j.lg),
+           earn:gn(j.earn), rt:(j.rt&&typeof j.rt==='object')?j.rt:null, ts:Date.now()};
+      // v4 재무 필드 (구버전 워커면 undefined → null)
+      if(j.roe!==undefined||j.margin!==undefined||j.revG!==undefined){
+        fund={roe:gn(j.roe),margin:gn(j.margin),de:gn(j.de),revG:gn(j.revG),epsG:gn(j.epsG),ts:Date.now()};
+      }
+    }else{ // 구버전 워커(quoteSummary 원본) 호환
       const fd=j&&j.quoteSummary&&j.quoteSummary.result&&j.quoteSummary.result[0]
         &&j.quoteSummary.result[0].financialData;
       if(!fd)return;
       const g=x=>(x&&x.raw!=null&&isFinite(x.raw))?x.raw:null;
       ana={n:g(fd.numberOfAnalystOpinions),tgt:g(fd.targetMeanPrice),
-           rec:g(fd.recommendationMean),lg:null,ts:Date.now()};
+           rec:g(fd.recommendationMean),lg:null,earn:null,rt:null,ts:Date.now()};
     }
-    if(!ana||(ana.n==null&&ana.tgt==null&&ana.lg==null)){ if(force)toast('야후 응답에 이 종목의 애널리스트 정보가 없습니다','err'); return; }
+    if(!ana||(ana.n==null&&ana.tgt==null&&ana.lg==null&&!fund)){ if(force)toast('야후 응답에 이 종목의 애널리스트 정보가 없습니다','err'); return; }
     if(!S.cache[id])S.cache[id]={};
-    S.cache[id].ana=ana; saveCache(id);
+    S.cache[id].ana=ana;
+    if(fund&&(fund.roe!=null||fund.margin!=null||fund.revG!=null||fund.epsG!=null||fund.de!=null)) S.cache[id].fund=fund;
+    saveCache(id);
     S.calc[id]=compute(id); renderSoon();
-    if(force)toast(st.name+' 애널리스트 정보 갱신'+(ana.n!=null?': '+ana.n+'명':'')+(ana.lg?' · 최근 액션 '+new Date(ana.lg*1000).toLocaleDateString('ko-KR'):''));
+    if(force){
+      const bits=[];
+      if(ana.n!=null)bits.push(ana.n+'명');
+      if(fund&&fund.roe!=null)bits.push('ROE '+fund.roe.toFixed(0)+'%');
+      if(ana.earn)bits.push('실적 '+new Date(ana.earn*1000).toLocaleDateString('ko-KR'));
+      toast(st.name+' 자동조회 갱신'+(bits.length?': '+bits.join(' · '):''));
+    }
   }catch(e){ if(force)toast('애널리스트 자동 조회 오류 — 워커 /summary 미지원 또는 네트워크 문제','err'); }
 }
 let sumBusy=false;
@@ -1555,10 +1960,25 @@ $('#list').addEventListener('click',e=>{
         .then(()=>toast('수동 현재가를 해제했습니다'));
     }
     else if(act==='save'){saveManual(row,id);}
+    else if(act==='hztoggle'){
+      const man={...(S.stocks[id].manual||{})};
+      if(man.hazard){ man.hazard=false; }
+      else{
+        man.hazard=true;
+        const memoInp=row.querySelector('.hazmemo');
+        if(memoInp&&memoInp.value.trim())man.hazardMemo=memoInp.value.trim();
+      }
+      db.doc('qa_stocks/'+id).set({manual:man,updatedAt:Date.now()},{merge:true})
+        .then(()=>toast(man.hazard?'악재 보류로 설정 — 등급 범위 밖으로 강등됩니다':'악재 보류 해제'))
+        .catch(e=>toast('저장 실패: '+e.message,'err'));
+    }
+    else if(act==='loadnews'){ loadNews(id,true); toast(S.stocks[id].name+' 뉴스 조회 중'); }
     return;
   }
   if(e.target.closest('.detail'))return;
-  S.ui.open[id]=!S.ui.open[id]; render();
+  const willOpen=!S.ui.open[id];
+  S.ui.open[id]=willOpen; render();
+  if(willOpen)loadNews(id,false); // 행 펼치면 뉴스 자동 로드(30분 캐시)
 });
 $('#list').addEventListener('change',e=>{
   if(e.target.classList.contains('siminput')){
@@ -1637,15 +2057,18 @@ $('#btnAddGo').addEventListener('click',async()=>{
 });
 
 /* ---------------- 설정 ---------------- */
-const W_LABELS={rsi:'RSI',bb:'볼린저',ma:'이동평균',vp:'매물대',up:'상승여력'};
+const QW_LABELS={trend:'추세 건전성',fin:'재무 품질',growth:'성장성',ana:'애널 신뢰',stab:'안정성'};
+const AW_LABELS={up:'상승여력',rsi:'RSI 반등',bb:'볼린저',vp:'매물대',prox:'눌림목'};
 const FV_LABELS={tech:'기술적 앵커',target:'애널리스트 목표가',mine:'내 적정가'};
 function wrow(group,key,label,val){
   return '<div class="wrow"><span>'+label+'</span>'
-    +'<input type="range" min="0" max="50" step="5" value="'+val+'" data-g="'+group+'" data-k="'+key+'">'
+    +'<input type="range" min="0" max="40" step="2" value="'+val+'" data-g="'+group+'" data-k="'+key+'">'
     +'<b class="num" id="wv_'+group+'_'+key+'">'+val+'%</b></div>';
 }
 $('#btnSettings').addEventListener('click',()=>{
-  $('#wComp').innerHTML=Object.keys(W_LABELS).map(k=>wrow('w',k,W_LABELS[k],S.settings.weights[k])).join('');
+  const qw=S.settings.qw||QW_DEF, aw=S.settings.aw||AW_DEF;
+  $('#wQ').innerHTML=Object.keys(QW_LABELS).map(k=>wrow('q',k,QW_LABELS[k],qw[k])).join('');
+  $('#wA').innerHTML=Object.keys(AW_LABELS).map(k=>wrow('a',k,AW_LABELS[k],aw[k])).join('');
   $('#wFv').innerHTML=Object.keys(FV_LABELS).map(k=>wrow('f',k,FV_LABELS[k],S.settings.fvw[k])).join('');
   $('#setRefresh').value=S.settings.refreshMin;
   $('#setQuote').value=S.settings.quoteSec;
@@ -1658,14 +2081,15 @@ $('#maskSet').addEventListener('input',e=>{
   }
 });
 $('#btnSetSave').addEventListener('click',async()=>{
-  const w={},f={};
-  $$('#wComp input[type=range]').forEach(r=>w[r.dataset.k]=+r.value);
+  const qw={},aw={},f={};
+  $$('#wQ input[type=range]').forEach(r=>qw[r.dataset.k]=+r.value);
+  $$('#wA input[type=range]').forEach(r=>aw[r.dataset.k]=+r.value);
   $$('#wFv input[type=range]').forEach(r=>f[r.dataset.k]=+r.value);
-  S.settings.weights=w;S.settings.fvw=f;
+  S.settings.qw=qw;S.settings.aw=aw;S.settings.fvw=f;
   S.settings.refreshMin=clamp(parseInt($('#setRefresh').value)||10,1,120);
   S.settings.quoteSec=clamp(parseInt($('#setQuote').value)||30,10,600);
   S.settings.proxy=$('#setProxy').value.trim();
-  try{await db.doc('qa_settings/global').set({weights:w,fvw:f,refreshMin:S.settings.refreshMin,quoteSec:S.settings.quoteSec,proxy:S.settings.proxy});}
+  try{await db.doc('qa_settings/global').set({qw,aw,fvw:f,refreshMin:S.settings.refreshMin,quoteSec:S.settings.quoteSec,proxy:S.settings.proxy});}
   catch(e){toast('설정 저장 실패(로컬만 적용): '+e.message,'err');}
   recalcAll();render();
   startInterval();startQuoteLoop();
