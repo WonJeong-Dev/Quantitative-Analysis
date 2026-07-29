@@ -117,6 +117,9 @@
   .price .p{font-weight:700;font-size:15px}
   .price .c{font-size:11.5px;font-weight:700}
   .price .stale{font-size:10.5px;color:var(--amber);font-weight:600}
+  .listdiv{margin:10px 4px 4px;padding:7px 14px;border-top:2px dashed var(--line);
+    font-size:11.5px;font-weight:800;color:var(--sub);letter-spacing:-.2px;
+    background:linear-gradient(180deg,rgba(154,166,189,.07),transparent)}
   .scorecell{display:flex;align-items:center;gap:8px}
   .gauge{flex:1;min-width:32px;height:8px;border-radius:99px;background:var(--gray-soft);position:relative;overflow:hidden}
   .scorecell .badge{font-size:10.5px;padding:2px 7px}
@@ -466,7 +469,7 @@ const S = {
     fvw:{tech:40,target:30,mine:30},
     refreshMin:10, quoteSec:30, proxy:''
   },
-  ui:{sort:'score', search:'', open:{}, sim:{}, prog:null, seeded:false}
+  ui:{sort:'grade', search:'', open:{}, sim:{}, prog:null, seeded:false}
 };
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -543,6 +546,16 @@ function parseChart(j){
     l.push(+((q.low&&q.low[i])??ci));  c.push(+ci); v.push(+((q.volume&&q.volume[i])||0));
   }
   const m=r.meta||{};
+  // 방어적: 소스가 시간 역순으로 주는 경우 대비해 t 오름차순 정렬
+  let ord=true; for(let i=1;i<t.length;i++){ if(t[i]<t[i-1]){ord=false;break;} }
+  if(!ord){ const idx=t.map((_,ix)=>ix).sort((a,b)=>t[a]-t[b]);
+    const so=[],sh=[],sl=[],sc=[],sv=[],stt=[];
+    idx.forEach(ix=>{stt.push(t[ix]);so.push(o[ix]);sh.push(h[ix]);sl.push(l[ix]);sc.push(c[ix]);sv.push(v[ix]);});
+    return {t:stt,o:so,h:sh,l:sl,c:sc,v:sv,
+      price:(m.regularMarketPrice!=null?+m.regularMarketPrice:(sc.length?sc[sc.length-1]:null)),
+      prevClose:(m.chartPreviousClose!=null?+m.chartPreviousClose:(sc.length>1?sc[sc.length-2]:null)),
+      currency:m.currency||'USD', mktTime:(m.regularMarketTime||0)*1000};
+  }
   return {t,o,h,l,c,v,
     price:(m.regularMarketPrice!=null?+m.regularMarketPrice:(c.length?c[c.length-1]:null)),
     prevClose:(m.chartPreviousClose!=null?+m.chartPreviousClose:(c.length>1?c[c.length-2]:null)),
@@ -663,8 +676,12 @@ function qFinance(m,auto){
   const parts=[];
   if(roe!=null) parts.push([pl(roe,[[-10,10],[0,30],[8,50],[15,68],[25,82],[40,92],[60,98]]), 0.45]);
   if(mg!=null)  parts.push([pl(mg ,[[-20,8],[0,32],[8,52],[18,70],[30,84],[45,94]]), 0.35]);
-  if(de!=null){ const d=de>5?de/100:de; // 200(%) 형태도 허용
-                parts.push([pl(d,[[0,92],[0.5,82],[1,68],[2,48],[3,30],[5,12]]), 0.20]); }
+  if(de!=null&&isFinite(de)&&de>=0){
+    // Yahoo debtToEquity는 대개 백분율(예: 45.2 = 0.452배)로 옴. 값이 크면 %로 간주해 ÷100.
+    // 안전 밴드: 5 이하는 이미 배수(예: 0.8배, 2.5배)일 가능성이 높아 그대로 사용.
+    const d = de>5 ? de/100 : de;
+    parts.push([pl(d,[[0,92],[0.5,82],[1,68],[2,48],[3,30],[5,12]]), 0.20]);
+  }
   if(!parts.length)return null;
   const w=parts.reduce((s,x)=>s+x[1],0);
   return clamp(parts.reduce((s,x)=>s+x[0]*x[1],0)/w,0,100);
@@ -896,10 +913,12 @@ function compute(id,simPrice){
   const man=man0;
   const autoN=(ch.ana&&ch.ana.n!=null)?ch.ana.n:null;
   const recAuto=(ch.ana&&ch.ana.rec!=null)?ch.ana.rec:null;
-  // 의견: 수동 opinion(높을수록 좋음, 5점 척도)을 rec(1~5, 낮을수록 좋음)로 환산하거나 자동 rec 사용
+  // 애널리스트 컨센서스(recommendationMean, 1=강력매수 … 5=강력매도).
+  // 정본 우선순위: 수동 consensus > 자동 rec.  (opinion은 별개 지표 → 표시 전용, 계산 미사용)
   let recEff=null;
-  if(man.opinion!=null&&man.opinion!==''&&isFinite(+man.opinion)) recEff=clamp(6-(+man.opinion),1,5);
-  else if(recAuto!=null) recEff=recAuto;
+  const consMan=(man.consensus!=null&&man.consensus!==''&&isFinite(+man.consensus))?+man.consensus:null;
+  if(consMan!=null&&consMan>=1&&consMan<=5) recEff=consMan;
+  else if(recAuto!=null&&isFinite(recAuto)&&recAuto>=1&&recAuto<=5) recEff=recAuto;
   const anaI=anaInfo(man,autoN,recEff);
   const tgtF=targetFresh(man,ch,price);
   const tgtW=anaI.f*tgtF.f;
@@ -945,7 +964,9 @@ function compute(id,simPrice){
   /* ===== ② 가격매력도 (Price Attractiveness) ===== */
   const aw=S.settings.aw||AW_DEF;
   const upRaw=scoreUpsideRaw(k.upside);
-  const upAdj=(upRaw!=null)?(50+(upRaw-50)*crashPenalty):null; // 급락 허수분만 50 기준으로 눌러줌
+  // 급락 허수 감쇠: '부풀려진 여력'만 눌러야 하므로 upRaw>50(양의 여력)일 때만 50 기준으로 축소.
+  // upRaw<=50(여력 0 이하)이면 감쇠가 오히려 점수를 올려버리므로 그대로 둔다.
+  const upAdj=(upRaw==null)?null:(upRaw>50?(50+(upRaw-50)*crashPenalty):upRaw);
   const aParts={
     up:upAdj,
     rsi:scoreRSI(rsi,rsiLo,rsiHi),
@@ -1122,6 +1143,20 @@ function spliceCache(old,fresh){
       old.l.push(r4(fresh.l[i])); old.c.push(r4(fresh.c[i])); old.v.push(Math.round(fresh.v[i]||0));
     }
   }
+  // 방어적 시간순 정렬: push로 붙인 새 봉이 과거 시점이면 배열이 시간 역순이 되어
+  // 모든 지표(SMA·RSI·기울기·매물대)가 조용히 오염되므로, 항상 t 오름차순을 보장한다.
+  let sorted=true;
+  for(let i=1;i<old.t.length;i++){ if(old.t[i]<old.t[i-1]){ sorted=false; break; } }
+  if(!sorted){
+    const idx=old.t.map((tt,ix)=>ix).sort((a,b)=>old.t[a]-old.t[b]);
+    ['t','o','h','l','c','v'].forEach(kk=>{ const arr=old[kk]; old[kk]=idx.map(ix=>arr[ix]); });
+  }
+  // 동일 타임스탬프 중복 제거(정렬 후 인접 비교) — 방어적
+  {
+    const t=old.t, keep=[];
+    for(let i=0;i<t.length;i++){ if(i>0&&t[i]===t[i-1]){ /* 최신값이 이미 map으로 갱신됨 → 이전 중복 제거 */ keep.pop(); } keep.push(i); }
+    if(keep.length!==t.length){ ['t','o','h','l','c','v'].forEach(kk=>{ const arr=old[kk]; old[kk]=keep.map(ix=>arr[ix]); }); }
+  }
   if(old.t.length>520){ const cut=old.t.length-520;
     ['t','o','h','l','c','v'].forEach(k=>old[k]=old[k].slice(cut)); }
   if(fresh.price!=null)old.price=r4(fresh.price);
@@ -1197,7 +1232,14 @@ function sortedIds(){
     if(key==='name')return (S.stocks[a].name||'').localeCompare(S.stocks[b].name||'','ko');
     const A=S.calc[a]||{},B=S.calc[b]||{};
     if(key==='rsi')return (A.rsi==null?1e18:A.rsi)-(B.rsi==null?1e18:B.rsi);
-    if(key==='grade'){ const gv=t=>t==='상'?3:(t==='중'?2:(t==='하'?1:0)); const d=gv(B.tier)-gv(A.tier); return d!==0?d:nn(B.attract)-nn(A.attract); }
+    if(key==='grade'){
+      const gv=t=>t==='상'?3:(t==='중'?2:(t==='하'?1:0));
+      const ga=gv(A.tier), gb=gv(B.tier);
+      if(ga!==gb)return gb-ga;                       // 상>중>하>범위밖
+      if(ga>0)return nn(B.attract)-nn(A.attract);    // 등급 있는 것끼리: 가격매력 높은 순
+      // 범위밖끼리: 급락 종목이 위로 뜨지 않도록 '종합점수(기업 품질)' 순으로.
+      return nn(B.quality)-nn(A.quality);
+    }
     const kk=KEYMAP[key]||key;
     return nn(B[kk])-nn(A[kk]);
   });
@@ -1253,13 +1295,26 @@ function render(){
     list.innerHTML='<div class="empty">'+(Object.keys(S.stocks).length?'검색 결과가 없습니다':'등록된 종목이 없습니다. 우측 상단의 [+ 종목 추가]로 시작하세요.')+'</div>';
     return;
   }
+  const gradeSort=(S.ui.sort==='grade');
+  let dividerShown=false;
   list.innerHTML=ids.map((id,i)=>{
     const st=S.stocks[id], k=S.calc[id], open=!!S.ui.open[id];
     const err=(S.fetchErr||{})[id];
     const stale=k&&k.updatedAt&&(Date.now()-k.updatedAt>20*3600*1000);
-    const topSort=(S.ui.sort==='grade'||S.ui.sort==='score'||S.ui.sort==='quality');
+    const graded=!!(k&&k.tier);
+    // 등급순 정렬에서 '범위 밖' 구간이 시작되는 첫 지점에 구분선(추천 vs 비추천 경계)
+    let divider='';
+    if(gradeSort&&!graded&&!dividerShown){
+      dividerShown=true;
+      const anyGraded=ids.some(x=>{const kk=S.calc[x];return kk&&kk.tier;});
+      divider='<div class="listdiv">'+(anyGraded?'▲ 여기까지 매수 후보 (관문 통과) · 아래부터는 범위 밖 — 종합점수(기업 품질) 높은 순'
+        :'현재 매수 관문을 통과한 종목이 없습니다 · 아래는 참고용으로 종합점수(기업 품질) 높은 순')+'</div>';
+    }
+    const topSort=(S.ui.sort==='score'||S.ui.sort==='quality');
+    // 골드 강조: 등급순일 땐 '실제 등급받은' 상위만, 그 외 점수순일 땐 상위 3
+    const goldTop=gradeSort?(graded&&i<3):(i<3&&topSort);
     let main='<div class="main">'
-      +'<div class="rank g-rk '+(i<3&&topSort?'top':'')+'">'+(i+1)+'</div>'
+      +'<div class="rank g-rk '+(goldTop?'top':'')+'">'+(i+1)+'</div>'
       +'<div class="nm g-nm"><div class="k">'+esc(st.name)+'</div><div class="t"><span class="mono">'+esc(st.market==='KR'?(st.code||st.symbol):st.symbol)+'</span><span class="sec">'+esc(st.sector||'')+'</span></div></div>';
     if(k){
       const fi=freshInfo(k);
@@ -1288,7 +1343,7 @@ function render(){
         +'<div class="g-sc muted" style="font-size:12px">데이터 수신 대기</div><div class="g-fv"></div><div class="g-gr"></div><div class="g-rs"></div><div class="g-st"><div class="strip"></div></div>';
     }
     main+='<div class="chev g-ch">▼</div></div>';
-    return '<div class="row'+(open?' open':'')+'" data-id="'+esc(id)+'">'+main+(open?detailHTML(id):'')+'</div>';
+    return divider+'<div class="row'+(open?' open':'')+'" data-id="'+esc(id)+'">'+main+(open?detailHTML(id):'')+'</div>';
   }).join('');
   ids.forEach(id=>{ if(S.ui.open[id]){ const cv=list.querySelector('canvas[data-id="'+CSS.escape(id)+'"]'); if(cv)drawChart(cv,id); } });
 }
@@ -1349,7 +1404,9 @@ function detailHTML(id){
   const cw=S.settings.qw||QW_DEF;
   const qp=k.qParts||{};
   const qLab={trend:['추세 건전성','가격>장기추세·우상향'],fin:['재무 품질','ROE·마진·부채'],
-    growth:['성장성','매출·EPS 성장률'],ana:['애널 신뢰','커버리지·의견'],stab:['안정성','변동성 역'] };
+    growth:['성장성','매출·EPS 성장률'],
+    ana:['애널 신뢰','커버리지 '+(k.ana&&k.ana.n!=null?k.ana.n+'명':'—')+' · 컨센 '+(k.recEff!=null?k.recEff.toFixed(2):'—')],
+    stab:['안정성','변동성 역'] };
   const qRows=Object.keys(qLab).map(key=>[qLab[key][0],qLab[key][1],qp[key],cw[key]]);
   let qtw=0; qRows.forEach(r=>{ if(r[2]!=null)qtw+=r[3]; });
   let brkQ='<table class="brk"><tr><th>성분</th><th>설명</th><th>점수</th><th>가중</th><th>기여</th></tr>';
@@ -1388,8 +1445,8 @@ function detailHTML(id){
     +F('target','애널리스트 목표가','컨센서스 목표가')
     +F('analysts','애널리스트 수 (비우면 자동)','예: 12')
     +F('targetDate','목표가 기준일 (비우면 자동)','예: 2026-07-21')
-    +F('opinion','종목의견 (높을수록 좋음)','예: 3.9')
-    +F('consensus','컨센서스 (낮을수록 좋음)','예: 1.2')
+    +F('opinion','종목의견 (표시 전용·미반영)','예: 3.9')
+    +F('consensus','컨센서스 rec ★점수반영 (1=강력매수)','예: 1.2')
     +F('consensusDate','컨센서스 기준일 (표시용)','예: 2026-07-16')
     +F('per','PER','')+F('pbr','PBR','')+F('psr','PSR','')
     +SelVM('vmPer','PER 신뢰도',m)+SelVM('vmPbr','PBR 신뢰도',m)+SelVM('vmPsr','PSR 신뢰도',m)
@@ -1928,6 +1985,7 @@ $$('nav.tabs .tab').forEach(b=>b.addEventListener('click',()=>{
   S.tab=b.dataset.tab; render(); refreshQuotes();
 }));
 $('#sortSel').addEventListener('change',e=>{S.ui.sort=e.target.value;render();});
+$('#sortSel').value=S.ui.sort;
 $('#searchIn').addEventListener('input',e=>{S.ui.search=e.target.value;renderSoon();});
 $('#btnRefresh').addEventListener('click',()=>{refreshAll();toast('전체 데이터 갱신을 시작합니다');});
 
