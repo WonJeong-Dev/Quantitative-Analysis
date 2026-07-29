@@ -464,7 +464,7 @@ const S = {
   quote:{},             // id -> 실시간 시세 {price,ts,session,src,base}
   settings:{
     weights:{rsi:20,bb:20,ma:20,vp:15,up:25}, // (구) 하위호환 보존
-    qw:{trend:26,fin:26,growth:20,ana:16,stab:12}, // 종합점수(기업품질) 가중치
+    qw:{fin:35,growth:28,ana:22,stab:15}, // 종합점수(기업품질) — 추세 제외, 순수 재무·성장·애널·안정
     aw:{up:46,rsi:16,bb:14,vp:14,prox:10},        // 가격매력도 가중치
     fvw:{tech:40,target:30,mine:30},
     refreshMin:10, quoteSec:30, proxy:''
@@ -1049,10 +1049,9 @@ function compute(id,simPrice){
   if(k.earn!=null){ const d=(k.earn*1000-Date.now())/86400e3; k.earnDays=d; k.earnSoon=(d>=-2&&d<=2); }
   else { k.earnDays=null; k.earnSoon=false; }
 
-  /* ===== ① 종합점수 (Company Quality) — 가격과 독립. 적정가보다 먼저 계산 ===== */
+  /* ===== ① 종합점수 (Company Quality) — 순수 기업 품질. 가격 추세와 무관 ===== */
   const cw=S.settings.qw||QW_DEF;
   const qParts={
-    trend:qTrend(price,s50,s200,slope50,slope200),
     fin:qFinance(man,ch.fund),
     growth:qGrowth(man,ch.fund),
     ana:qAnalyst(anaI.n, recEff),
@@ -1062,6 +1061,8 @@ function compute(id,simPrice){
   for(const key in qParts){ if(qParts[key]!=null){ qtw+=cw[key]; qacc+=qParts[key]*cw[key]; } }
   k.qParts=qParts;
   k.quality=qtw>0?clamp(qacc/qtw,0,100):null;
+  // 추세는 종합점수에서 뺐지만, 표시·타이밍 참고용으로 별도 계산 보관
+  k.trendScore=qTrend(price,s50,s200,slope50,slope200);
 
   /* ===== 이원 적정가: 현재적정가(하방) + 적정목표가(상방·성장반영) ===== */
   // 목표가·고저는 수동 우선, 없으면 자동조회(ch.ana) 사용 — fairValue가 참조할 병합 객체
@@ -1119,7 +1120,7 @@ function compute(id,simPrice){
   k.sim=simPrice!=null;
   return k;
 }
-const QW_DEF={trend:26,fin:26,growth:20,ana:16,stab:12};
+const QW_DEF={fin:35,growth:28,ana:22,stab:15};
 const AW_DEF={up:46,rsi:16,bb:14,vp:14,prox:10};
 function recalcAll(){
   for(const id in S.stocks)S.calc[id]=compute(id);
@@ -1179,9 +1180,11 @@ function subscribe(){
   });
   db.doc('qa_settings/global').onSnapshot(d=>{
     if(d.exists){ const x=d.data();
+      // 구버전 qw(추세 성분 trend 포함)는 v5에서 성분 구성이 바뀌었으므로 무시하고 신 기본값 사용
+      const qwSaved=(x.qw&&x.qw.trend===undefined&&x.qw.fin!=null)?x.qw:null;
       S.settings={...S.settings,...x,
         weights:{...S.settings.weights,...(x.weights||{})},
-        qw:{...(S.settings.qw||QW_DEF),...(x.qw||{})},
+        qw: qwSaved?{...QW_DEF,...qwSaved}:QW_DEF,
         aw:{...(S.settings.aw||AW_DEF),...(x.aw||{})},
         fvw:{...S.settings.fvw,...(x.fvw||{})}};
       recalcAll(); renderSoon();
@@ -1545,7 +1548,7 @@ function detailHTML(id){
   /* --- 점수 분해: ① 종합점수(기업품질) --- */
   const cw=S.settings.qw||QW_DEF;
   const qp=k.qParts||{};
-  const qLab={trend:['추세 건전성','가격>장기추세·우상향'],fin:['재무 품질','ROE·마진·부채'],
+  const qLab={fin:['재무 품질','ROE·마진·부채'],
     growth:['성장성','매출·EPS 성장률'],
     ana:['애널 신뢰','커버리지 '+(k.ana&&k.ana.n!=null?k.ana.n+'명':'—')+' · 컨센 '+(k.recEff!=null?k.recEff.toFixed(2):'—')],
     stab:['안정성','변동성 역'] };
@@ -1554,7 +1557,9 @@ function detailHTML(id){
   let brkQ='<table class="brk"><tr><th>성분</th><th>설명</th><th>점수</th><th>가중</th><th>기여</th></tr>';
   qRows.forEach(r=>{ const c=(r[2]!=null&&qtw>0)?(r[2]*r[3]/qtw):null;
     brkQ+='<tr><td>'+r[0]+'</td><td style="font-size:11px;color:var(--sub)">'+r[1]+'</td><td class="num">'+(r[2]!=null?r[2].toFixed(0):'<span style="color:#bbb">n/a</span>')+'</td><td class="num">'+r[3]+'%</td><td class="num">'+(c!=null?c.toFixed(1):'—')+'</td></tr>'; });
-  brkQ+='<tr><td>종합점수</td><td></td><td></td><td></td><td class="num" style="color:'+qColor(k.quality)+'">'+(k.quality!=null?k.quality.toFixed(1):'—')+'</td></tr></table>';
+  brkQ+='<tr><td>종합점수</td><td></td><td></td><td></td><td class="num" style="color:'+qColor(k.quality)+'">'+(k.quality!=null?k.quality.toFixed(1):'—')+'</td></tr>';
+  // 추세는 종합점수 미반영 — 참고 표시(타이밍·매수등급 게이트에서만 사용)
+  brkQ+='<tr><td style="opacity:.7">추세 (참고)</td><td style="font-size:11px;color:var(--sub)">종합점수 미반영 · 타이밍/등급 게이트용</td><td class="num" style="opacity:.7">'+(k.trendScore!=null?k.trendScore.toFixed(0):'—')+'</td><td class="num" style="opacity:.7">—</td><td class="num" style="opacity:.7">—</td></tr></table>';
 
   /* --- 점수 분해: ② 가격매력도 --- */
   const aw=S.settings.aw||AW_DEF;
@@ -2271,7 +2276,7 @@ $('#btnAddGo').addEventListener('click',async()=>{
 });
 
 /* ---------------- 설정 ---------------- */
-const QW_LABELS={trend:'추세 건전성',fin:'재무 품질',growth:'성장성',ana:'애널 신뢰',stab:'안정성'};
+const QW_LABELS={fin:'재무 품질',growth:'성장성',ana:'애널 신뢰',stab:'안정성'};
 const AW_LABELS={up:'상승여력',rsi:'RSI 반등',bb:'볼린저',vp:'매물대',prox:'눌림목'};
 const FV_LABELS={tech:'기술적 앵커',target:'애널리스트 목표가',mine:'내 적정가'};
 function wrow(group,key,label,val){
