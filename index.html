@@ -854,7 +854,7 @@ function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality){
  *  - 애널 목표가가 있으면 그것이 '주 앵커'(전문가의 12개월 밸류에이션). 펀더멘털은 교차검증·폴백.
  *  - 목표가가 없거나(신규상장) 커버리지 얇으면 펀더멘털이 주 앵커.
  *  - 현재적정가(하방)는 성장을 '완화 반영'(제거가 아님) — 고성장주가 프리미엄받는 현실 인정. */
-function fairValue(man, tw, fund, quality, tgtSpread, techRef){
+function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable){
   const fw=S.settings.fvw;
   const num=x=>(x!=null&&x!==''&&isFinite(+x)&&+x>0)?+x:null;
 
@@ -874,22 +874,36 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef){
   if(fund) fund2=fundamentalFV(num(fund.epsFwd),num(fund.epsTtm),num(fund.revPS),
                     (fund.growth!=null&&isFinite(fund.growth))?fund.growth:null, quality);
 
+  // PER 신뢰도(perReliable): 사이클주(반도체·메모리 등)는 저점 EPS로 PER 밸류가 폭주하므로
+  // 펀더멘털 비중을 크게 낮추고, 애널 목표가(사이클 정상화 반영)를 신뢰한다.
+  //  perReliable: 2=정상, 1=참고(사이클 주의), 0=제외 — VM_META의 vmPer 값을 받음.
+  const pr = (perReliable==null)?2:perReliable;
+  const isPERbasis = fund2 && fund2.basis==='PER';
+  // 사이클주 펀더멘털 가중 승수: PER 신뢰 낮을수록 축소
+  const fundMul = isPERbasis ? (pr>=2?1.0:(pr===1?0.35:0.0)) : 1.0; // PSR 경로는 그대로
+
+  // 사이클주 안전장치: 펀더멘털 목표가가 애널 목표가의 2배를 넘으면 애널 기준으로 상한
+  //  (저점 EPS×PER 폭주가 적정가를 오염시키는 것 차단)
+  if(fund2 && anaTgtAdj!=null){
+    const capT = anaTgtAdj*2.0;
+    if(fund2.target!=null && fund2.target>capT) fund2.target = capT;
+    const capN = anaTgtAdj*1.6;
+    if(fund2.now!=null && fund2.now>capN) fund2.now = capN;
+  }
+
   const myFair=num(man.myFair);
 
-  /* ---- 적정 목표가 (상방) ----
-   * 커버리지 좋은 애널 목표가 = 전문가의 밸류에이션 → 주 앵커(높은 비중).
-   * 펀더멘털 목표가 = 교차검증·폴백(애널 없으면 주). 극단 괴리 시 서로 완충. */
+  /* ---- 적정 목표가 (상방) ---- */
   const tParts=[];
-  if(anaTgtAdj!=null) tParts.push([anaTgtAdj, 0.80*anaConf + 0.10]);    // 신뢰 높으면 최대 90%
-  if(fund2&&fund2.target!=null) tParts.push([fund2.target, anaTgtAdj!=null?0.18:0.85]); // 애널 있으면 소수 교차검증
+  if(anaTgtAdj!=null) tParts.push([anaTgtAdj, 0.80*anaConf + 0.10]);
+  if(fund2&&fund2.target!=null) tParts.push([fund2.target, (anaTgtAdj!=null?0.18:0.85)*fundMul]);
   if(myFair!=null) tParts.push([myFair, 0.30]);
   let fvTarget=blend(tParts);
 
-  /* ---- 현재 적정가 (하방) ----
-   * 애널 목표가에 12% 할인(선반영된 미래 일부 되돌림) + 펀더멘털 현재값(교차검증). */
+  /* ---- 현재 적정가 (하방) ---- */
   const nParts=[];
   if(anaTgtAdj!=null) nParts.push([anaTgtAdj*0.88, 0.70*anaConf + 0.10]);
-  if(fund2&&fund2.now!=null) nParts.push([fund2.now, anaTgtAdj!=null?0.22:0.85]);
+  if(fund2&&fund2.now!=null) nParts.push([fund2.now, (anaTgtAdj!=null?0.22:0.85)*fundMul]);
   if(myFair!=null) nParts.push([myFair*0.95, 0.28]);
   let fvNow=blend(nParts);
 
@@ -899,9 +913,9 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef){
 
   let basis=[];
   if(anaTgtAdj!=null)basis.push('애널목표'+(anaConf<0.6?'(신뢰↓)':''));
-  if(fund2)basis.push('펀더멘털('+fund2.basis+')');
+  if(fund2&&fundMul>0)basis.push('펀더멘털('+fund2.basis+(fundMul<1?'·사이클↓':'')+')');
   if(myFair!=null)basis.push('수동');
-  return {fvNow, fvTarget, tgtUsed:anaTgtAdj, anaConf, fundFV:fund2, basis:basis.join('+')||'—', techRef};
+  return {fvNow, fvTarget, tgtUsed:anaTgtAdj, anaConf, fundFV:(fundMul>0?fund2:null), basis:basis.join('+')||'—', techRef};
 }
 function blend(parts){
   if(!parts.length)return null;
@@ -1025,19 +1039,50 @@ function compute(id,simPrice){
   // 펀더멘털 입력 병합 (수동 우선 > 자동조회). 성장률·EPS·주당매출.
   const F=ch.fund||{};
   const gnum=(a,b)=>{ const f=x=>(x!=null&&x!==''&&isFinite(+x))?+x:null; const va=f(a); return va!=null?va:f(b); };
-  // 성장률: 수동 epsG/revG 우선, 없으면 자동. 목표가 산정엔 EPS성장률을 주로 사용(이익 기준)
-  const growthEff = gnum(man.epsG, F.epsG) ?? gnum(man.revG, F.revG);
+
+  /* ===== 스케일 정합 안전장치 (특히 국장: 야후가 액면분할 전/후 스케일을 섞어 주는 문제) =====
+   * 야후 자동 목표가가 현재가 대비 비상식적으로 크거나 작으면(예: 5배↑ 또는 1/5↓) 스케일
+   * 불일치로 판단 → 야후 펀더멘털(목표가·EPS·주당매출)을 전부 자동 배제하고 수동 입력 유도.
+   * 수동 입력값은 사용자가 현재가 스케일로 넣었다고 신뢰하므로 검사에서 제외. */
+  let autoScaleBad=false;
+  const autoTgt=(ch.ana&&ch.ana.tgt!=null&&isFinite(ch.ana.tgt))?ch.ana.tgt:null;
+  if(price>0 && autoTgt!=null){
+    const r=autoTgt/price;
+    if(r>5 || r<0.2) autoScaleBad=true;  // 목표가가 현재가의 5배 초과 or 1/5 미만 → 스케일 오류
+  }
+  // 야후 선행EPS로 역산한 함의 주가가 현재가와 '극단적으로' 어긋날 때만 스케일 의심(보조 판정).
+  // 고PER 성장주(EPS 낮음)나 저PER 가치주에서 오탐 없도록 범위를 넉넉히(1/25 ~ 40배) 잡는다.
+  // 주 판정은 위의 목표가/현재가 비율(5배)이며, 이건 목표가가 없을 때만 보조로 작동.
+  if(!autoScaleBad && autoTgt==null && price>0 && F.epsFwd!=null && isFinite(F.epsFwd) && F.epsFwd>0){
+    const impliedByEps=F.epsFwd*15;
+    const r2=impliedByEps/price;
+    if(r2>40 || r2<0.04) autoScaleBad=true;   // 15×EPS가 현재가의 40배↑ 또는 1/25↓ = 명백한 스케일 오류
+  }
+  // 스케일 불량이면 자동 펀더멘털/목표가/분산 소스를 무효화(수동값만 남김)
+  const Feff = autoScaleBad ? {} : F;
+  const anaAutoTgtEff = autoScaleBad ? null : autoTgt;
+
+  // 성장률: 수동 epsG/revG 우선, 없으면 자동. 사이클주 극단 성장률(수백%)은 상한으로 방어.
+  let growthEff = gnum(man.epsG, Feff.epsG) ?? gnum(man.revG, Feff.revG);
+  if(growthEff!=null && isFinite(growthEff)){
+    // 극단 성장률 상한: 반도체·2차전지 등 사이클 저점 회복기엔 EPS성장률이 수백%로 튐 → 허수.
+    // 목표가 산정에 쓰는 성장률은 60%로 캡(그 이상 성장은 지속 불가능 가정).
+    if(growthEff>60) growthEff=60;
+    if(growthEff<-40) growthEff=-40;
+  }
   const fundInput = {
-    epsFwd: gnum(man.epsFwd, F.epsFwd),   // 선행 EPS(1년)
-    epsTtm: gnum(man.epsTtm, F.epsTtm),   // 후행 EPS
-    revPS:  gnum(man.revPS,  F.revPS),    // 주당 매출
+    epsFwd: gnum(man.epsFwd, Feff.epsFwd),
+    epsTtm: gnum(man.epsTtm, Feff.epsTtm),
+    revPS:  gnum(man.revPS,  Feff.revPS),
     growth: growthEff
   };
 
-  // 목표가 분산 비율 (고가-저가)/평균 — 자동조회 우선, 수동 targetHigh/Low 허용
+  // 목표가 분산 비율 (고가-저가)/평균 — 스케일 불량 시 자동 소스 배제
   let tgtSpread=null;
-  { const thi=gnum(man.targetHigh, F.tgtHi), tlo=gnum(man.targetLow, F.tgtLo), tmn=gnum(man.target, ch.ana&&ch.ana.tgt);
+  { const thi=gnum(man.targetHigh, Feff.tgtHi), tlo=gnum(man.targetLow, Feff.tgtLo), tmn=gnum(man.target, anaAutoTgtEff);
     if(thi!=null&&tlo!=null&&tmn!=null&&tmn>0&&thi>=tlo) tgtSpread=(thi-tlo)/tmn; }
+
+  k.autoScaleBad=autoScaleBad;
 
   k.ana=anaI; k.tgtF=tgtF; k.tgtW=tgtW; k.recEff=recEff; k.techRef=techRef;
   k.anaRef=(ch.ana&&ch.ana.tgt!=null)?ch.ana.tgt:null;
@@ -1065,14 +1110,15 @@ function compute(id,simPrice){
   k.trendScore=qTrend(price,s50,s200,slope50,slope200);
 
   /* ===== 이원 적정가: 현재적정가(하방) + 적정목표가(상방·성장반영) ===== */
-  // 목표가·고저는 수동 우선, 없으면 자동조회(ch.ana) 사용 — fairValue가 참조할 병합 객체
+  // 목표가·고저는 수동 우선, 없으면 자동조회 사용. 단 스케일 불량이면 자동 목표가 배제.
   const manFV = Object.assign({}, man, {
     target: (man.target!=null&&man.target!==''&&isFinite(+man.target)&&+man.target>0)? man.target
-            : ((ch.ana&&ch.ana.tgt!=null&&isFinite(ch.ana.tgt))? ch.ana.tgt : null),
-    targetHigh: (man.targetHigh!=null&&man.targetHigh!=='')? man.targetHigh : ((ch.ana&&ch.ana.tgtHi!=null)?ch.ana.tgtHi:null),
-    targetLow:  (man.targetLow!=null&&man.targetLow!=='')? man.targetLow  : ((ch.ana&&ch.ana.tgtLo!=null)?ch.ana.tgtLo:null)
+            : anaAutoTgtEff,
+    targetHigh: (man.targetHigh!=null&&man.targetHigh!=='')? man.targetHigh : (Feff.tgtHi!=null?Feff.tgtHi:null),
+    targetLow:  (man.targetLow!=null&&man.targetLow!=='')? man.targetLow  : (Feff.tgtLo!=null?Feff.tgtLo:null)
   });
-  const fvr=fairValue(manFV, tgtW, fundInput, k.quality, tgtSpread, techRef);
+  const vmR=effVM(id); // 사업분야별 지표 신뢰도 (per/pbr/psr: 2핵심/1참고/0제외)
+  const fvr=fairValue(manFV, tgtW, fundInput, k.quality, tgtSpread, techRef, vmR.per);
   k.fvNow=fvr.fvNow; k.fvTarget=fvr.fvTarget; k.tgtUsed=fvr.tgtUsed; k.anaConf=fvr.anaConf; k.fundFV=fvr.fundFV; k.fvBasis=fvr.basis;
   k.fvTech=techRef; // 하위호환 표시용
   k.fv=k.fvTarget;  // 하위호환: 기존 k.fv 참조 → 적정목표가로 매핑
@@ -1453,6 +1499,7 @@ function render(){
       const fi=freshInfo(k);
       const qv=k.quality, av=k.attract;
       const warn=[];
+      if(k.autoScaleBad)warn.push('<span class="warnpill hz" title="야후 데이터 스케일 불일치 — 수동 입력 필요">⚠ 스케일</span>');
       if(k.earnSoon)warn.push('<span class="warnpill earn" title="실적 발표 임박(±2일)">📅 실적</span>');
       if(k.hasHardHazard)warn.push('<span class="warnpill hz" title="'+esc(k.hazardMemo||'수동 악재 플래그')+'">⚠ 악재</span>');
       else if(k.crashPenalty<0.8)warn.push('<span class="warnpill crash" title="'+esc(k.crashLbl||'낙폭과대')+'">🪂 급락</span>');
@@ -1519,6 +1566,10 @@ function detailHTML(id){
     +(k.anaRef!=null?' · 야후 평균목표 '+curSym(C)+fmtP(k.anaRef,C):''));
   // 기술앵커는 이제 참고선(적정가 미반영)
   g+=stat('기술 지지/저항 (참고)',k.techRef!=null?curSym(C)+fmtP(k.techRef,C):'—','POC·이평 — 타이밍 참고, 적정가 미반영');
+  if(k.autoScaleBad){
+    g+=stat('⚠ 자동 데이터 스케일 불일치','수동 입력 필요',
+      '야후 목표가·EPS가 현재가와 스케일이 안 맞아(액면분할 등) 자동 배제됨 — 아래 수동 입력에 목표가·적정가를 직접 넣으세요');
+  }
   // 이원 적정가
   const fvBasisLbl=k.fvBasis||'—';
   g+=stat('현재 적정가 (하방)',k.fvNow!=null?curSym(C)+fmtP(k.fvNow,C):'—',
