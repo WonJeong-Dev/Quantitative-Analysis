@@ -389,68 +389,71 @@ const FIREBASE_CONFIG = {
 };
 
 /* ---------------- 시드 데이터 (기존 엑셀 List/USA 시트 기반) ----------------
- * [ticker, name, sector, 내적정가, 목표가, 종목의견, 컨센서스, 적립유지↓, 차익실현↑] */
+ * [ticker, name, sector, 목표가, 종목의견, 컨센서스, 적립유지↓, 차익실현↑]
+ * 주의: 내 적정가(myFair)는 시드하지 않는다. 적정가는 정량지표(애널목표·펀더멘털 멀티플)로만
+ * 산출해야 하며, 임의 지정한 주관적 적정가가 엔진에 섞이면 혼합 가중치를 오염시킨다.
+ * 사용자가 필요할 때 상세 패널의 [내 적정가] 폼으로 직접 입력한다. */
 const SEED_US = [
-["NVDA","엔비디아","반도체 & 반도체 장비",170,313.74,3.72,1.14,230,260],
-["MSFT","마이크로소프트","소프트웨어 & IT 서비스",360,557.74,3.92,1.11,450,500],
-["AMZN","아마존닷컴","다양한 소매",210,317.32,4.22,1.11,270,320],
-["GOOGL","알파벳 Class A","소프트웨어 & IT 서비스",300,436.23,3.85,1.19,400,450],
-["TSM","TSMC","반도체 & 반도체 장비",330,488.83,3.95,1.13,450,520],
-["AVGO","브로드컴","반도체 & 반도체 장비",320,525.71,3.93,1.16,450,520],
-["META","메타","소프트웨어 & IT 서비스",550,822.99,4.2,1.13,650,750],
-["LLY","일라이릴리","제약 (비만, 당뇨)",900,1289.73,4.0,1.27,null,null],
-["TSLA","테슬라","자동차 & 자동차부품",260,406.35,2.84,1.77,null,null],
-["ASML","ASML 홀딩","반도체 & 반도체 장비",1400,1981.67,3.33,1.26,1800,2100],
-["MU","마이크론 테크놀로지","반도체 & 반도체 장비",750,1575.62,3.55,1.14,220,270],
-["AMD","AMD","반도체 & 반도체 장비",300,519.12,4.25,1.28,250,300],
-["XOM","엑슨 모빌","에너지 (석유, 가스)",120,167.1,3.63,1.64,null,null],
-["LRCX","램 리서치","반도체 & 반도체 장비",230,376.82,3.6,1.26,140,165],
-["ABBV","애브비","제약 (면역, 항암)",220,263.72,4.0,1.33,null,null],
-["CSCO","시스코 시스템즈","커뮤니케이션 & 네트워크",80,131.15,2.85,1.46,null,null],
-["AMAT","어플라이드 머티리얼즈","반도체 & 반도체 장비",350,626.27,3.36,1.24,320,380],
-["INTC","인텔","반도체 & 반도체 장비",50,108.44,3.08,1.77,null,null],
-["PLTR","팔란티어 테크놀로지스","소프트웨어 & IT 서비스",80,190.3,3.86,1.49,null,null],
-["MRK","머크","제약 (항암)",90,134.54,4.0,1.41,null,null],
-["GEV","GE베르노바","전기 인프라",600,1226.85,3.66,1.35,null,null],
-["LIN","린데","화학",440,548.04,3.0,1.32,null,null],
-["KLAC","KLA","반도체 & 반도체 장비",160,237.44,3.16,1.48,1000,1200],
-["TXN","텍사스 인스트루먼트","반도체 & 반도체 장비",200,301.43,3.6,1.64,null,null],
-["AMGN","암젠","제약 (바이오의약)",null,356.0,3.66,1.7,null,null],
-["GILD","길리어드 사이언스","제약 (HIV, 항암)",null,160.57,3.4,1.24,null,null],
-["ISRG","인튜이티브 서지컬","헬스케어 장비 & 용품",280,569.68,3.57,1.4,null,null],
-["QCOM","퀄컴","반도체 & 반도체 장비",140,227.32,3.72,1.77,null,null],
-["PANW","팰로 알토 네트웍스","소프트웨어 & IT 서비스",200,329.71,3.06,1.3,240,280],
-["MRVL","마벨 테크놀로지 그룹","반도체 & 반도체 장비",80,262.17,3.75,1.22,null,null],
-["VRTX","버텍스 파머슈티컬","제약 (희귀질환)",null,557.56,3.75,1.27,null,null],
-["CEG","콘스텔레이션 에너지","전기 유틸리티",200,359.8,3.66,1.22,null,null],
-["INTU","인튜이트","금융기술 (핀테크)",260,463.1,4.26,1.36,null,null],
-["CRWD","크라우드 스트라이크","소프트웨어 & IT 서비스",100,187.62,3.0,1.31,650,780],
-["NOW","서비스나우","소프트웨어 & IT 서비스",120,140.19,4.06,1.16,1050,1250],
-["REGN","리제네론","제약 (안과, 비만)",600,826.54,4.25,1.39,null,null],
-["SNPS","시놉시스","소프트웨어 & IT 서비스",null,569.88,4.12,1.37,850,1000],
-["AEP","아메리칸 일렉트릭 파워","전기 유틸리티",120,145.3,3.4,1.54,null,null],
-["BE","블룸 에너지","에너지 (연료전지)",125,298.85,3.23,1.61,null,null],
-["PCAR","파카","기계·철도차량·조선",null,128.75,3.33,1.77,null,null],
-["LITE","루멘텀 홀딩스","커뮤니케이션 & 네트워크",600,1132.81,4.0,1.24,null,null],
-["COHR","코히런트","전자 장비 & 부품",240,null,null,null,null,null],
-["AAOI","어플라이드 옵토일렉트로닉스","전자 장비 & 부품",80,172.75,4.13,1.5,null,null],
-["FANG","다이아몬드백 에너지","석유 & 가스",null,232.31,4.0,1.23,null,null],
-["NXPI","NXP 세미콘덕터","반도체 & 반도체 장비",null,309.84,3.4,1.42,null,null],
-["IONQ","아이온큐","컴퓨터·양자",25,71.32,3.57,1.32,null,null],
-["SPCX","스페이스X","우주 발사·위성통신(스타링크)",null,241.8,2.53,1.29,null,null],
-["QNT","퀀티넘","양자컴퓨팅 (하드웨어+SW)",35,null,null,null,null,null]
+["NVDA","엔비디아","반도체 & 반도체 장비",313.74,3.72,1.14,230,260],
+["MSFT","마이크로소프트","소프트웨어 & IT 서비스",557.74,3.92,1.11,450,500],
+["AMZN","아마존닷컴","다양한 소매",317.32,4.22,1.11,270,320],
+["GOOGL","알파벳 Class A","소프트웨어 & IT 서비스",436.23,3.85,1.19,400,450],
+["TSM","TSMC","반도체 & 반도체 장비",488.83,3.95,1.13,450,520],
+["AVGO","브로드컴","반도체 & 반도체 장비",525.71,3.93,1.16,450,520],
+["META","메타","소프트웨어 & IT 서비스",822.99,4.2,1.13,650,750],
+["LLY","일라이릴리","제약 (비만, 당뇨)",1289.73,4,1.27,null,null],
+["TSLA","테슬라","자동차 & 자동차부품",406.35,2.84,1.77,null,null],
+["ASML","ASML 홀딩","반도체 & 반도체 장비",1981.67,3.33,1.26,1800,2100],
+["MU","마이크론 테크놀로지","반도체 & 반도체 장비",1575.62,3.55,1.14,220,270],
+["AMD","AMD","반도체 & 반도체 장비",519.12,4.25,1.28,250,300],
+["XOM","엑슨 모빌","에너지 (석유, 가스)",167.1,3.63,1.64,null,null],
+["LRCX","램 리서치","반도체 & 반도체 장비",376.82,3.6,1.26,140,165],
+["ABBV","애브비","제약 (면역, 항암)",263.72,4,1.33,null,null],
+["CSCO","시스코 시스템즈","커뮤니케이션 & 네트워크",131.15,2.85,1.46,null,null],
+["AMAT","어플라이드 머티리얼즈","반도체 & 반도체 장비",626.27,3.36,1.24,320,380],
+["INTC","인텔","반도체 & 반도체 장비",108.44,3.08,1.77,null,null],
+["PLTR","팔란티어 테크놀로지스","소프트웨어 & IT 서비스",190.3,3.86,1.49,null,null],
+["MRK","머크","제약 (항암)",134.54,4,1.41,null,null],
+["GEV","GE베르노바","전기 인프라",1226.85,3.66,1.35,null,null],
+["LIN","린데","화학",548.04,3,1.32,null,null],
+["KLAC","KLA","반도체 & 반도체 장비",237.44,3.16,1.48,1000,1200],
+["TXN","텍사스 인스트루먼트","반도체 & 반도체 장비",301.43,3.6,1.64,null,null],
+["AMGN","암젠","제약 (바이오의약)",356,3.66,1.7,null,null],
+["GILD","길리어드 사이언스","제약 (HIV, 항암)",160.57,3.4,1.24,null,null],
+["ISRG","인튜이티브 서지컬","헬스케어 장비 & 용품",569.68,3.57,1.4,null,null],
+["QCOM","퀄컴","반도체 & 반도체 장비",227.32,3.72,1.77,null,null],
+["PANW","팰로 알토 네트웍스","소프트웨어 & IT 서비스",329.71,3.06,1.3,240,280],
+["MRVL","마벨 테크놀로지 그룹","반도체 & 반도체 장비",262.17,3.75,1.22,null,null],
+["VRTX","버텍스 파머슈티컬","제약 (희귀질환)",557.56,3.75,1.27,null,null],
+["CEG","콘스텔레이션 에너지","전기 유틸리티",359.8,3.66,1.22,null,null],
+["INTU","인튜이트","금융기술 (핀테크)",463.1,4.26,1.36,null,null],
+["CRWD","크라우드 스트라이크","소프트웨어 & IT 서비스",187.62,3,1.31,650,780],
+["NOW","서비스나우","소프트웨어 & IT 서비스",140.19,4.06,1.16,1050,1250],
+["REGN","리제네론","제약 (안과, 비만)",826.54,4.25,1.39,null,null],
+["SNPS","시놉시스","소프트웨어 & IT 서비스",569.88,4.12,1.37,850,1000],
+["AEP","아메리칸 일렉트릭 파워","전기 유틸리티",145.3,3.4,1.54,null,null],
+["BE","블룸 에너지","에너지 (연료전지)",298.85,3.23,1.61,null,null],
+["PCAR","파카","기계·철도차량·조선",128.75,3.33,1.77,null,null],
+["LITE","루멘텀 홀딩스","커뮤니케이션 & 네트워크",1132.81,4,1.24,null,null],
+["COHR","코히런트","전자 장비 & 부품",null,null,null,null,null],
+["AAOI","어플라이드 옵토일렉트로닉스","전자 장비 & 부품",172.75,4.13,1.5,null,null],
+["FANG","다이아몬드백 에너지","석유 & 가스",232.31,4,1.23,null,null],
+["NXPI","NXP 세미콘덕터","반도체 & 반도체 장비",309.84,3.4,1.42,null,null],
+["IONQ","아이온큐","컴퓨터·양자",71.32,3.57,1.32,null,null],
+["SPCX","스페이스X","우주 발사·위성통신(스타링크)",241.8,2.53,1.29,null,null],
+["QNT","퀀티넘","양자컴퓨팅 (하드웨어+SW)",null,null,null,null,null]
 ];
-/* [code6, name, sector, 내적정가, 적립유지↓, 차익실현↑] */
+/* [code6, name, sector, 적립유지↓, 차익실현↑]  — 내적정가 미시드(위 주의 참조) */
 const SEED_KR = [
-["005930","삼성전자","반도체 & 반도체 장비",200000,100000,120000],
-["000660","SK하이닉스","반도체 & 반도체 장비",null,400000,500000],
-["005380","현대차","자동차",null,350000,420000],
-["006400","삼성SDI","2차전지",350000,null,null],
-["373220","LG에너지솔루션","2차전지",null,null,null],
-["207940","삼성바이오로직스","제약",null,1300000,1600000],
-["009150","삼성전기","전자부품",null,null,null],
-["011070","LG이노텍","전자부품",null,350000,450000],
-["035420","NAVER","소프트웨어",null,350000,450000]
+["005930","삼성전자","반도체 & 반도체 장비",100000,120000],
+["000660","SK하이닉스","반도체 & 반도체 장비",400000,500000],
+["005380","현대차","자동차",350000,420000],
+["006400","삼성SDI","2차전지",null,null],
+["373220","LG에너지솔루션","2차전지",null,null],
+["207940","삼성바이오로직스","제약",1300000,1600000],
+["009150","삼성전기","전자부품",null,null],
+["011070","LG이노텍","전자부품",350000,450000],
+["035420","NAVER","소프트웨어",350000,450000]
 ];
 
 /* ---------------- 상태 ---------------- */
@@ -798,6 +801,8 @@ function targetFresh(man,ch,price){
  *  기술앵커(POC·이평)는 적정가에서 제외 → 차트 지지/저항 참고선으로만.
  * ========================================================================== */
 
+/* (v4.3) 펀더멘털 적정가의 절대천장 — 현재가 대비 배수. 여력 점수곡선 상한(+300%)에 대응. */
+const FUND_CEIL_T=4.0, FUND_CEIL_N=3.0;
 /* 성장 연동 정당 PER (PEG 사고 + 품질 프리미엄). 성장주 적극 반영하되 천장을 둔다. */
 function fairPER(growth, quality){
   if(growth==null||!isFinite(growth))return null;
@@ -854,7 +859,7 @@ function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality){
  *  - 애널 목표가가 있으면 그것이 '주 앵커'(전문가의 12개월 밸류에이션). 펀더멘털은 교차검증·폴백.
  *  - 목표가가 없거나(신규상장) 커버리지 얇으면 펀더멘털이 주 앵커.
  *  - 현재적정가(하방)는 성장을 '완화 반영'(제거가 아님) — 고성장주가 프리미엄받는 현실 인정. */
-function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable){
+function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, price){
   const fw=S.settings.fvw;
   const num=x=>(x!=null&&x!==''&&isFinite(+x)&&+x>0)?+x:null;
 
@@ -882,14 +887,30 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable){
   // 사이클주 펀더멘털 가중 승수: PER 신뢰 낮을수록 축소
   const fundMul = isPERbasis ? (pr>=2?1.0:(pr===1?0.35:0.0)) : 1.0; // PSR 경로는 그대로
 
-  // 사이클주 안전장치: 펀더멘털 목표가가 애널 목표가의 2배를 넘으면 애널 기준으로 상한
-  //  (저점 EPS×PER 폭주가 적정가를 오염시키는 것 차단)
+  /* 사이클주 안전장치 (v4.3 변경): 펀더멘털이 애널목표의 2배(현재값 1.6배)를 넘으면
+   *  상한 '대입'이 아니라 '이상치 배제'한다.
+   *  v4.2는 초과분을 애널×2로 깎아 그대로 블렌드에 넣었는데, 캡이 발동한다는 것 자체가
+   *  그 값이 신뢰 불가라는 신호다. 깎아서 쓰면 대입값이 항상 애널목표보다 크므로
+   *  방어가 아니라 '상향 통로'가 된다(실측: 하이닉스 펀더raw = 현재가 17.2배 →
+   *  캡 후에도 4.87배, 최종 fvTarget이 애널목표의 1.10배로 상향).
+   *  신뢰 불가값은 쓰지 않는 것이 §1 보수성 원칙에 맞다. */
+  let fundOutlier=false;
   if(fund2 && anaTgtAdj!=null){
-    const capT = anaTgtAdj*2.0;
-    if(fund2.target!=null && fund2.target>capT) fund2.target = capT;
-    const capN = anaTgtAdj*1.6;
-    if(fund2.now!=null && fund2.now>capN) fund2.now = capN;
+    if(fund2.target!=null && fund2.target>anaTgtAdj*2.0){ fund2.target=null; fundOutlier=true; }
+    if(fund2.now!=null    && fund2.now   >anaTgtAdj*1.6){ fund2.now=null;    fundOutlier=true; }
   }
+  /* 절대천장 (v4.3 신규) — 애널목표가 없거나 배제된 종목에서도 반드시 작동해야 하는 방어.
+   * 위 캡은 애널목표를 기준으로 삼으므로, 목표가가 배제되면(스케일 이상 등) 폭주한 펀더멘털이
+   * 단독 소스로 100% 채택된다. 실측: 현재가 85,000원 · 선행EPS 65,283 상황에서
+   * 펀더멘털 target 2,971,782(현재가 35배) → 여력 +3396%가 그대로 산출됐다.
+   * 기준: 가격매력도 여력 점수곡선의 상한이 +300%(=현재가 4배)이므로, 그를 넘는 값은
+   * 점수 체계가 표현할 수 있는 범위를 벗어난 산출물로 보고 배제한다(현재값은 3배).
+   * 실측 국장 9종목의 펀더멘털/현재가 = 0.83~2.84배로, 통과 종목 대비 1.4배 여유. */
+  if(fund2 && price!=null && isFinite(price) && price>0){
+    if(fund2.target!=null && fund2.target>price*FUND_CEIL_T){ fund2.target=null; fundOutlier=true; }
+    if(fund2.now!=null    && fund2.now   >price*FUND_CEIL_N){ fund2.now=null;    fundOutlier=true; }
+  }
+  const fundUsable = !!(fund2 && (fund2.target!=null || fund2.now!=null));
 
   const myFair=num(man.myFair);
 
@@ -913,9 +934,12 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable){
 
   let basis=[];
   if(anaTgtAdj!=null)basis.push('애널목표'+(anaConf<0.6?'(신뢰↓)':''));
-  if(fund2&&fundMul>0)basis.push('펀더멘털('+fund2.basis+(fundMul<1?'·사이클↓':'')+')');
+  if(fundUsable&&fundMul>0)basis.push('펀더멘털('+fund2.basis+(fundMul<1?'·사이클↓':'')+')');
+  else if(fundOutlier)basis.push('펀더멘털 이상치 배제');
   if(myFair!=null)basis.push('수동');
-  return {fvNow, fvTarget, tgtUsed:anaTgtAdj, anaConf, fundFV:(fundMul>0?fund2:null), basis:basis.join('+')||'—', techRef};
+  return {fvNow, fvTarget, tgtUsed:anaTgtAdj, anaConf,
+          fundFV:((fundMul>0&&fundUsable)?fund2:null), fundOutlier,
+          basis:basis.join('+')||'—', techRef};
 }
 function blend(parts){
   if(!parts.length)return null;
@@ -1040,27 +1064,41 @@ function compute(id,simPrice){
   const F=ch.fund||{};
   const gnum=(a,b)=>{ const f=x=>(x!=null&&x!==''&&isFinite(+x))?+x:null; const va=f(a); return va!=null?va:f(b); };
 
-  /* ===== 스케일 정합 안전장치 (특히 국장: 야후가 액면분할 전/후 스케일을 섞어 주는 문제) =====
-   * 야후 자동 목표가가 현재가 대비 비상식적으로 크거나 작으면(예: 5배↑ 또는 1/5↓) 스케일
-   * 불일치로 판단 → 야후 펀더멘털(목표가·EPS·주당매출)을 전부 자동 배제하고 수동 입력 유도.
-   * 수동 입력값은 사용자가 현재가 스케일로 넣었다고 신뢰하므로 검사에서 제외. */
-  let autoScaleBad=false;
+  /* ===== 데이터 정합 안전장치 v4.3 — 신호별 독립 판정 =====
+   * v4.2는 '자동목표가/현재가 > 5배' 단일 비율로 판정해 야후 펀더멘털 전체를 배제했다.
+   * 문제 두 가지:
+   *  ① 목표가만 이상해도 EPS·주당매출·성장률까지 함께 버려 적정가가 통째로 공백이 된다.
+   *  ② 판정식의 분모가 현재가여서, 현재가가 낡거나 틀리면 정상 데이터를 스케일 오류로 오판한다.
+   *     (실제 발생: 삼성전자 현재가가 낡은 85,000원이던 시점에 493,820/85,000=5.81배로 오발동.
+   *      올바른 현재가 208,500원에서는 2.37배이며 야후 목표가는 분할 후 스케일로 정상이었다.)
+   * v4.3: 세 신호를 각각 독립 검사해 '이상한 입력만' 배제하고, 둘 이상이 동시에 극단이면
+   *  공통 분모인 현재가 자체를 의심해 등급을 차단한다(허수 적정가를 만들지 않는다).
+   * 임계값은 실측(국장 9종목·NVDA)에서 최소 3배 이상 여유를 두고 설정 —
+   *  목표가배율 1.35~2.54 / 함의PER 3.1~34.7 / 함의PSR 0.48~20.6. */
+  const dataAnoms=[];
+  let badTgt=false, badEps=false, badRev=false;
   const autoTgt=(ch.ana&&ch.ana.tgt!=null&&isFinite(ch.ana.tgt))?ch.ana.tgt:null;
   if(price>0 && autoTgt!=null){
     const r=autoTgt/price;
-    if(r>5 || r<0.2) autoScaleBad=true;  // 목표가가 현재가의 5배 초과 or 1/5 미만 → 스케일 오류
+    if(r>5||r<0.2){ badTgt=true; dataAnoms.push('목표가/현재가 '+r.toFixed(1)+'배'); }
   }
-  // 야후 선행EPS로 역산한 함의 주가가 현재가와 '극단적으로' 어긋날 때만 스케일 의심(보조 판정).
-  // 고PER 성장주(EPS 낮음)나 저PER 가치주에서 오탐 없도록 범위를 넉넉히(1/25 ~ 40배) 잡는다.
-  // 주 판정은 위의 목표가/현재가 비율(5배)이며, 이건 목표가가 없을 때만 보조로 작동.
-  if(!autoScaleBad && autoTgt==null && price>0 && F.epsFwd!=null && isFinite(F.epsFwd) && F.epsFwd>0){
-    const impliedByEps=F.epsFwd*15;
-    const r2=impliedByEps/price;
-    if(r2>40 || r2<0.04) autoScaleBad=true;   // 15×EPS가 현재가의 40배↑ 또는 1/25↓ = 명백한 스케일 오류
+  if(price>0 && F.epsFwd!=null && isFinite(F.epsFwd) && F.epsFwd>0){
+    const iper=price/F.epsFwd;
+    if(iper<1||iper>300){ badEps=true; dataAnoms.push('함의PER '+iper.toFixed(1)+'배'); }
   }
-  // 스케일 불량이면 자동 펀더멘털/목표가/분산 소스를 무효화(수동값만 남김)
-  const Feff = autoScaleBad ? {} : F;
-  const anaAutoTgtEff = autoScaleBad ? null : autoTgt;
+  if(price>0 && F.revPS!=null && isFinite(F.revPS) && F.revPS>0){
+    const ipsr=price/F.revPS;
+    if(ipsr<0.05||ipsr>80){ badRev=true; dataAnoms.push('함의PSR '+ipsr.toFixed(2)+'배'); }
+  }
+  // 둘 이상 극단 → 공통 분모(현재가)의 이상으로 판단 → 등급 하드게이트에서 차단
+  const priceAnomaly=([badTgt,badEps,badRev].filter(Boolean).length>=2);
+  const autoScaleBad=(badTgt||badEps||badRev);   // 표시용 통합 플래그(하위호환)
+  // 항목별 배제 — 이상 신호가 가리키는 입력만 무효화. ROE·마진·성장률(%)은 스케일 무관이라 유지.
+  const Feff=Object.assign({},F);
+  if(badEps){ Feff.epsFwd=null; Feff.epsTtm=null; }
+  if(badRev){ Feff.revPS=null; }
+  if(badTgt){ Feff.tgtHi=null; Feff.tgtLo=null; }
+  const anaAutoTgtEff = badTgt ? null : autoTgt;
 
   // 성장률: 수동 epsG/revG 우선, 없으면 자동. 사이클주 극단 성장률(수백%)은 상한으로 방어.
   let growthEff = gnum(man.epsG, Feff.epsG) ?? gnum(man.revG, Feff.revG);
@@ -1082,7 +1120,17 @@ function compute(id,simPrice){
   { const thi=gnum(man.targetHigh, Feff.tgtHi), tlo=gnum(man.targetLow, Feff.tgtLo), tmn=gnum(man.target, anaAutoTgtEff);
     if(thi!=null&&tlo!=null&&tmn!=null&&tmn>0&&thi>=tlo) tgtSpread=(thi-tlo)/tmn; }
 
-  k.autoScaleBad=autoScaleBad;
+  k.autoScaleBad=autoScaleBad; k.priceAnomaly=priceAnomaly; k.dataAnoms=dataAnoms;
+
+  /* ===== 데이터 신선도 (v4.3 신규) — 낡은 캔들·시세로 등급이 산출되는 것을 차단 =====
+   * 직전 세션에 실제 발생한 사고: 국장 캔들·현재가가 수개월 낡은 값이었는데 아무 경고 없이
+   * RSI·%B·52주·POC·추세·적정가·등급이 전부 산출되어, 원인이 '야후 스케일'로 오진되었다.
+   * 거래소 휴장 캘린더가 없으므로 달력일 기준으로 넉넉히 잡는다(한국 최장 연휴도 6일 내). */
+  const lastBarSec=(ch.t&&ch.t.length)?ch.t[ch.t.length-1]:null;
+  k.barAgeDays=(lastBarSec!=null&&isFinite(lastBarSec))?(Date.now()/1000-lastBarSec)/86400:null;
+  k.cacheAgeDays=(ch.updatedAt!=null&&isFinite(ch.updatedAt))?(Date.now()-ch.updatedAt)/86400e3:null;
+  k.dataStale=(k.barAgeDays==null)||(k.barAgeDays>STALE_MAX_D)
+    ||(priceSrc==='cache'&&k.cacheAgeDays!=null&&k.cacheAgeDays>STALE_MAX_D);
 
   k.ana=anaI; k.tgtF=tgtF; k.tgtW=tgtW; k.recEff=recEff; k.techRef=techRef;
   k.anaRef=(ch.ana&&ch.ana.tgt!=null)?ch.ana.tgt:null;
@@ -1118,7 +1166,7 @@ function compute(id,simPrice){
     targetLow:  (man.targetLow!=null&&man.targetLow!=='')? man.targetLow  : (Feff.tgtLo!=null?Feff.tgtLo:null)
   });
   const vmR=effVM(id); // 사업분야별 지표 신뢰도 (per/pbr/psr: 2핵심/1참고/0제외)
-  const fvr=fairValue(manFV, tgtW, fundInput, k.quality, tgtSpread, techRef, vmR.per);
+  const fvr=fairValue(manFV, tgtW, fundInput, k.quality, tgtSpread, techRef, vmR.per, price);
   k.fvNow=fvr.fvNow; k.fvTarget=fvr.fvTarget; k.tgtUsed=fvr.tgtUsed; k.anaConf=fvr.anaConf; k.fundFV=fvr.fundFV; k.fvBasis=fvr.basis;
   k.fvTech=techRef; // 하위호환 표시용
   k.fv=k.fvTarget;  // 하위호환: 기존 k.fv 참조 → 적정목표가로 매핑
@@ -1250,15 +1298,15 @@ async function seed(){
   updConnChip('busy','초기 시드 등록');
   const batch=db.batch();
   SEED_US.forEach(a=>{
-    const [tk,name,sec,myFair,target,opinion,consensus,accum,take]=a;
+    const [tk,name,sec,target,opinion,consensus,accum,take]=a;
     batch.set(db.doc('qa_stocks/US_'+tk),{market:'US',symbol:tk,name,sector:sec,
-      manual:{myFair,target,opinion,consensus,accum,take,consensusDate:target!=null?'2026-07 시드':null},
+      manual:{target,opinion,consensus,accum,take,consensusDate:target!=null?'2026-07 시드':null},
       createdAt:Date.now()});
   });
   SEED_KR.forEach(a=>{
-    const [code,name,sec,myFair,accum,take]=a;
+    const [code,name,sec,accum,take]=a;
     batch.set(db.doc('qa_stocks/KR_'+code),{market:'KR',symbol:code+'.KS',code,name,sector:sec,
-      manual:{myFair,accum,take},createdAt:Date.now()});
+      manual:{accum,take},createdAt:Date.now()});
   });
   try{ await batch.commit(); toast('엑셀 기반 관심종목 '+(SEED_US.length+SEED_KR.length)+'개를 등록했습니다'); }
   catch(e){ toast('시드 등록 실패: '+e.message,'err'); }
@@ -1499,7 +1547,9 @@ function render(){
       const fi=freshInfo(k);
       const qv=k.quality, av=k.attract;
       const warn=[];
-      if(k.autoScaleBad)warn.push('<span class="warnpill hz" title="야후 데이터 스케일 불일치 — 수동 입력 필요">⚠ 스케일</span>');
+      if(k.dataStale)warn.push('<span class="warnpill hz" title="캔들·시세가 '+(k.barAgeDays!=null?Math.round(k.barAgeDays)+'일':'기간 불명')+' 낡음 — 등급 보류">⚠ 데이터지연</span>');
+      if(k.priceAnomaly)warn.push('<span class="warnpill hz" title="현재가 정합 이상 — '+esc((k.dataAnoms||[]).join(' · '))+'">⚠ 가격이상</span>');
+      else if(k.autoScaleBad)warn.push('<span class="warnpill hz" title="이상 항목만 배제 — '+esc((k.dataAnoms||[]).join(' · '))+'">⚠ 데이터</span>');
       if(k.earnSoon)warn.push('<span class="warnpill earn" title="실적 발표 임박(±2일)">📅 실적</span>');
       if(k.hasHardHazard)warn.push('<span class="warnpill hz" title="'+esc(k.hazardMemo||'수동 악재 플래그')+'">⚠ 악재</span>');
       else if(k.crashPenalty<0.8)warn.push('<span class="warnpill crash" title="'+esc(k.crashLbl||'낙폭과대')+'">🪂 급락</span>');
@@ -1566,9 +1616,16 @@ function detailHTML(id){
     +(k.anaRef!=null?' · 야후 평균목표 '+curSym(C)+fmtP(k.anaRef,C):''));
   // 기술앵커는 이제 참고선(적정가 미반영)
   g+=stat('기술 지지/저항 (참고)',k.techRef!=null?curSym(C)+fmtP(k.techRef,C):'—','POC·이평 — 타이밍 참고, 적정가 미반영');
-  if(k.autoScaleBad){
-    g+=stat('⚠ 자동 데이터 스케일 불일치','수동 입력 필요',
-      '야후 목표가·EPS가 현재가와 스케일이 안 맞아(액면분할 등) 자동 배제됨 — 아래 수동 입력에 목표가·적정가를 직접 넣으세요');
+  if(k.dataStale){
+    g+=stat('⚠ 데이터 지연',(k.barAgeDays!=null?Math.round(k.barAgeDays)+'일 낡음':'캔들 없음'),
+      '마지막 일봉·시세가 '+STALE_MAX_D+'일을 넘겨 낡았습니다. 지표·적정가·등급이 모두 과거 값 기준이므로 등급을 보류합니다 — [⟳ 개별 갱신]을 실행하세요');
+  }
+  if(k.priceAnomaly){
+    g+=stat('⚠ 현재가 정합 이상',(k.dataAnoms||[]).join(' · '),
+      '목표가·EPS·주당매출 중 둘 이상이 현재가와 동시에 어긋납니다. 공통 분모인 현재가 자체가 낡거나 잘못됐을 가능성이 높아 등급을 보류합니다');
+  }else if(k.autoScaleBad){
+    g+=stat('⚠ 일부 데이터 배제',(k.dataAnoms||[]).join(' · '),
+      '해당 항목만 적정가 산정에서 제외했습니다(나머지 입력은 정상 사용). 필요하면 아래 수동 입력에 직접 값을 넣으세요');
   }
   // 이원 적정가
   const fvBasisLbl=k.fvBasis||'—';
@@ -1925,6 +1982,8 @@ function SelVM(key,label,m){
  *       하 = 매력≥54 ∧ 여력≥20% ∧ 확증≥1
  */
 const MIN_MARGIN=20, MIN_BARS=120, DD_DEEP=-35, DROP_STEEP=-20;
+/* (v4.3) 데이터 신선도 한계 — 마지막 일봉/캐시가 이 일수를 넘겨 낡으면 등급 산출 자체를 보류 */
+const STALE_MAX_D=10;
 function classifyDetail(k){
   if(!k||k.attract==null)return{tier:null,gates:[],conf:[],n:0,blocked:null};
   const RL=k.rsiLo==null?30:k.rsiLo, RH=k.rsiHi==null?70:k.rsiHi;
@@ -1936,6 +1995,8 @@ function classifyDetail(k){
   const downsideOK = (k.downside!=null) ? (k.downside >= -25) : true;
 
   const gates=[
+    ['데이터 신선 — 캔들·시세 '+STALE_MAX_D+'일 이내', !k.dataStale],
+    ['가격 정합 — 현재가 이상 신호 없음', !k.priceAnomaly],
     ['최소 안전마진 — 상승여력(적정목표가) ≥ +'+MIN_MARGIN+'%', k.upside!=null&&k.upside>=MIN_MARGIN],
     ['하방 안전 — 현재 적정가 대비 −25% 이내 (거품 아님)', downsideOK],
     ['과열 아님 — RSI < '+(RH-5)+' · %B < 0.90', !((k.rsi!=null&&k.rsi>=RH-5)||(k.pB!=null&&k.pB>=0.9))],
