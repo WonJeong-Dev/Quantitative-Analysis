@@ -572,7 +572,60 @@ function scoreVP(p,vp){
 }
 function scoreUpside(u){ return u==null?null:pl(u,[[-25,6],[-10,28],[0,50],[10,70],[20,85],[35,96]]); }
 
-function fairValue(calc,man){
+/* 애널리스트 커버리지 기반 목표가 신뢰도 게이트
+ * <3명: 컨센서스로 볼 수 없음 → 목표가 완전 제외
+ * 3~5명: 평균은 유효하나 오차 큼 → 목표가 가중치 50% 축소
+ * ≥6명: 정상 반영 / 미입력(null): 정상 반영 + '인원 미입력' 표기 */
+const ANA_MIN=3, ANA_FULL=6;
+function anaInfo(man,autoN){
+  const raw=man&&man.analysts;
+  let n=(raw!=null&&raw!==''&&isFinite(+raw))?Math.max(0,Math.floor(+raw)):null, src='수동';
+  if(n==null&&autoN!=null&&isFinite(autoN)&&autoN>0){n=Math.floor(autoN);src='자동';}
+  if(n==null)return{n:null,f:1,src:null,label:'인원 미확인 · 정상 반영'};
+  const tag=' ('+src+')';
+  if(n<ANA_MIN)return{n,f:0,src,label:n+'명'+tag+' · 신뢰 부족 — 목표가 제외'};
+  if(n<ANA_FULL)return{n,f:0.5,src,label:n+'명'+tag+' · 신뢰 낮음 — 비중 50% 축소'};
+  return{n,f:1,src,label:n+'명'+tag+' · 정상 반영'};
+}
+
+/* 목표가 신선도 게이트 — 기준일(수동 consensusDate > 자동 최근 애널리스트 액션) 기준
+ * 경과: ≤14일 100% / ≤45일 70% / ≤90일 40% / 90일 초과 제외(실적 1분기 경과)
+ * 가격 정합: 기준일 종가 대비 현재가 괴리 ≥15% → 추가 50% 축소, ≥25% → 제외 */
+const AGE_FRESH=14, AGE_MID=45, AGE_MAX=90, DRIFT_WARN=0.15, DRIFT_MAX=0.25;
+function parseYMD(s){
+  if(s==null||s==='')return null;
+  const t=Date.parse(String(s).trim().replace(/[./]/g,'-'));
+  return isFinite(t)?t:null;
+}
+function targetFresh(man,ch,price){
+  let ts=parseYMD(man&&man.consensusDate), src='수동';
+  if(ts==null&&ch&&ch.ana&&ch.ana.lg){ ts=ch.ana.lg*1000; src='자동'; }
+  if(ts==null)return{ts:null,src:null,age:null,f:1,label:'기준일 미확인'};
+  const age=Math.max(0,Math.floor((Date.now()-ts)/86400e3));
+  let fAge,ageLbl;
+  if(age<=AGE_FRESH){fAge=1;ageLbl='최신';}
+  else if(age<=AGE_MID){fAge=0.7;ageLbl='보통';}
+  else if(age<=AGE_MAX){fAge=0.4;ageLbl='노후';}
+  else {fAge=0;ageLbl='만료';}
+  let fDr=1,drLbl='';
+  if(fAge>0&&price!=null&&isFinite(price)&&ch&&ch.t&&ch.c&&ch.t.length){
+    let bi=-1;
+    for(let i=ch.t.length-1;i>=0;i--){ if(ch.t[i]*1000<=ts+86399e3){bi=i;break;} }
+    if(bi<0)bi=0;
+    const base=ch.c[bi];
+    if(base>0){
+      const d=Math.abs(price/base-1);
+      if(d>=DRIFT_MAX){fDr=0;drLbl=' · 기준일 대비 괴리 '+Math.round(d*100)+'% — 무효';}
+      else if(d>=DRIFT_WARN){fDr=0.5;drLbl=' · 기준일 대비 괴리 '+Math.round(d*100)+'%';}
+    }
+  }
+  const f=fAge*fDr;
+  const dt=new Date(ts), mmdd=(dt.getMonth()+1)+'/'+dt.getDate();
+  const label='기준일 '+mmdd+' ('+src+') · '+age+'일 경과 · '+ageLbl+drLbl;
+  return{ts,src,age,f,label};
+}
+
+function fairValue(calc,man,tw){
   const parts=[]; const t=[];
   if(calc.vp1&&calc.vp1.poc!=null)t.push([calc.vp1.poc,0.35]);
   if(calc.vp6&&calc.vp6.poc!=null)t.push([calc.vp6.poc,0.20]);
@@ -582,7 +635,7 @@ function fairValue(calc,man){
   if(t.length){const w=t.reduce((s,x)=>s+x[1],0);tech=t.reduce((s,x)=>s+x[0]*x[1],0)/w;}
   const fw=S.settings.fvw;
   if(tech!=null)parts.push([tech,fw.tech]);
-  if(man.target!=null&&man.target>0)parts.push([+man.target,fw.target]);
+  if(man.target!=null&&man.target>0&&tw>0)parts.push([+man.target,fw.target*tw]);
   if(man.myFair!=null&&man.myFair>0)parts.push([+man.myFair,fw.mine]);
   let fv=null;
   if(parts.length){const w=parts.reduce((s,x)=>s+x[1],0);
@@ -670,8 +723,12 @@ function compute(id,simPrice){
     annVol,rsiLo,rsiHi,rsiBandSrc,priceSrc,priceTs,session:(priceSrc!=='cache'&&priceSrc!=='manual'&&qt)?qt.session:null,
     currency:ch.currency||'USD',updatedAt:ch.updatedAt,lastClose:ch.c[n-1]};
   const man=man0;
-  const fvr=fairValue({vp1,vp6,s200,s50},man);
-  k.fvTech=fvr.tech; k.fv=fvr.fv;
+  const autoN=(ch.ana&&ch.ana.n!=null)?ch.ana.n:null;
+  const anaI=anaInfo(man,autoN);
+  const tgtF=targetFresh(man,ch,price);
+  const tgtW=anaI.f*tgtF.f;
+  const fvr=fairValue({vp1,vp6,s200,s50},man,tgtW);
+  k.fvTech=fvr.tech; k.fv=fvr.fv; k.ana=anaI; k.tgtF=tgtF; k.tgtW=tgtW; k.anaRef=(ch.ana&&ch.ana.tgt!=null)?ch.ana.tgt:null;
   k.upside=(k.fv!=null&&price)?(k.fv-price)/price*100:null;
 
   const w=S.settings.weights;
@@ -758,7 +815,7 @@ function subscribe(){
 async function postInit(){
   await loadCaches(Object.keys(S.stocks));
   recalcAll(); render();
-  refreshAll(); startInterval(); startQuoteLoop(); fetchIndices(); setTimeout(refreshQuotes,2500);
+  refreshAll(); startInterval(); startQuoteLoop(); fetchIndices(); setTimeout(refreshQuotes,2500); setTimeout(refreshSummaries,7000);
 }
 function loadCaches(ids){
   return Promise.all(ids.map(id=>db.doc('qa_cache/'+id).get()
@@ -805,7 +862,11 @@ async function runFetch(it){
   const st=S.stocks[it.id]; if(!st)return;
   try{
     const data=parseChart(await fetchJSON(yahooChartURL(st.symbol,it.mode==='full'?'2y':'7d')));
-    if(it.mode==='full'||!S.cache[it.id]||!S.cache[it.id].c) S.cache[it.id]=trimCache(data);
+    if(it.mode==='full'||!S.cache[it.id]||!S.cache[it.id].c){
+      const keepAna=S.cache[it.id]&&S.cache[it.id].ana;
+      S.cache[it.id]=trimCache(data);
+      if(keepAna)S.cache[it.id].ana=keepAna;
+    }
     else spliceCache(S.cache[it.id],data);
     S.cache[it.id].updatedAt=Date.now();
     delete (S.fetchErr||{})[it.id];
@@ -1018,6 +1079,16 @@ function detailHTML(id){
   if(k.vp6)g+=stat('매물대 POC (6M)',fmtP(k.vp6.poc,C),'VA '+fmtP(k.vp6.val,C)+'~'+fmtP(k.vp6.vah,C));
   if(k.vp1)g+=stat('매물대 POC (1Y)',fmtP(k.vp1.poc,C),'VA '+fmtP(k.vp1.val,C)+'~'+fmtP(k.vp1.vah,C));
   g+=stat('RVOL (20D)',k.rvol!=null?k.rvol.toFixed(2)+'×':'—',k.rvol==null?'':(k.rvol>2?'급증':(k.rvol<0.8?'감소':'보통')));
+  const tgw=(k.tgtW!=null?k.tgtW:1), tgwEx=(tgw===0&&m.target!=null&&+m.target>0);
+  const amb=s=>'<span style="color:var(--amber);font-weight:700">'+s+'</span>';
+  g+=stat('애널리스트 목표가',
+    (m.target!=null&&+m.target>0)
+      ?((tgwEx?'<s style="opacity:.55">':'')+curSym(C)+fmtP(+m.target,C)+(tgwEx?'</s>':'')
+        +((!tgwEx&&tgw<1)?' (비중 '+Math.round(tgw*100)+'%)':''))
+      :'—',
+    (k.ana?('커버리지 '+(k.ana.f<1?amb(k.ana.label):k.ana.label)):'')
+    +(k.tgtF?(' · '+(k.tgtF.f<1?amb(k.tgtF.label):k.tgtF.label)):'')
+    +(k.anaRef!=null?' · 야후 평균목표 '+curSym(C)+fmtP(k.anaRef,C):''));
   g+=stat('기술적 적정가',k.fvTech!=null?curSym(C)+fmtP(k.fvTech,C):'—','VP·이평 가중혼합');
   g+=stat('기대 적정가 ★',k.fv!=null?curSym(C)+fmtP(k.fv,C):'—','<span class="'+chgCls(k.upside)+'">상승여력 '+fmtPct(k.upside)+'</span>');
   g+=stat('캔들 데이터 갱신',ago(k.updatedAt),'일봉 지표 기준 · 실시간 시세와 별도');
@@ -1048,9 +1119,10 @@ function detailHTML(id){
   const manual='<div class="manual">'
     +F('myFair','내 적정가 ('+curSym(C)+')','직접 산정 값')
     +F('target','애널리스트 목표가','컨센서스 목표가')
+    +F('analysts','애널리스트 수 — 비우면 자동 조회값 사용 (<3명: 목표가 제외 · 3~5명: 비중 절반)','예: 12')
     +F('opinion','종목의견 (높을수록 좋음)','예: 3.9')
     +F('consensus','컨센서스 (낮을수록 좋음)','예: 1.2')
-    +F('consensusDate','컨센서스 기준일','예: 2026-07-16')
+    +F('consensusDate','목표가·컨센 기준일 — 비우면 자동(최근 애널리스트 액션) 사용','예: 2026-07-16')
     +F('per','PER','')+F('pbr','PBR','')+F('psr','PSR','')
     +SelVM('vmPer','PER 신뢰도',m)+SelVM('vmPbr','PBR 신뢰도',m)+SelVM('vmPsr','PSR 신뢰도',m)
     +F('rsiLo','RSI 밴드 하단 (비우면 자동 '+(k.rsiBandSrc==='자동'?k.rsiLo:rsiBandAuto(k.annVol)[0])+')','')
@@ -1379,6 +1451,52 @@ async function fetchQuote(id){
     }
   }catch(e){}
 }
+/* 애널리스트 요약 자동 조회 — 개인 워커의 /summary 엔드포인트 (야후 quoteSummary,
+ * 쿠키·크럼 인증을 워커가 서버 측에서 대행). 값 변화가 느려 3일 캐시. */
+function summaryURL(sym){
+  const p=S.settings.proxy;
+  if(!p||!p.includes('{url}'))return null;
+  const base=p.split('?')[0].replace(/\/+$/,'');
+  if(!/^https:\/\//.test(base))return null;
+  return base+'/summary?sym='+encodeURIComponent(sym);
+}
+async function fetchSummary(id,force){
+  const st=S.stocks[id]; if(!st)return;
+  const ch=S.cache[id];
+  if(!force&&ch&&ch.ana&&ch.ana.ts&&(Date.now()-ch.ana.ts)<3*24*3600e3)return;
+  const u=summaryURL(st.symbol); if(!u)return;
+  try{
+    const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),9000);
+    const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(to);
+    if(!res.ok)return;
+    const j=await res.json();
+    let ana=null;
+    if(j&&(j.n!==undefined||j.tgt!==undefined||j.lg!==undefined)){ // 워커 v3 축약형
+      ana={n:isFinite(j.n)?j.n:null,tgt:isFinite(j.tgt)?j.tgt:null,
+           rec:isFinite(j.rec)?j.rec:null,lg:isFinite(j.lg)?j.lg:null,ts:Date.now()};
+    }else{ // 구버전 워커(quoteSummary 원본) 호환 — 기준일(lg) 없음
+      const fd=j&&j.quoteSummary&&j.quoteSummary.result&&j.quoteSummary.result[0]
+        &&j.quoteSummary.result[0].financialData;
+      if(!fd)return;
+      const g=x=>(x&&x.raw!=null&&isFinite(x.raw))?x.raw:null;
+      ana={n:g(fd.numberOfAnalystOpinions),tgt:g(fd.targetMeanPrice),
+           rec:g(fd.recommendationMean),lg:null,ts:Date.now()};
+    }
+    if(!ana||(ana.n==null&&ana.tgt==null&&ana.lg==null))return;
+    if(!S.cache[id])S.cache[id]={};
+    S.cache[id].ana=ana; saveCache(id);
+    S.calc[id]=compute(id); renderSoon();
+  }catch(e){}
+}
+let sumBusy=false;
+async function refreshSummaries(force){
+  if(sumBusy)return; sumBusy=true;
+  try{
+    const ids=Object.keys(S.stocks);
+    for(const id of ids){ await fetchSummary(id,force); await sleep(150); }
+  }finally{ sumBusy=false; }
+}
+
 let quoteTimer=null, quoteBusy=false;
 async function refreshQuotes(){
   if(quoteBusy)return; quoteBusy=true;
@@ -1410,7 +1528,7 @@ $('#list').addEventListener('click',e=>{
   const actBtn=e.target.closest('[data-act]');
   if(actBtn){
     const act=actBtn.dataset.act;
-    if(act==='refresh'){enqueue(id,'full');toast(S.stocks[id].name+' 갱신 중');}
+    if(act==='refresh'){enqueue(id,'full');fetchSummary(id,true);toast(S.stocks[id].name+' 갱신 중');}
     else if(act==='del'){
       if(confirm('['+S.stocks[id].name+'] 종목과 캐시를 삭제할까요?')){
         db.doc('qa_stocks/'+id).delete();
