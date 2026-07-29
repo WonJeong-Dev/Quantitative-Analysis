@@ -236,7 +236,7 @@
 
   <div class="controls">
     <select id="sortSel" title="정렬 기준">
-      <option value="score">종합 매수점수순</option>
+      <option value="score">종목점수순</option>
       <option value="upside">상승여력순</option>
       <option value="rsi">RSI 낮은순</option>
       <option value="chg">등락률순</option>
@@ -260,7 +260,7 @@
   </div>
 
   <div class="listhead">
-    <div>#</div><div>종목</div><div>현재가</div><div>매수점수</div><div>기대 적정가</div><div style="text-align:center">RSI</div><div>포지션 (52주 범위)</div><div></div>
+    <div>#</div><div>종목</div><div>현재가</div><div>종목점수</div><div>기대 적정가</div><div style="text-align:center">RSI</div><div>포지션 (52주 범위)</div><div></div>
   </div>
   <div id="list"></div>
 
@@ -289,7 +289,7 @@
 <div class="mask" id="maskSet">
   <div class="modal">
     <h2>설정 — 점수 가중치 · 갱신</h2>
-    <div class="dsec" style="margin-top:0">매수점수 가중치 <small>합계 기준 자동 정규화</small></div>
+    <div class="dsec" style="margin-top:0">종목점수 가중치 <small>합계 기준 자동 정규화</small></div>
     <div id="wComp"></div>
     <div class="dsec">기대 적정가 혼합 비중 <small>값이 없는 항목은 자동 제외·재정규화</small></div>
     <div id="wFv"></div>
@@ -1107,7 +1107,7 @@ function detailHTML(id){
     brk+='<tr><td>'+r[0]+'</td><td class="num">'+r[1]+'</td><td class="num">'+(r[2]!=null?r[2].toFixed(0):'—')+'</td>'
       +'<td class="num">'+r[3]+'%</td><td class="num">'+(contrib!=null?contrib.toFixed(1):'—')+'</td></tr>';
   });
-  brk+='<tr><td>종합 매수점수</td><td></td><td></td><td></td><td class="num" style="color:'+gaugeColor(k.score||0)+'">'+(k.score!=null?k.score.toFixed(1):'—')+'</td></tr></table>';
+  brk+='<tr><td>종목점수</td><td></td><td></td><td></td><td class="num" style="color:'+gaugeColor(k.score||0)+'">'+(k.score!=null?k.score.toFixed(1):'—')+'</td></tr></table>';
 
   const fl=k.flags||{buy:[],sell:[],hold:[]};
   const flags=(fl.buy.length+fl.sell.length+fl.hold.length)
