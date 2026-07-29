@@ -313,7 +313,7 @@
   </div>
 
   <div class="listhead">
-    <div>#</div><div>종목</div><div>현재가</div><div>종합 · 가격매력</div><div>기대적정가 · 여력</div><div style="text-align:center">매수등급</div><div style="text-align:center">RSI</div><div>포지션 (52주 범위)</div><div></div>
+    <div>#</div><div>종목</div><div>현재가</div><div>종합 · 가격매력</div><div>적정목표가 · 여력</div><div style="text-align:center">매수등급</div><div style="text-align:center">RSI</div><div>포지션 (52주 범위)</div><div></div>
   </div>
   <div id="list"></div>
 
@@ -782,39 +782,132 @@ function targetFresh(man,ch,price){
   return{ts,src,age,f,label};
 }
 
-/* 기대 적정가 산정
- * - 기술앵커(POC·이평) / 애널 목표가(신뢰 승수 tw 반영) / 내 적정가(수동) 3원 혼합.
- * - 요구사항: 내 적정가 미입력 시 그 비중을 배제하고 나머지로 재정규화(자동).
- *   → parts 배열엔 '존재하는 성분'만 담고, 가중치 합으로 나눠 자연 재정규화.
- * - 목표가 극단 허수 방어: 목표가가 기술앵커 대비 과도(±)하면 캡을 씌워
- *   '분산 극단 컨센'이 적정가를 통째로 끌어올리지 못하게 함. */
-function fairValue(calc,man,tw,rec){
-  const t=[];
-  if(calc.vp1&&calc.vp1.poc!=null)t.push([calc.vp1.poc,0.35]);
-  if(calc.vp6&&calc.vp6.poc!=null)t.push([calc.vp6.poc,0.20]);
-  if(calc.s200!=null)t.push([calc.s200,0.25]);
-  if(calc.s50!=null)t.push([calc.s50,0.20]);
-  let tech=null;
-  if(t.length){const w=t.reduce((s,x)=>s+x[1],0);tech=t.reduce((s,x)=>s+x[0]*x[1],0)/w;}
-  const fw=S.settings.fvw;
-  const parts=[];
-  if(tech!=null)parts.push([tech,fw.tech]);
-  // 목표가 처리: 신뢰 승수 tw(커버리지×신선도×의견) 곱하고, 기술앵커 대비 3배 초과분은 완충
-  let tgtUsed=null;
-  if(man.target!=null&&+man.target>0&&tw>0){
-    tgtUsed=+man.target;
-    if(tech!=null&&tech>0){
-      const cap=tech*3;               // 기술앵커의 3배가 상한(성장주도 이 이상은 허수로 간주)
-      if(tgtUsed>cap) tgtUsed=cap+(tgtUsed-cap)*0.15; // 초과분 15%만 반영
-    }
-    parts.push([tgtUsed,fw.target*tw]);
+/* ============================================================================
+ * 적정가 엔진 v4 — 미래(성장)를 반영한 이원 체계
+ *
+ *  ① 현재 적정가 (fvNow)   : "지금 실적 기준 정당한 가격" — 하방 안전마진 판단(블랙파인)
+ *  ② 적정 목표가 (fvTarget): "성장·품질·잠재력이 실현됐을 때의 가치" — 진짜 상승여력의 기준
+ *
+ *  상승여력 = (적정목표가 − 현재가)/현재가   ← 미래를 보고 사는 투자의 본질
+ *  하방여유 = (현재가 − 현재적정가)/현재가    ← 지금 얼마나 싼가(음수면 현재기준 고평가)
+ *
+ *  근거 우선순위(가장 신뢰 가능한 것부터, 없으면 폴백):
+ *   - 애널 목표가(분산·신선도·의견 보정)  ← 이미 전문가가 낸 12개월 밸류에이션
+ *   - 펀더멘털 멀티플: 흑자=EPS×성장연동PER(PEG), 적자=매출/주×PSR
+ *   - 내 적정가(수동 오버라이드)
+ *  기술앵커(POC·이평)는 적정가에서 제외 → 차트 지지/저항 참고선으로만.
+ * ========================================================================== */
+
+/* 성장 연동 정당 PER (PEG 사고 + 품질 프리미엄). 성장주 적극 반영하되 천장을 둔다. */
+function fairPER(growth, quality){
+  if(growth==null||!isFinite(growth))return null;
+  // 기본: 성장률(%)에 PEG≈1.1을 곱한 값에 가까운 정당 PER. 저성장 바닥/고성장 천장.
+  //  0%→12, 10%→16, 20%→24, 30%→33, 40%→42, 60%→55, 80%→62(천장 근접)
+  let per = pl(growth, [[-20,8],[0,12],[10,16],[20,24],[30,33],[40,42],[60,55],[80,62],[120,70]]);
+  // 품질 프리미엄: ROE·마진 좋은 기업(종합점수 高)은 멀티플 상향, 낮으면 하향 (±25%)
+  if(quality!=null&&isFinite(quality)){
+    const qmul = pl(quality, [[30,0.8],[50,0.92],[65,1.0],[80,1.12],[92,1.25]]);
+    per *= qmul;
   }
-  // 내 적정가: 있을 때만. 없으면 자동으로 비중 배제됨(재정규화)
-  if(man.myFair!=null&&+man.myFair>0)parts.push([+man.myFair,fw.mine]);
-  let fv=null;
-  if(parts.length){const w=parts.reduce((s,x)=>s+x[1],0);
-    if(w>0)fv=parts.reduce((s,x)=>s+x[0]*x[1],0)/w;}
-  return {tech,fv,tgtUsed};
+  return clamp(per, 5, 75); // 절대 천장 75배 — 아무리 고성장·고품질이어도 허수 방지
+}
+/* 정당 PSR (적자·초기 성장기업용). 성장률로 정당 PSR 산출, 극단은 천장. */
+function fairPSR(growth){
+  if(growth==null||!isFinite(growth))return null;
+  //  0%→1.5, 20%→4, 40%→7, 60%→10, 100%→15 (천장)
+  return clamp(pl(growth,[[-20,0.6],[0,1.5],[20,4],[40,7],[60,10],[100,15],[150,20]]), 0.3, 22);
+}
+
+/* 펀더멘털 기반 적정가 산출.
+ * epsFwd: 선행 EPS(1년), epsTtm: 후행 EPS, revPS: 주당매출, growth: 성장률%, quality: 종합점수
+ * 반환 { now, target, basis } — now=현재실적기준, target=선행기준(성장반영) */
+function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality){
+  const gp = (growth!=null&&isFinite(growth))?growth:null;
+  const epsPos = (epsTtm!=null&&epsTtm>0) || (epsFwd!=null&&epsFwd>0);
+  if(epsPos){
+    const per = fairPER(gp!=null?gp:8, quality);      // 목표가용: 성장 완전 반영
+    if(per==null)return null;
+    // 현재적정가용 PER: 성장을 완화 반영(0으로 죽이지 않음). 성장 상한 25%로만 캡.
+    const perNow = fairPER(gp!=null?Math.min(gp,25):6, quality);
+    // 현재값 기준 EPS: 후행과 선행의 평균(근미래 이익력) — 후행만 쓰면 고성장주 과소평가
+    let eNow=null;
+    if(epsTtm!=null&&epsTtm>0&&epsFwd!=null&&epsFwd>0) eNow=(epsTtm*0.5+epsFwd*0.5);
+    else if(epsTtm!=null&&epsTtm>0) eNow=epsTtm;
+    else if(epsFwd!=null&&epsFwd>0) eNow=epsFwd*0.92;
+    const now = eNow!=null? eNow*perNow : null;
+    // 적정목표가용 EPS: 선행(미래 이익)
+    const eTgt=(epsFwd!=null&&epsFwd>0)? epsFwd : (epsTtm>0? epsTtm*(1+(gp||0)/100) : null);
+    const target = eTgt!=null? eTgt*per : null;
+    return {now, target, basis:'PER'};
+  }
+  if(revPS!=null&&revPS>0){
+    const psr=fairPSR(gp);
+    if(psr==null)return null;
+    const now = revPS*psr*0.85;                  // 적자기업 현재값은 소폭 보수(85%)
+    const target = revPS*(1+(gp||0)/100)*psr;    // 미래 매출 반영
+    return {now, target, basis:'PSR'};
+  }
+  return null;
+}
+/* 이원 적정가 산출: 현재적정가(fvNow, 하방) + 적정목표가(fvTarget, 상방·성장반영)
+ * 설계 철학:
+ *  - 애널 목표가가 있으면 그것이 '주 앵커'(전문가의 12개월 밸류에이션). 펀더멘털은 교차검증·폴백.
+ *  - 목표가가 없거나(신규상장) 커버리지 얇으면 펀더멘털이 주 앵커.
+ *  - 현재적정가(하방)는 성장을 '완화 반영'(제거가 아님) — 고성장주가 프리미엄받는 현실 인정. */
+function fairValue(man, tw, fund, quality, tgtSpread, techRef){
+  const fw=S.settings.fvw;
+  const num=x=>(x!=null&&x!==''&&isFinite(+x)&&+x>0)?+x:null;
+
+  // --- 애널리스트 목표가 (분산 보정) ---
+  let anaTgt=num(man.target), anaConf=0, anaTgtAdj=null;
+  if(anaTgt!=null&&tw>0){
+    let spreadMul=1;
+    if(tgtSpread!=null&&isFinite(tgtSpread)){
+      spreadMul=clamp(pl(tgtSpread,[[0.2,1],[0.5,1],[0.9,0.7],[1.4,0.45],[2.2,0.25]]),0.25,1);
+    }
+    anaConf = tw * spreadMul;      // 0~1: 목표가 종합 신뢰도
+    anaTgtAdj = anaTgt;
+  }
+
+  // --- 펀더멘털 밸류 (흑자=PER, 적자=PSR) ---
+  let fund2=null;
+  if(fund) fund2=fundamentalFV(num(fund.epsFwd),num(fund.epsTtm),num(fund.revPS),
+                    (fund.growth!=null&&isFinite(fund.growth))?fund.growth:null, quality);
+
+  const myFair=num(man.myFair);
+
+  /* ---- 적정 목표가 (상방) ----
+   * 커버리지 좋은 애널 목표가 = 전문가의 밸류에이션 → 주 앵커(높은 비중).
+   * 펀더멘털 목표가 = 교차검증·폴백(애널 없으면 주). 극단 괴리 시 서로 완충. */
+  const tParts=[];
+  if(anaTgtAdj!=null) tParts.push([anaTgtAdj, 0.80*anaConf + 0.10]);    // 신뢰 높으면 최대 90%
+  if(fund2&&fund2.target!=null) tParts.push([fund2.target, anaTgtAdj!=null?0.18:0.85]); // 애널 있으면 소수 교차검증
+  if(myFair!=null) tParts.push([myFair, 0.30]);
+  let fvTarget=blend(tParts);
+
+  /* ---- 현재 적정가 (하방) ----
+   * 애널 목표가에 12% 할인(선반영된 미래 일부 되돌림) + 펀더멘털 현재값(교차검증). */
+  const nParts=[];
+  if(anaTgtAdj!=null) nParts.push([anaTgtAdj*0.88, 0.70*anaConf + 0.10]);
+  if(fund2&&fund2.now!=null) nParts.push([fund2.now, anaTgtAdj!=null?0.22:0.85]);
+  if(myFair!=null) nParts.push([myFair*0.95, 0.28]);
+  let fvNow=blend(nParts);
+
+  // 폴백: 한쪽만 있으면 다른 쪽 근사
+  if(fvTarget==null&&fvNow!=null)fvTarget=fvNow;
+  if(fvNow==null&&fvTarget!=null)fvNow=fvTarget*0.9;
+
+  let basis=[];
+  if(anaTgtAdj!=null)basis.push('애널목표'+(anaConf<0.6?'(신뢰↓)':''));
+  if(fund2)basis.push('펀더멘털('+fund2.basis+')');
+  if(myFair!=null)basis.push('수동');
+  return {fvNow, fvTarget, tgtUsed:anaTgtAdj, anaConf, fundFV:fund2, basis:basis.join('+')||'—', techRef};
+}
+function blend(parts){
+  if(!parts.length)return null;
+  const w=parts.reduce((s,x)=>s+x[1],0);
+  if(w<=0)return null;
+  return parts.reduce((s,x)=>s+x[0]*x[1],0)/w;
 }
 
 /* 기존 엑셀 매수/매도/관망 체크리스트 신호 */
@@ -922,32 +1015,41 @@ function compute(id,simPrice){
   const anaI=anaInfo(man,autoN,recEff);
   const tgtF=targetFresh(man,ch,price);
   const tgtW=anaI.f*tgtF.f;
-  const fvr=fairValue({vp1,vp6,s200,s50},man,tgtW,recEff);
-  k.fvTech=fvr.tech; k.fv=fvr.fv; k.tgtUsed=fvr.tgtUsed; k.ana=anaI; k.tgtF=tgtF; k.tgtW=tgtW; k.recEff=recEff;
+
+  // 기술앵커(참고용) — 적정가엔 미반영, 차트/포지션 참고선으로만
+  const techRef=(()=>{ const t=[];
+    if(vp1&&vp1.poc!=null)t.push([vp1.poc,0.35]); if(vp6&&vp6.poc!=null)t.push([vp6.poc,0.20]);
+    if(s200!=null)t.push([s200,0.25]); if(s50!=null)t.push([s50,0.20]);
+    if(!t.length)return null; const w=t.reduce((s,x)=>s+x[1],0); return t.reduce((s,x)=>s+x[0]*x[1],0)/w; })();
+
+  // 펀더멘털 입력 병합 (수동 우선 > 자동조회). 성장률·EPS·주당매출.
+  const F=ch.fund||{};
+  const gnum=(a,b)=>{ const f=x=>(x!=null&&x!==''&&isFinite(+x))?+x:null; const va=f(a); return va!=null?va:f(b); };
+  // 성장률: 수동 epsG/revG 우선, 없으면 자동. 목표가 산정엔 EPS성장률을 주로 사용(이익 기준)
+  const growthEff = gnum(man.epsG, F.epsG) ?? gnum(man.revG, F.revG);
+  const fundInput = {
+    epsFwd: gnum(man.epsFwd, F.epsFwd),   // 선행 EPS(1년)
+    epsTtm: gnum(man.epsTtm, F.epsTtm),   // 후행 EPS
+    revPS:  gnum(man.revPS,  F.revPS),    // 주당 매출
+    growth: growthEff
+  };
+
+  // 목표가 분산 비율 (고가-저가)/평균 — 자동조회 우선, 수동 targetHigh/Low 허용
+  let tgtSpread=null;
+  { const thi=gnum(man.targetHigh, F.tgtHi), tlo=gnum(man.targetLow, F.tgtLo), tmn=gnum(man.target, ch.ana&&ch.ana.tgt);
+    if(thi!=null&&tlo!=null&&tmn!=null&&tmn>0&&thi>=tlo) tgtSpread=(thi-tlo)/tmn; }
+
+  k.ana=anaI; k.tgtF=tgtF; k.tgtW=tgtW; k.recEff=recEff; k.techRef=techRef;
   k.anaRef=(ch.ana&&ch.ana.tgt!=null)?ch.ana.tgt:null;
-  k.earn=(ch.ana&&ch.ana.earn!=null)?ch.ana.earn:null;   // 다음 실적 예정일(epoch초)
-  k.rt=(ch.ana&&ch.ana.rt)?ch.ana.rt:null;               // 의견 분포
-  k.hasHardHazard=!!(man.hazard);                        // 수동 악재 플래그
+  k.earn=(ch.ana&&ch.ana.earn!=null)?ch.ana.earn:null;
+  k.rt=(ch.ana&&ch.ana.rt)?ch.ana.rt:null;
+  k.hasHardHazard=!!(man.hazard);
   k.hazardMemo=man.hazardMemo||null;
-  // 실적 임박 여부: 예정일 ±2일 이내 (블랙아웃)
+  k.growthEff=growthEff; k.fundInput=fundInput; k.tgtSpread=tgtSpread;
   if(k.earn!=null){ const d=(k.earn*1000-Date.now())/86400e3; k.earnDays=d; k.earnSoon=(d>=-2&&d<=2); }
   else { k.earnDays=null; k.earnSoon=false; }
-  k.upside=(k.fv!=null&&price)?(k.fv-price)/price*100:null;
 
-  /* ===== 낙폭 허수 페널티 (급락으로 부풀려진 여력 신뢰 감쇠) =====
-   * 고점 대비 크게 빠졌는데 아직 하락 진행 중(신저가 갱신·5일선 아래)이면
-   * '떨어지는 칼날' → 상승여력의 신뢰를 낮춰 가격매력도에서 감점. */
-  let crashPenalty=1, crashLbl=null;
-  const deepDD=(ddFromHi!=null&&ddFromHi<=-35);
-  const steepDrop=(ret20!=null&&ret20<=-20);
-  if((deepDD||steepDrop)){
-    if(k.makingNewLow){ crashPenalty=0.55; crashLbl='급락 진행(신저가 갱신) — 여력 신뢰 감쇠'; }
-    else if(k.above5===false){ crashPenalty=0.75; crashLbl='낙폭과대·미회복 — 여력 일부 감쇠'; }
-    else { crashPenalty=0.9; crashLbl='낙폭과대이나 단기 안정화 조짐'; }
-  }
-  k.crashPenalty=crashPenalty; k.crashLbl=crashLbl;
-
-  /* ===== ① 종합점수 (Company Quality) — 가격 저평가와 독립 ===== */
+  /* ===== ① 종합점수 (Company Quality) — 가격과 독립. 적정가보다 먼저 계산 ===== */
   const cw=S.settings.qw||QW_DEF;
   const qParts={
     trend:qTrend(price,s50,s200,slope50,slope200),
@@ -960,6 +1062,33 @@ function compute(id,simPrice){
   for(const key in qParts){ if(qParts[key]!=null){ qtw+=cw[key]; qacc+=qParts[key]*cw[key]; } }
   k.qParts=qParts;
   k.quality=qtw>0?clamp(qacc/qtw,0,100):null;
+
+  /* ===== 이원 적정가: 현재적정가(하방) + 적정목표가(상방·성장반영) ===== */
+  // 목표가·고저는 수동 우선, 없으면 자동조회(ch.ana) 사용 — fairValue가 참조할 병합 객체
+  const manFV = Object.assign({}, man, {
+    target: (man.target!=null&&man.target!==''&&isFinite(+man.target)&&+man.target>0)? man.target
+            : ((ch.ana&&ch.ana.tgt!=null&&isFinite(ch.ana.tgt))? ch.ana.tgt : null),
+    targetHigh: (man.targetHigh!=null&&man.targetHigh!=='')? man.targetHigh : ((ch.ana&&ch.ana.tgtHi!=null)?ch.ana.tgtHi:null),
+    targetLow:  (man.targetLow!=null&&man.targetLow!=='')? man.targetLow  : ((ch.ana&&ch.ana.tgtLo!=null)?ch.ana.tgtLo:null)
+  });
+  const fvr=fairValue(manFV, tgtW, fundInput, k.quality, tgtSpread, techRef);
+  k.fvNow=fvr.fvNow; k.fvTarget=fvr.fvTarget; k.tgtUsed=fvr.tgtUsed; k.anaConf=fvr.anaConf; k.fundFV=fvr.fundFV; k.fvBasis=fvr.basis;
+  k.fvTech=techRef; // 하위호환 표시용
+  k.fv=k.fvTarget;  // 하위호환: 기존 k.fv 참조 → 적정목표가로 매핑
+  // 상승여력 = 적정목표가 기준 (미래 반영). 하방여유 = 현재적정가 기준.
+  k.upside=(k.fvTarget!=null&&price>0)?(k.fvTarget-price)/price*100:null;
+  k.downside=(k.fvNow!=null&&price>0)?(k.fvNow-price)/price*100:null; // 양수면 현재기준 저평가
+
+  /* ===== 낙폭 허수 페널티 ===== */
+  let crashPenalty=1, crashLbl=null;
+  const deepDD=(ddFromHi!=null&&ddFromHi<=-35);
+  const steepDrop=(ret20!=null&&ret20<=-20);
+  if((deepDD||steepDrop)){
+    if(k.makingNewLow){ crashPenalty=0.55; crashLbl='급락 진행(신저가 갱신) — 여력 신뢰 감쇠'; }
+    else if(k.above5===false){ crashPenalty=0.75; crashLbl='낙폭과대·미회복 — 여력 일부 감쇠'; }
+    else { crashPenalty=0.9; crashLbl='낙폭과대이나 단기 안정화 조짐'; }
+  }
+  k.crashPenalty=crashPenalty; k.crashLbl=crashLbl;
 
   /* ===== ② 가격매력도 (Price Attractiveness) ===== */
   const aw=S.settings.aw||AW_DEF;
@@ -1384,8 +1513,20 @@ function detailHTML(id){
     (k.ana?('커버리지 '+(k.ana.f<1?amb(k.ana.label):k.ana.label)):'')
     +(k.tgtF?(' · '+(k.tgtF.f<1?amb(k.tgtF.label):k.tgtF.label)):'')
     +(k.anaRef!=null?' · 야후 평균목표 '+curSym(C)+fmtP(k.anaRef,C):''));
-  g+=stat('기술적 적정가',k.fvTech!=null?curSym(C)+fmtP(k.fvTech,C):'—','VP·이평 가중혼합');
-  g+=stat('기대 적정가 ★',k.fv!=null?curSym(C)+fmtP(k.fv,C):'—','<span class="'+chgCls(k.upside)+'">상승여력 '+fmtPct(k.upside)+'</span>');
+  // 기술앵커는 이제 참고선(적정가 미반영)
+  g+=stat('기술 지지/저항 (참고)',k.techRef!=null?curSym(C)+fmtP(k.techRef,C):'—','POC·이평 — 타이밍 참고, 적정가 미반영');
+  // 이원 적정가
+  const fvBasisLbl=k.fvBasis||'—';
+  g+=stat('현재 적정가 (하방)',k.fvNow!=null?curSym(C)+fmtP(k.fvNow,C):'—',
+    (k.downside!=null?'<span class="'+chgCls(k.downside)+'">하방여유 '+fmtPct(k.downside)+'</span> · 지금 실적 기준':'—'));
+  g+=stat('적정 목표가 ★ (상방)',k.fvTarget!=null?curSym(C)+fmtP(k.fvTarget,C):'—',
+    '<span class="'+chgCls(k.upside)+'">상승여력 '+fmtPct(k.upside)+'</span> · 성장반영 · 근거: '+esc(fvBasisLbl));
+  if(k.fundFV){
+    const ff=k.fundFV;
+    g+=stat('펀더멘털 밸류 ('+ff.basis+')',
+      (ff.now!=null?curSym(C)+fmtP(ff.now,C):'—')+' → '+(ff.target!=null?curSym(C)+fmtP(ff.target,C):'—'),
+      '현재실적 → 성장반영 (성장률 '+(k.growthEff!=null?k.growthEff.toFixed(0)+'%':'—')+')');
+  }
   // 실적 예정일 (자동)
   if(k.earn!=null){
     const dd=k.earnDays;
@@ -1454,7 +1595,12 @@ function detailHTML(id){
     +F('margin','영업이익률 % (자동)',autoHint(fnd.margin,'%')||'예: 25')
     +F('de','부채비율 D/E (자동)',autoHint(fnd.de,'')||'예: 0.8')
     +F('revG','매출성장률 % (자동)',autoHint(fnd.revG,'%')||'예: 15')
-    +F('epsG','EPS성장률 % (자동)',autoHint(fnd.epsG,'%')||'예: 20')
+    +F('epsG','EPS성장률 % ★적정가 (자동)',autoHint(fnd.epsG,'%')||'예: 20')
+    +F('epsFwd','선행 EPS(1년) ★적정가 (자동)',autoHint(fnd.epsFwd,'')||'예: 5.2')
+    +F('epsTtm','후행 EPS ★적정가 (자동)',autoHint(fnd.epsTtm,'')||'예: 4.1')
+    +F('revPS','주당매출 (적자기업 적정가·자동)',autoHint(fnd.revPS,'')||'예: 30')
+    +F('targetHigh','목표가 최고 (분산보정·자동)',autoHint(fnd.tgtHi,'')||'예: 400')
+    +F('targetLow','목표가 최저 (분산보정·자동)',autoHint(fnd.tgtLo,'')||'예: 200')
     +F('rsiLo','RSI 밴드 하단 (비우면 자동 '+(k.rsiBandSrc==='자동'?k.rsiLo:rsiBandAuto(k.annVol)[0])+')','')
     +F('rsiHi','RSI 밴드 상단 (비우면 자동 '+(k.rsiBandSrc==='자동'?k.rsiHi:rsiBandAuto(k.annVol)[1])+')','')
     +F('mcap','시가총액 (억)','')
@@ -1728,9 +1874,13 @@ function classifyDetail(k){
   const confLim=(RL+(RH-RL)*0.35);
   const deepDD=(k.ddFromHi!=null&&k.ddFromHi<=DD_DEEP), steep=(k.ret20!=null&&k.ret20<=DROP_STEEP);
   const fallingKnife=((deepDD||steep)&&k.makingNewLow===true);
+  // 하방 안전: 현재가가 '현재 적정가'(근미래 실적 기준) 대비 지나치게 비싸지 않은가.
+  //  성장주는 현재적정가 대비 프리미엄이 정상이므로 -25%까지 허용(그 이상은 거품 신호).
+  const downsideOK = (k.downside!=null) ? (k.downside >= -25) : true;
 
   const gates=[
-    ['최소 안전마진 — 상승여력 ≥ +'+MIN_MARGIN+'%', k.upside!=null&&k.upside>=MIN_MARGIN],
+    ['최소 안전마진 — 상승여력(적정목표가) ≥ +'+MIN_MARGIN+'%', k.upside!=null&&k.upside>=MIN_MARGIN],
+    ['하방 안전 — 현재 적정가 대비 −25% 이내 (거품 아님)', downsideOK],
     ['과열 아님 — RSI < '+(RH-5)+' · %B < 0.90', !((k.rsi!=null&&k.rsi>=RH-5)||(k.pB!=null&&k.pB>=0.9))],
     ['떨어지는 칼날 아님 — 급락 중 신저가 갱신 아님', !fallingKnife],
     ['데이터 충분 — 상장 '+MIN_BARS+'봉(≈6개월) 이상', k.listedBars>=MIN_BARS],
@@ -1739,29 +1889,26 @@ function classifyDetail(k){
     ['악재 플래그 없음 — 수동 보류 미설정', !k.hasHardHazard]
   ];
   const conf=[
+    ['현재도 저평가 — 현재 적정가 이하(하방 여유 +0%↑)', k.downside!=null&&k.downside>=0],
     ['RSI 하단권 (≤ '+confLim.toFixed(0)+')', k.rsi!=null&&k.rsi<=confLim],
     ['볼린저 하단권 (%B ≤ 0.30)', k.pB!=null&&k.pB<=0.30],
     ['1Y 매물대 POC 이하·근접 (≤ +2%)', !!(k.vp1&&k.vp1.poc&&k.price<=k.vp1.poc*1.02)],
-    ['SMA200 지지권 (이하 또는 +5% 이내)', k.s200!=null&&k.price<=k.s200*1.05],
     ['넉넉한 여력 — 상승여력 ≥ +35%', k.upside!=null&&k.upside>=35],
     ['우량 품질 — 종합점수 ≥ 60', k.quality!=null&&k.quality>=60]
   ];
   const g=gates.every(x=>x[1]), n=conf.filter(x=>x[1]).length;
-  // 탈락 사유(가장 앞선 실패 게이트) — UI 배지 툴팁용
   let blocked=null;
   if(!g){ const f=gates.find(x=>!x[1]); blocked=f?f[0]:null; }
 
   let tier=null;
   const A=k.attract, Q=k.quality!=null?k.quality:0, U=k.upside;
-  // 확립된 하락추세: 장기선(200) 아래 + 50·200 기울기 모두 하락 → '아직 추세 미전환'
-  // 딥밸류라도 상/중은 시기상조. 하(적립 시작)까지만 허용.
   const downtrend=(k.s200!=null&&k.price<k.s200*0.94&&k.slope50!=null&&k.slope50<0&&k.slope200!=null&&k.slope200<0);
   if(g){
     if(A>=72&&Q>=60&&U>=30&&n>=3&&!downtrend)tier='상';
     else if(A>=62&&Q>=50&&U>=25&&n>=2&&!downtrend)tier='중';
     else if(A>=54&&U>=MIN_MARGIN&&n>=1)tier='하';
   }
-  return {tier,gates,conf,n,blocked,fallingKnife,downtrend};
+  return {tier,gates,conf,n,blocked,fallingKnife,downtrend,downsideOK};
 }
 function classify(k){ return classifyDetail(k).tier; }
 function tierBoxHTML(k){
@@ -1925,11 +2072,16 @@ async function fetchSummary(id,force){
     let ana=null, fund=null;
     const gn=x=>(x!=null&&isFinite(x))?x:null;
     if(j&&(j.n!==undefined||j.tgt!==undefined||j.lg!==undefined)){ // 워커 v3/v4 축약형
-      ana={n:gn(j.n),tgt:gn(j.tgt),rec:gn(j.rec),lg:gn(j.lg),
+      ana={n:gn(j.n),tgt:gn(j.tgt),tgtHi:gn(j.tgtHi),tgtLo:gn(j.tgtLo),rec:gn(j.rec),lg:gn(j.lg),
            earn:gn(j.earn), rt:(j.rt&&typeof j.rt==='object')?j.rt:null, ts:Date.now()};
-      // v4 재무 필드 (구버전 워커면 undefined → null)
-      if(j.roe!==undefined||j.margin!==undefined||j.revG!==undefined){
-        fund={roe:gn(j.roe),margin:gn(j.margin),de:gn(j.de),revG:gn(j.revG),epsG:gn(j.epsG),ts:Date.now()};
+      // v4 재무·밸류에이션 필드 (구버전 워커면 undefined → null)
+      if(j.roe!==undefined||j.margin!==undefined||j.revG!==undefined||j.epsFwd!==undefined){
+        // 성장률: earningsTrend 추정(epsGrowthEst) 우선, 없으면 financialData의 epsG
+        const epsGeff = (j.epsGrowthEst!=null&&isFinite(j.epsGrowthEst))?j.epsGrowthEst:gn(j.epsG);
+        const revGeff = (j.revGrowthEst!=null&&isFinite(j.revGrowthEst))?j.revGrowthEst:gn(j.revG);
+        fund={roe:gn(j.roe),margin:gn(j.margin),de:gn(j.de),revG:revGeff,epsG:epsGeff,
+              epsTtm:gn(j.epsTtm),epsFwd:gn(j.epsFwd),revPS:gn(j.revPS),
+              tgtHi:gn(j.tgtHi),tgtLo:gn(j.tgtLo),ts:Date.now()};
       }
     }else{ // 구버전 워커(quoteSummary 원본) 호환
       const fd=j&&j.quoteSummary&&j.quoteSummary.result&&j.quoteSummary.result[0]
@@ -1942,7 +2094,7 @@ async function fetchSummary(id,force){
     if(!ana||(ana.n==null&&ana.tgt==null&&ana.lg==null&&!fund)){ if(force)toast('야후 응답에 이 종목의 애널리스트 정보가 없습니다','err'); return; }
     if(!S.cache[id])S.cache[id]={};
     S.cache[id].ana=ana;
-    if(fund&&(fund.roe!=null||fund.margin!=null||fund.revG!=null||fund.epsG!=null||fund.de!=null)) S.cache[id].fund=fund;
+    if(fund&&(fund.roe!=null||fund.margin!=null||fund.revG!=null||fund.epsG!=null||fund.de!=null||fund.epsFwd!=null||fund.revPS!=null)) S.cache[id].fund=fund;
     saveCache(id);
     S.calc[id]=compute(id); renderSoon();
     if(force){
