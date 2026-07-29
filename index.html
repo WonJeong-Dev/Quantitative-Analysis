@@ -588,7 +588,8 @@ function anaInfo(man,autoN){
   return{n,f:1,src,label:n+'명'+tag+' · 정상 반영'};
 }
 
-/* 목표가 신선도 게이트 — 기준일(수동 consensusDate > 자동 최근 애널리스트 액션) 기준
+/* 목표가 신선도 게이트 — 기준일 = 실제 목표가 제시일: 수동 targetDate > 자동(최근 애널리스트 액션)
+ * consensusDate(컨센 점수 기준일)는 표시용으로만 사용, 신선도 판정에 미사용
  * 경과: ≤14일 100% / ≤45일 70% / ≤90일 40% / 90일 초과 제외(실적 1분기 경과)
  * 가격 정합: 기준일 종가 대비 현재가 괴리 ≥15% → 추가 50% 축소, ≥25% → 제외 */
 const AGE_FRESH=14, AGE_MID=45, AGE_MAX=90, DRIFT_WARN=0.15, DRIFT_MAX=0.25;
@@ -598,7 +599,7 @@ function parseYMD(s){
   return isFinite(t)?t:null;
 }
 function targetFresh(man,ch,price){
-  let ts=parseYMD(man&&man.consensusDate), src='수동';
+  let ts=parseYMD(man&&man.targetDate), src='수동';
   if(ts==null&&ch&&ch.ana&&ch.ana.lg){ ts=ch.ana.lg*1000; src='자동'; }
   if(ts==null)return{ts:null,src:null,age:null,f:1,label:'기준일 미확인'};
   const age=Math.max(0,Math.floor((Date.now()-ts)/86400e3));
@@ -1119,10 +1120,11 @@ function detailHTML(id){
   const manual='<div class="manual">'
     +F('myFair','내 적정가 ('+curSym(C)+')','직접 산정 값')
     +F('target','애널리스트 목표가','컨센서스 목표가')
-    +F('analysts','애널리스트 수 — 비우면 자동 조회값 사용 (<3명: 목표가 제외 · 3~5명: 비중 절반)','예: 12')
+    +F('analysts','애널리스트 수 (비우면 자동)','예: 12')
+    +F('targetDate','목표가 기준일 (비우면 자동)','예: 2026-07-21')
     +F('opinion','종목의견 (높을수록 좋음)','예: 3.9')
     +F('consensus','컨센서스 (낮을수록 좋음)','예: 1.2')
-    +F('consensusDate','목표가·컨센 기준일 — 비우면 자동(최근 애널리스트 액션) 사용','예: 2026-07-16')
+    +F('consensusDate','컨센서스 기준일 (표시용)','예: 2026-07-16')
     +F('per','PER','')+F('pbr','PBR','')+F('psr','PSR','')
     +SelVM('vmPer','PER 신뢰도',m)+SelVM('vmPbr','PBR 신뢰도',m)+SelVM('vmPsr','PSR 신뢰도',m)
     +F('rsiLo','RSI 밴드 하단 (비우면 자동 '+(k.rsiBandSrc==='자동'?k.rsiLo:rsiBandAuto(k.annVol)[0])+')','')
@@ -1464,11 +1466,12 @@ async function fetchSummary(id,force){
   const st=S.stocks[id]; if(!st)return;
   const ch=S.cache[id];
   if(!force&&ch&&ch.ana&&ch.ana.ts&&(Date.now()-ch.ana.ts)<3*24*3600e3)return;
-  const u=summaryURL(st.symbol); if(!u)return;
+  const u=summaryURL(st.symbol);
+  if(!u){ if(force)toast('애널리스트 자동 조회는 커스텀 워커 프록시 설정 후 가능합니다','err'); return; }
   try{
     const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),9000);
     const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(to);
-    if(!res.ok)return;
+    if(!res.ok){ if(force)toast('애널리스트 자동 조회 실패(HTTP '+res.status+') — 워커가 /summary 지원 최신 버전인지 확인하세요','err'); return; }
     const j=await res.json();
     let ana=null;
     if(j&&(j.n!==undefined||j.tgt!==undefined||j.lg!==undefined)){ // 워커 v3 축약형
@@ -1482,11 +1485,12 @@ async function fetchSummary(id,force){
       ana={n:g(fd.numberOfAnalystOpinions),tgt:g(fd.targetMeanPrice),
            rec:g(fd.recommendationMean),lg:null,ts:Date.now()};
     }
-    if(!ana||(ana.n==null&&ana.tgt==null&&ana.lg==null))return;
+    if(!ana||(ana.n==null&&ana.tgt==null&&ana.lg==null)){ if(force)toast('야후 응답에 이 종목의 애널리스트 정보가 없습니다','err'); return; }
     if(!S.cache[id])S.cache[id]={};
     S.cache[id].ana=ana; saveCache(id);
     S.calc[id]=compute(id); renderSoon();
-  }catch(e){}
+    if(force)toast(st.name+' 애널리스트 정보 갱신'+(ana.n!=null?': '+ana.n+'명':'')+(ana.lg?' · 최근 액션 '+new Date(ana.lg*1000).toLocaleDateString('ko-KR'):''));
+  }catch(e){ if(force)toast('애널리스트 자동 조회 오류 — 워커 /summary 미지원 또는 네트워크 문제','err'); }
 }
 let sumBusy=false;
 async function refreshSummaries(force){
@@ -1571,7 +1575,7 @@ function saveManual(row,id){
   const man={...(S.stocks[id].manual||{})};
   row.querySelectorAll('[data-f]').forEach(inp=>{
     const key=inp.dataset.f;let v=inp.value.trim();
-    if(key==='memo'||key==='consensusDate'){man[key]=v||null;return;}
+    if(key==='memo'||key==='consensusDate'||key==='targetDate'){man[key]=v||null;return;}
     if(v===''){man[key]=null;return;}
     const num=parseFloat(v.replace(/,/g,''));
     man[key]=isFinite(num)?num:v;
