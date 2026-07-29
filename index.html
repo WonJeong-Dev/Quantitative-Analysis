@@ -1302,6 +1302,7 @@ function refreshAll(){
   const rest=Object.keys(S.stocks).filter(id=>S.stocks[id].market!==S.tab);
   [...cur,...rest].forEach(id=>enqueue(id,'full'));
   fetchIndices();
+  setTimeout(()=>refreshSummaries(false),1500); // 재무·EPS·애널 자동조회(캐시 없거나 fund 결측분)
 }
 let intervalTimer=null;
 function startInterval(){
@@ -2061,7 +2062,10 @@ function summaryURL(sym){
 async function fetchSummary(id,force){
   const st=S.stocks[id]; if(!st)return;
   const ch=S.cache[id];
-  if(!force&&ch&&ch.ana&&ch.ana.ts&&(Date.now()-ch.ana.ts)<3*24*3600e3)return;
+  // 캐시 스킵 조건: ana가 3일 이내로 신선 AND fund(v5 재무·EPS)가 이미 존재할 때만.
+  //  → v3/v4에서 캐시된 종목은 ana만 있고 fund가 없으므로, 신선해도 재조회해 재무를 백필한다.
+  const fundOK = ch && ch.fund && (ch.fund.roe!=null || ch.fund.epsFwd!=null || ch.fund.margin!=null);
+  if(!force && ch && ch.ana && ch.ana.ts && (Date.now()-ch.ana.ts)<3*24*3600e3 && fundOK) return;
   const u=summaryURL(st.symbol);
   if(!u){ if(force)toast('애널리스트 자동 조회는 커스텀 워커 프록시 설정 후 가능합니다','err'); return; }
   try{
