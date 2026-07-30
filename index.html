@@ -556,12 +556,16 @@ function parseChart(j){
     idx.forEach(ix=>{stt.push(t[ix]);so.push(o[ix]);sh.push(h[ix]);sl.push(l[ix]);sc.push(c[ix]);sv.push(v[ix]);});
     return {t:stt,o:so,h:sh,l:sl,c:sc,v:sv,
       price:(m.regularMarketPrice!=null?+m.regularMarketPrice:(sc.length?sc[sc.length-1]:null)),
-      prevClose:(m.chartPreviousClose!=null?+m.chartPreviousClose:(sc.length>1?sc[sc.length-2]:null)),
+      prevClose:(sc.length>1?sc[sc.length-2]:(m.previousClose!=null?+m.previousClose:null)),
       currency:m.currency||'USD', mktTime:(m.regularMarketTime||0)*1000};
   }
   return {t,o,h,l,c,v,
     price:(m.regularMarketPrice!=null?+m.regularMarketPrice:(c.length?c[c.length-1]:null)),
-    prevClose:(m.chartPreviousClose!=null?+m.chartPreviousClose:(c.length>1?c[c.length-2]:null)),
+    /* (v4.5) 야후 장기차트 meta의 chartPreviousClose는 '어제 종가'가 아니라 '차트 시작 직전
+     * 종가'다. 252봉(약 1년)을 요청하면 1~2년 전 값이 들어온다. 실제 발생: 삼성전자 전일종가가
+     * 80,999원(약 1년 전 가격)으로 들어와 등락률이 +166.67%, SK하이닉스는 +620.49%로 표시됐다.
+     * 캔들 배열의 직전 봉 종가가 정의상 전일 종가이므로 그것을 우선한다. */
+    prevClose:(c.length>1?c[c.length-2]:(m.previousClose!=null?+m.previousClose:null)),
     currency:m.currency||'USD', mktTime:(m.regularMarketTime||0)*1000};
 }
 
@@ -1079,7 +1083,17 @@ function compute(id,simPrice){
   for(let k=Math.max(0,n-252);k<n;k++){if(h[k]>hi52)hi52=h[k];if(l[k]<lo52)lo52=l[k];}
   const v20=smaAt(v,20,ip);
   const rvol=(v20&&v[i]!=null)?v[i]/v20:null;
-  const prevClose=(qt&&qt.base!=null&&priceSrc!=='cache')?qt.base:(ch.prevClose!=null?ch.prevClose:(n>1?c[ip]:null));
+  /* (v4.5) 전일 종가 — 캐시의 prevClose를 그대로 믿지 않는다.
+   * 마지막 봉이 채택 시세와 같은 세션이면(24시간 이내) 그 이전 봉의 종가가 전일 종가이고,
+   * 마지막 봉이 더 과거 세션이면 그 봉의 '원본' 종가가 전일 종가다.
+   * (c[n-1]은 위에서 라이브 시세로 덮어써질 수 있으므로 원본 ch.c를 본다.)
+   * 야후 quote의 base는 단기 범위(1d) 조회라 신뢰 가능하므로 최우선 유지 — 미장 동작 불변. */
+  let barPrev=null;
+  if(ch.t&&ch.t.length&&ch.c&&ch.c.length){
+    barPrev=((priceTs-ch.t[n-1])<86400)?(n>1?ch.c[n-2]:null):ch.c[n-1];
+  }
+  const prevClose=(qt&&qt.base!=null&&priceSrc!=='cache')?qt.base
+    :(barPrev!=null?barPrev:(ch.prevClose!=null?ch.prevClose:(n>1?c[ip]:null)));
   const chg=prevClose?(price-prevClose)/prevClose*100:null;
 
   const s200b=smaAt(c,200,i-20);
@@ -1152,7 +1166,15 @@ function compute(id,simPrice){
     if(ipsr<0.05||ipsr>80){ badRev=true; dataAnoms.push('함의PSR '+ipsr.toFixed(2)+'배'); }
   }
   // 둘 이상 극단 → 공통 분모(현재가)의 이상으로 판단 → 등급 하드게이트에서 차단
-  const priceAnomaly=([badTgt,badEps,badRev].filter(Boolean).length>=2);
+  let priceAnomaly=([badTgt,badEps,badRev].filter(Boolean).length>=2);
+  /* (v4.5) 거래소 가격제한폭 정합성 — KRX는 일일 ±30%가 하드 리밋이다. 그를 넘는 등락률은
+   * 시장 움직임일 수 없고 전일종가 데이터 오류다. 위 prevClose 수정의 회귀 감시 장치로 남긴다.
+   * 미국 시장은 가격제한폭이 없으므로(M&A·실적 갭 등으로 정상적으로 큰 변동 가능) 적용하지 않는다.
+   * 이건 밸류에이션 분기가 아니라 거래소 규칙이라는 외부 사실을 인코딩한 것이다. */
+  if(st.market==='KR'&&chg!=null&&isFinite(chg)&&Math.abs(chg)>KRX_LIMIT){
+    dataAnoms.push('등락률 '+chg.toFixed(0)+'% — KRX 제한폭 ±30% 초과(전일종가 오류)');
+    priceAnomaly=true;
+  }
   const autoScaleBad=(badTgt||badEps||badRev);   // 표시용 통합 플래그(하위호환)
   // 항목별 배제 — 이상 신호가 가리키는 입력만 무효화. ROE·마진·성장률(%)은 스케일 무관이라 유지.
   const Feff=Object.assign({},F);
@@ -2045,6 +2067,8 @@ function SelVM(key,label,m){
 const MIN_MARGIN=20, MIN_BARS=120, DD_DEEP=-35, DROP_STEEP=-20;
 /* (v4.3) 데이터 신선도 한계 — 마지막 일봉/캐시가 이 일수를 넘겨 낡으면 등급 산출 자체를 보류 */
 const STALE_MAX_D=10;
+/* (v4.5) KRX 일일 가격제한폭(±30%)에 1%p 여유. 초과 = 전일종가 데이터 오류 */
+const KRX_LIMIT=31;
 function classifyDetail(k){
   if(!k||k.attract==null)return{tier:null,gates:[],conf:[],n:0,blocked:null};
   const RL=k.rsiLo==null?30:k.rsiLo, RH=k.rsiHi==null?70:k.rsiHi;
