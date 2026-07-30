@@ -2181,13 +2181,23 @@ function classifyDetail(k){
    * 어떤 임계값을 쓰든 경계 종목은 생기고, '이 등급은 임계선 0.4% 안쪽에서 결정됐다'는 정보가
    * 등급 자체보다 유용하다. 임계값을 신뢰하게 만드는 대신 불확실성을 보이게 한다. */
   const margins=[];
-  const addM=(lbl,val,thr,unit)=>{ if(val==null||!isFinite(val)||thr==null)return;
+  const addM=(lbl,val,thr,unit,dp)=>{ if(val==null||!isFinite(val)||thr==null)return;
     const rel=(thr!==0)?Math.abs(val-thr)/Math.abs(thr):Math.abs(val);
-    margins.push({lbl,val,thr,unit:unit||'',rel,near:rel<=0.10}); };
+    margins.push({lbl,val,thr,unit:unit||'',dp:(dp!=null?dp:(unit==='σ'?2:1)),rel,near:rel<=0.10}); };
   addM('상승여력',k.upside,MIN_MARGIN,'%');
   addM('하방여유',k.downside,-25,'%');
   addM('RSI',k.rsi,RH-5,'');
   if(k.ratioZ!=null&&devOK)addM('이격 z',k.ratioZ,-DT_Z,'σ');
+  /* (v4.8) 통계 경로는 devOK ∧ z≤−DT_Z 의 AND다. v4.7은 z축 거리만 쟀고 반대 축
+   * (이탈 하한 MA_DEV_MIN)까지의 거리는 어떤 margin에도 넣지 않았다. 실측(2026-07-30):
+   * LG이노텍이 이격 0.935 — 하한 0.94에서 0.53% 안쪽 — 에서 캡이 결정됐는데 z축 거리는
+   * 19%여서 '경계' 안내가 뜨지 않았다. 통계 경로가 새로 캡한 5종목 중 4종목(LG이노텍·BE·
+   * COHR·현대차)이 z축보다 이 축에 더 가깝다. AND의 두 축을 대칭으로 재야 §9의 원칙
+   * ('임계값을 신뢰하게 만드는 대신 불확실성을 보이게 한다')이 지켜진다.
+   * 노출 조건 k.ratioZ<=-DT_Z 는 기존 z축의 devOK 조건과 대칭이다 — 반대 축이 이미
+   * 충족돼 이 축이 실제 결정자일 때만 표시한다. (z가 −0.49인 META에 이격 경계를 띄우면
+   * 하한을 넘어도 판정이 안 바뀌므로 오해를 준다.) 임계값 변경 없음 — 표시 전용. */
+  if(k.ratioNow!=null&&k.ratioZ!=null&&k.ratioZ<=-DT_Z)addM('200일선 이격',k.ratioNow,MA_DEV_MIN,'',3);
   const nearBoundary=margins.some(m=>m.near);
   return {tier,gates,conf,n,blocked,fallingKnife,downtrend,statDown,slopeDown,downsideOK,margins,nearBoundary};
 }
@@ -2211,7 +2221,7 @@ function tierBoxHTML(k){
         :' (50·200일선 하락 전환)')
       +' — 딥밸류라도 상/중 대신 <b>하(적립 시작)</b>까지만 허용됩니다.</div>':'')
     +(d.nearBoundary?'<div class="grade-note" style="margin-top:4px">⚖ <b>경계 판정</b> — 다음 항목이 임계선 10% 이내에서 결정됐습니다: '
-      +d.margins.filter(m=>m.near).map(m=>esc(m.lbl)+' '+m.val.toFixed(m.unit==='σ'?2:1)+m.unit
+      +d.margins.filter(m=>m.near).map(m=>esc(m.lbl)+' '+m.val.toFixed(m.dp!=null?m.dp:(m.unit==='σ'?2:1))+m.unit
         +' (기준 '+m.thr+m.unit+')').join(' · ')
       +'. 지표가 조금만 움직여도 등급이 바뀝니다.</div>':'')
     +'<div class="muted" style="font-size:11.5px;margin:6px 0 2px">상: 매력≥72·종합≥60·여력≥30%·확증≥3 / 중: ≥62·≥50·≥25%·≥2 / 하: ≥54·여력≥20%·확증≥1 — 모두 하드 게이트 통과 전제.</div>';
