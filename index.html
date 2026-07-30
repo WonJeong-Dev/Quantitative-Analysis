@@ -1205,6 +1205,29 @@ function compute(id,simPrice){
 
   k.autoScaleBad=autoScaleBad; k.priceAnomaly=priceAnomaly; k.dataAnoms=dataAnoms;
 
+  /* (v4.7) 이격도(현재가/SMA200) 분포 통계 — 하락추세 판정을 종목별 자기교정 기준으로 옮기는 입력.
+   * 중위수·MAD로 로버스트 z를 만든다. 표준편차를 쓰면 급등 국면의 이격 극단치가 분모를 부풀려
+   * 판정이 무력화되므로 MAD를 쓴다(1.4826은 정규분포에서 σ와 일치시키는 표준 보정계수). */
+  let ratioZ=null, ratioN=0, ratioMed=null, ratioSc=null;
+  if(n>=200){
+    const rs=[]; let rsum=0;
+    for(let x=0;x<n;x++){
+      rsum+=c[x]; if(x>=200)rsum-=c[x-200];
+      if(x>=199){ const m=rsum/200; if(m>0&&isFinite(m))rs.push(c[x]/m); }
+    }
+    ratioN=rs.length;
+    if(ratioN>=RATIO_MIN_N){
+      const qOf=(arr,p)=>{ const s=arr.slice().sort((a,b)=>a-b), ix=(s.length-1)*p,
+        lo=Math.floor(ix), hi=Math.ceil(ix); return lo===hi?s[lo]:s[lo]+(s[hi]-s[lo])*(ix-lo); };
+      ratioMed=qOf(rs,0.5);
+      ratioSc=1.4826*qOf(rs.map(v=>Math.abs(v-ratioMed)),0.5);
+      const rNow=(s200!=null&&s200>0)?price/s200:null;
+      if(ratioSc>=RATIO_SC_MIN&&rNow!=null) ratioZ=(rNow-ratioMed)/ratioSc;
+    }
+  }
+  k.ratioZ=ratioZ; k.ratioN=ratioN; k.ratioMed=ratioMed; k.ratioSc=ratioSc;
+  k.ratioNow=(s200!=null&&s200>0)?price/s200:null;
+
   /* ===== 데이터 신선도 (v4.3 신규) — 낡은 캔들·시세로 등급이 산출되는 것을 차단 =====
    * 직전 세션에 실제 발생한 사고: 국장 캔들·현재가가 수개월 낡은 값이었는데 아무 경고 없이
    * RSI·%B·52주·POC·추세·적정가·등급이 전부 산출되어, 원인이 '야후 스케일'로 오진되었다.
@@ -2069,8 +2092,29 @@ const MIN_MARGIN=20, MIN_BARS=120, DD_DEEP=-35, DROP_STEEP=-20;
 const STALE_MAX_D=10;
 /* (v4.5) KRX 일일 가격제한폭(±30%)에 1%p 여유. 초과 = 전일종가 데이터 오류 */
 const KRX_LIMIT=31;
-/* (v4.6) 하락추세 캡의 이격도 단독 발동선 — 200일선 대비 −15% */
-const DT_GAP=0.85;
+/* (v4.7) 하락추세 캡 — 이격도 로버스트 z 임계.
+ * [상수 출처: 통계 관례] 1 로버스트 표준편차. 정규 가정 하 하위 약 15.9%.
+ *  v4.6의 고정 −15%(DT_GAP=0.85)를 대체한다. 고정 %는 자산 간 비교가 불가능했다 —
+ *  연변동성 15% 유틸리티의 −15%와 90% 성장주의 −15%는 전혀 다른 사건이다.
+ *  또한 0.85라는 값 자체가 2026-07-30 시점 57종목의 횡단면 배치를 보고 선택된 것으로,
+ *  CEG(0.834)와 AAOI(0.856) 사이 1.9%p 틈에 우연히 놓였을 뿐이었다(NAVER는 임계선 +0.4%).
+ *  z는 각 종목의 자기 이격 이력만으로 결정되며 현재 횡단면을 참조하지 않는다 → 재현 가능.
+ * DT_Z를 1.0/1.5/2.0 중 무엇으로 둘지는 손실 허용 성향의 판단이며 데이터로 결정되지 않는다. */
+const DT_Z=1.0;
+/* [상수 출처: 표본 하한] 이격 z를 쓰기 위한 최소 관측 수. 명목 250(≈1년).
+ * 주의: 이격 시계열은 일간 자기상관이 강해 유효표본은 명목치보다 훨씬 작다. 250은 '하한'이며
+ * 추정 정확도를 보장하는 값이 아니다. 미달 시 통계 경로를 쓰지 않고 기울기 경로만 적용한다. */
+const RATIO_MIN_N=250;
+/* [상수 출처: 기존 코드 재사용] 200일선 이탈 최소폭. v4.2부터 기울기 경로가 쓰던 값(0.94=−6%)을
+ * 통계 경로의 '하한'으로도 공유한다. 새 상수를 만들지 않는다.
+ * 하한이 필요한 이유: z 정규화만 쓰면 이격이 매우 안정적인 종목(로버스트 척도가 작은 종목)에서
+ * z=−1이 이격 0.99 수준에 해당해 0.3% 움직임으로 캡이 걸리는 hair-trigger가 된다.
+ * 여기서 −6%는 '판정 임계'가 아니라 '유의미한 이탈의 최소 요건'이며, 실제 판정은 z가 한다. */
+const MA_DEV_MIN=0.94;
+/* [상수 출처: 0으로 나누기 방어] 이격의 로버스트 척도 하한. 이 미만이면 z가 폭발하므로
+ * 통계 경로를 쓰지 않고 기울기 경로로 폴백한다(fail-safe: 캡을 덜 거는 쪽이 아니라
+ * 기존 규칙으로 되돌아가는 쪽). 실제 종목의 척도 분포는 별도 실측으로 확인해야 한다. */
+const RATIO_SC_MIN=0.01;
 function classifyDetail(k){
   if(!k||k.attract==null)return{tier:null,gates:[],conf:[],n:0,blocked:null};
   const RL=k.rsiLo==null?30:k.rsiLo, RH=k.rsiHi==null?70:k.rsiHi;
@@ -2107,26 +2151,45 @@ function classifyDetail(k){
 
   let tier=null;
   const A=k.attract, Q=k.quality!=null?k.quality:0, U=k.upside;
-  /* (v4.6) 하락추세 캡에 이격도 단독 조건 추가.
-   * 기존은 세 조건 AND(200일선 −6% 이탈 + 50일선 하락 + 200일선 하락)였다. 200일선 기울기는
-   * 최대 100거래일 지연되므로, 급등 후 급락한 종목은 200일선을 크게 이탈했는데도 기울기가
-   * 아직 양수여서 캡이 걸리지 않는다.
-   * 실측(2026-07-30): 기존 조건 발동이 미장 8/48인데 국장 0/9. 국장은 52주 저점→고점이
+  /* [문제 배경 — v4.6에서 확인] 기울기 3조건 AND만으로는 200일선 기울기가 최대 100거래일
+   * 지연되기 때문에, 급등 후 급락한 종목이 200일선을 크게 이탈했는데도 캡이 걸리지 않았다.
+   * 실측(2026-07-30): 기울기 조건 발동이 미장 8/48인데 국장 0/9. 국장은 52주 저점→고점이
    * 7~12배(삼성전기 132,500→2,417,000 · SK하이닉스 245,000→2,987,000) 오른 뒤 급락해
-   * 200일선 기울기가 여전히 양수다. 그 결과 현대차가 200일선 −20.8%인데도 '추천 상'을 받았다.
-   * 임계 −15%(DT_GAP=0.85) 근거: 미장에서 이격 0.85 미만 7종목(IONQ·INTU·TSLA·ISRG·PLTR·
-   * SNPS·CEG)이 전원 기존 조건으로 이미 캡 발동 중이라, 이 조건 추가로 미장 변화는 0건이다.
-   * 국장만 2종목(현대차 0.792 · LG에너지솔루션 0.783) 신규 발동한다.
-   * 기존 AND 조건의 −6%보다 훨씬 보수적인 '단독 발동선'이라는 위치도 일관된다. */
-  const farBelow200=(k.s200!=null&&k.price!=null&&k.price<k.s200*DT_GAP);
-  const downtrend=farBelow200
-    ||(k.s200!=null&&k.price<k.s200*0.94&&k.slope50!=null&&k.slope50<0&&k.slope200!=null&&k.slope200<0);
+   * 200일선 기울기가 여전히 양수였고, 현대차가 200일선 −20.8%인데도 '추천 상'을 받았다.
+   * v4.6은 이를 고정 임계 −15%로 막았으나, 그 값은 당일 57종목 횡단면 배치를 보고 고른
+   * 것이었고 CEG(0.834)~AAOI(0.856) 사이 1.9%p 틈에 우연히 놓인 값이었다(재현성 없음).
+   * v4.7에서 아래 통계 경로로 대체했다. */
+  /* (v4.7) 하락추세 캡 — 두 경로의 논리합.
+   *  ① 통계 경로: 200일선 아래 AND 자기 이격분포 로버스트 z ≤ −DT_Z
+   *  ② 기울기 경로: 기존 3조건 AND (이평 자체가 하락 전환 — 통계 경로가 놓치는 완만한 전환)
+   * ①에서 이탈 하한(MA_DEV_MIN)이 필수인 이유 두 가지:
+   *  (a) z만 쓰면 2년 내내 상승한 종목이 '가장 덜 확장된 구간'에 있을 때 오탐이 난다.
+   *      실측 검증: 파라볼릭 상승 종목이 이격 1.400(200일선 40% 위)인데 z = −3.60σ였다.
+   *  (b) 이격이 매우 안정적인 종목은 로버스트 척도가 작아 z=−1이 이격 0.99에 해당하고,
+   *      0.3% 움직임으로 캡이 걸리는 hair-trigger가 된다.
+   *  하한은 기존 기울기 경로가 쓰던 0.94를 그대로 공유하므로 새 임의 상수가 아니다. */
+  const devOK=(k.s200!=null&&k.price!=null&&k.price<k.s200*MA_DEV_MIN);
+  const statDown=(devOK&&k.ratioZ!=null&&k.ratioZ<=-DT_Z);
+  const slopeDown=(devOK&&k.slope50!=null&&k.slope50<0&&k.slope200!=null&&k.slope200<0);
+  const downtrend=statDown||slopeDown;
   if(g){
     if(A>=72&&Q>=60&&U>=30&&n>=3&&!downtrend)tier='상';
     else if(A>=62&&Q>=50&&U>=25&&n>=2&&!downtrend)tier='중';
     else if(A>=54&&U>=MIN_MARGIN&&n>=1)tier='하';
   }
-  return {tier,gates,conf,n,blocked,fallingKnife,downtrend,farBelow200,downsideOK};
+  /* (v4.7) 경계 근접도 — 이 판정이 임계선에서 얼마나 떨어져 결정됐는지 노출한다.
+   * 어떤 임계값을 쓰든 경계 종목은 생기고, '이 등급은 임계선 0.4% 안쪽에서 결정됐다'는 정보가
+   * 등급 자체보다 유용하다. 임계값을 신뢰하게 만드는 대신 불확실성을 보이게 한다. */
+  const margins=[];
+  const addM=(lbl,val,thr,unit)=>{ if(val==null||!isFinite(val)||thr==null)return;
+    const rel=(thr!==0)?Math.abs(val-thr)/Math.abs(thr):Math.abs(val);
+    margins.push({lbl,val,thr,unit:unit||'',rel,near:rel<=0.10}); };
+  addM('상승여력',k.upside,MIN_MARGIN,'%');
+  addM('하방여유',k.downside,-25,'%');
+  addM('RSI',k.rsi,RH-5,'');
+  if(k.ratioZ!=null&&devOK)addM('이격 z',k.ratioZ,-DT_Z,'σ');
+  const nearBoundary=margins.some(m=>m.near);
+  return {tier,gates,conf,n,blocked,fallingKnife,downtrend,statDown,slopeDown,downsideOK,margins,nearBoundary};
 }
 function classify(k){ return classifyDetail(k).tier; }
 function tierBoxHTML(k){
@@ -2144,8 +2207,13 @@ function tierBoxHTML(k){
     +'<div class="gate-lbl" style="margin-top:6px">저평가 확증 <b>'+d.n+'/'+d.conf.length+'</b></div>'
     +'<div class="flags">'+d.conf.map(mkc).join('')+'</div>'
     +(d.downtrend?'<div class="grade-note" style="margin-top:4px"><span class="warnpill crash">📉</span> 장기 하락추세 미전환'
-      +(d.farBelow200?' (200일선 −'+Math.round((1-k.price/k.s200)*100)+'% 이탈)':' (이평 하락 전환)')
+      +(d.statDown?' (200일선 −'+Math.round((1-k.ratioNow)*100)+'% 이탈 · 자기 이격분포 z='+k.ratioZ.toFixed(2)+'σ)'
+        :' (50·200일선 하락 전환)')
       +' — 딥밸류라도 상/중 대신 <b>하(적립 시작)</b>까지만 허용됩니다.</div>':'')
+    +(d.nearBoundary?'<div class="grade-note" style="margin-top:4px">⚖ <b>경계 판정</b> — 다음 항목이 임계선 10% 이내에서 결정됐습니다: '
+      +d.margins.filter(m=>m.near).map(m=>esc(m.lbl)+' '+m.val.toFixed(m.unit==='σ'?2:1)+m.unit
+        +' (기준 '+m.thr+m.unit+')').join(' · ')
+      +'. 지표가 조금만 움직여도 등급이 바뀝니다.</div>':'')
     +'<div class="muted" style="font-size:11.5px;margin:6px 0 2px">상: 매력≥72·종합≥60·여력≥30%·확증≥3 / 중: ≥62·≥50·≥25%·≥2 / 하: ≥54·여력≥20%·확증≥1 — 모두 하드 게이트 통과 전제.</div>';
 }
 
