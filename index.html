@@ -2149,8 +2149,17 @@ function classifyDetail(k){
   let blocked=null;
   if(!g){ const f=gates.find(x=>!x[1]); blocked=f?f[0]:null; }
 
-  let tier=null;
   const A=k.attract, Q=k.quality!=null?k.quality:0, U=k.upside;
+  /* (v4.9) 등급 임계를 표로 한 곳에 모은다. v4.8까지는 아래 if 사슬에 숫자가 인라인돼
+   * 있어서, 경계 근접도에서 같은 값을 다시 적으면 두 곳이 조용히 갈라질 수 있었다.
+   * 각 항목은 [라벨, 값, 임계, 단위]. 마지막 원소는 '하락추세 캡이 이 등급을 막는가'.
+   * 값과 순서는 v4.8의 if 사슬과 동일하다 — 판정 결과 불변. */
+  const TIER_SPEC=[
+    ['상',[['매력',A,72,''],['종합',Q,60,''],['여력',U,30,'%'],['확증',n,3,'']],true],
+    ['중',[['매력',A,62,''],['종합',Q,50,''],['여력',U,25,'%'],['확증',n,2,'']],true],
+    ['하',[['매력',A,54,''],['여력',U,MIN_MARGIN,'%'],['확증',n,1,'']],false]
+  ];
+  let tier=null;
   /* [문제 배경 — v4.6에서 확인] 기울기 3조건 AND만으로는 200일선 기울기가 최대 100거래일
    * 지연되기 때문에, 급등 후 급락한 종목이 200일선을 크게 이탈했는데도 캡이 걸리지 않았다.
    * 실측(2026-07-30): 기울기 조건 발동이 미장 8/48인데 국장 0/9. 국장은 52주 저점→고점이
@@ -2172,10 +2181,9 @@ function classifyDetail(k){
   const statDown=(devOK&&k.ratioZ!=null&&k.ratioZ<=-DT_Z);
   const slopeDown=(devOK&&k.slope50!=null&&k.slope50<0&&k.slope200!=null&&k.slope200<0);
   const downtrend=statDown||slopeDown;
-  if(g){
-    if(A>=72&&Q>=60&&U>=30&&n>=3&&!downtrend)tier='상';
-    else if(A>=62&&Q>=50&&U>=25&&n>=2&&!downtrend)tier='중';
-    else if(A>=54&&U>=MIN_MARGIN&&n>=1)tier='하';
+  if(g)for(const [nm,sp,capBlocks] of TIER_SPEC){
+    if(capBlocks&&downtrend)continue;              // 캡은 상·중만 막는다 (v4.7 이후 불변)
+    if(sp.every(c=>c[1]>=c[2])){tier=nm;break;}    // 위에서부터 첫 일치 = 기존 else-if 사슬
   }
   /* (v4.7) 경계 근접도 — 이 판정이 임계선에서 얼마나 떨어져 결정됐는지 노출한다.
    * 어떤 임계값을 쓰든 경계 종목은 생기고, '이 등급은 임계선 0.4% 안쪽에서 결정됐다'는 정보가
@@ -2198,6 +2206,24 @@ function classifyDetail(k){
    * 충족돼 이 축이 실제 결정자일 때만 표시한다. (z가 −0.49인 META에 이격 경계를 띄우면
    * 하한을 넘어도 판정이 안 바뀌므로 오해를 준다.) 임계값 변경 없음 — 표시 전용. */
   if(k.ratioNow!=null&&k.ratioZ!=null&&k.ratioZ<=-DT_Z)addM('200일선 이격',k.ratioNow,MA_DEV_MIN,'',3);
+  /* (v4.9) 등급 임계까지의 거리. v4.7·v4.8은 하드 게이트와 캡 축만 쟀고 §9의 등급 임계는
+   * 어떤 margin에도 없었다. 실측(2026-07-30 07:28): NVDA가 상승여력 29.9% vs 상 기준 30%,
+   * 0.33% 차이로 상을 놓쳤는데 화면에는 표시가 없었다(한 시간 전 스냅샷에서는 상이었다).
+   * 게이트 통과 10종목에서 등급 임계선 10% 이내 항목이 20건 있었다 — 게이트·캡 축보다
+   * 오히려 등급 임계 쪽에 경계 종목이 몰려 있다.
+   * 재는 대상은 두 가지다: (a)받은 등급의 조건 = 강등 위험, (b)한 단계 위 등급의 조건 =
+   * 승급을 막은 것. 단 캡이 위 단계를 막고 있으면 (b)를 재지 않는다 — 그건 임계 근접이
+   * 아니라 캡 때문이고 📉 안내가 이미 설명하므로, 재면 원인을 오도한다.
+   * 게이트 탈락 종목은 등급 임계에 도달하기 전이므로 제외한다. 표시 전용 — 판정 불변. */
+  if(g){
+    const ix=TIER_SPEC.findIndex(t=>t[0]===tier);
+    const tgt=[];
+    if(ix>=0)tgt.push(TIER_SPEC[ix]);
+    const up=(ix<0)?TIER_SPEC[TIER_SPEC.length-1]:TIER_SPEC[ix-1];
+    if(up&&!(up[2]&&downtrend))tgt.push(up);
+    for(const [nm,sp] of tgt)
+      for(const [lbl,v,th,u] of sp) addM(nm+' '+lbl,v,th,u,u==='%'?1:0);
+  }
   const nearBoundary=margins.some(m=>m.near);
   return {tier,gates,conf,n,blocked,fallingKnife,downtrend,statDown,slopeDown,downsideOK,margins,nearBoundary};
 }
