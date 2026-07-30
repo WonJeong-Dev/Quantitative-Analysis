@@ -1420,7 +1420,10 @@ async function postInit(){
 }
 function loadCaches(ids){
   return Promise.all(ids.map(id=>db.doc('qa_cache/'+id).get()
-    .then(d=>{ if(d.exists)S.cache[id]=d.data(); }).catch(()=>{})));
+    .then(d=>{ if(d.exists){ const v=d.data(); S.cache[id]=v;
+      /* (v4.13) 방금 읽어온 사본의 상태를 스로틀 기준으로 물려받는다. 이게 없으면
+       * 페이지를 열 때마다 전 종목이 "처음 저장"으로 취급돼 57건이 한꺼번에 나간다. */
+      cacheSaveMeta[id]={ts:v.updatedAt||0,bars:(v.t||[]).length}; } }).catch(()=>{})));
 }
 async function seed(){
   updConnChip('busy','초기 시드 등록');
@@ -1527,9 +1530,39 @@ function spliceCache(old,fresh){
   if(fresh.currency)old.currency=fresh.currency;
   old.mktTime=fresh.mktTime||old.mktTime;
 }
-function saveCache(id){
+/* (v4.13) 캐시 저장 스로틀 + 직렬 드레인.
+ * v4.12까지는 runFetch가 성공할 때마다 문서 전체(520봉 × 6배열 ≈ 28KB)를 무조건 썼다.
+ * 주기 갱신이 돌면 미장 48종목이 230ms 간격으로 밀려들어 11초에 약 1.3MB가 SDK 쓰기
+ * 스트림에 쌓이고, 업로드가 못 따라가 `resource-exhausted: Write stream exhausted
+ * maximum allowed queued writes`가 나면서 SDK가 최대 백오프로 들어간다.
+ * 장중 갱신은 마지막 봉의 값만 바꾸는데, 캔들은 페이지를 열 때 refreshAll이 어차피
+ * 전부 다시 받아온다 — Firestore 사본의 가치는 첫 페인트 가속뿐이다.
+ * 반면 fund·ana는 종목당 약 3.5초가 드는 비싼 데이터라 반드시 보존해야 한다(§19.9).
+ * 그래서 저장 조건을 셋으로 좁히고(구조 변화 · 30분 경과 · force), 실제 쓰기는
+ * 서버 응답을 기다리며 한 건씩 흘려보낸다. */
+const CACHE_SAVE_GAP_MS=30*60000;   // 같은 종목 캔들 재저장 최소 간격
+const cacheSaveMeta={};             // id -> {ts, bars}
+let cacheSaveQ=[], cacheSaveRunning=false;
+function saveCache(id,force){
   const c=S.cache[id]; if(!c)return;
-  db.doc('qa_cache/'+id).set(c).catch(e=>console.warn('cache save',e));
+  const bars=(c.t||[]).length, m=cacheSaveMeta[id];
+  // 봉 개수가 그대로이고 최근에 저장했으면 건너뛴다. 장중 tick은 재fetch로 복구된다.
+  if(!force && m && m.bars===bars && (Date.now()-m.ts)<CACHE_SAVE_GAP_MS) return;
+  cacheSaveMeta[id]={ts:Date.now(),bars};
+  if(cacheSaveQ.indexOf(id)<0)cacheSaveQ.push(id);   // 중복 예약 방지 — 드레인 시점의 최신본을 쓴다
+  drainCacheSaves();
+}
+async function drainCacheSaves(){
+  if(cacheSaveRunning)return; cacheSaveRunning=true;
+  try{
+    while(cacheSaveQ.length){
+      const id=cacheSaveQ.shift(), c=S.cache[id];
+      if(!c)continue;
+      try{ await db.doc('qa_cache/'+id).set(c); }
+      catch(e){ console.warn('cache save',id,(e&&e.code)||e); }
+      await sleep(400);   // 서버 ack 후 400ms — 스트림에 누적되지 않는다
+    }
+  }finally{ cacheSaveRunning=false; }
 }
 function refreshAll(){
   const cur=Object.keys(S.stocks).filter(id=>S.stocks[id].market===S.tab);
@@ -2469,7 +2502,7 @@ async function fetchSummary(id,force){
     if(!S.cache[id])S.cache[id]={};
     S.cache[id].ana=ana;
     if(fund&&(fund.roe!=null||fund.margin!=null||fund.revG!=null||fund.epsG!=null||fund.de!=null||fund.epsFwd!=null||fund.revPS!=null)) S.cache[id].fund=fund;
-    saveCache(id);
+    saveCache(id,true);   // (v4.13) 재무·애널은 비싸다 — 스로틀 예외 (§19.9)
     S.calc[id]=compute(id); renderSoon();
     if(force){
       const bits=[];
