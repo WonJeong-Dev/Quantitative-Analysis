@@ -1769,9 +1769,15 @@ function detailHTML(id){
   g+=stat('시세 상태','<span class="live lv-'+fi.cls+'"><i class="ld"></i>'+fi.label+'</span>',fi.sub||'');
   g+=stat('전일 종가',curSym(C)+fmtP(k.prevClose,C),'당일 종가 '+fmtP(k.lastClose,C));
   g+=stat('52주 범위',fmtP(k.lo52,C)+' ~ '+fmtP(k.hi52,C),'');
+  /* (v4.14) 계산 관례를 명시한다. 실측(2026-07-31): 같은 종목·같은 시각에 나무증권은
+   * MSFT 74.25 · META 13.13, 이 대시보드는 72.3 · 30.8이었다. 원인은 평활 방식이며
+   * (나무증권 = Cutler 단순평균, 여기 = Wilder 원 정의) META의 17.7p 차이로 확정됐다.
+   * 어느 쪽이 틀린 게 아니다. 다만 §9의 RSI 밴드는 Wilder 위에서 정해진 값이므로
+   * 다른 플랫폼 숫자를 이 밴드에 대입하면 판정이 달라진다(실측: 과매도 4종목 → 12종목). */
   g+=stat('RSI (14) · 밴드 '+k.rsiLo+'/'+k.rsiHi,k.rsi!=null?k.rsi.toFixed(1):'—',
     (k.rsi==null?'':(k.rsi<k.rsiLo?'과매도':(k.rsi>k.rsiHi?'과매수':'중립')))
-    +' · 변동성 '+(k.annVol!=null?(k.annVol*100).toFixed(0)+'%':'—')+' ('+k.rsiBandSrc+' 밴드)');
+    +' · 변동성 '+(k.annVol!=null?(k.annVol*100).toFixed(0)+'%':'—')+' ('+k.rsiBandSrc+' 밴드)'
+    +' · <span title="Wilder 평활(RSI 원 정의) · 종가 기준 · 오늘 봉에 현재가 반영. 증권사 HTS는 단순평균(Cutler) 방식이 많아 값이 다를 수 있습니다 — 밴드 판정은 이 기준으로만 보세요">Wilder · 장중가 반영</span>');
   g+=stat('볼린저 %B',k.pB!=null?k.pB.toFixed(2):'—',k.bbL!=null?fmtP(k.bbL,C)+' ~ '+fmtP(k.bbU,C):'');
   g+=stat('BB중단 (MA20)',fmtP(k.bbM,C),'괴리 '+fmtPct(dev(k.price,k.bbM)));
   g+=stat('EMA 20',fmtP(k.e20,C),'괴리 '+fmtPct(dev(k.price,k.e20)));
