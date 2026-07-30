@@ -273,6 +273,7 @@
     <div class="head-right">
       <span class="statuschip" id="chipConn"><span class="dot" id="dotConn"></span><span id="txtConn">연결 중…</span></span>
       <span class="statuschip" id="chipData"><span class="dot" id="dotData"></span><span id="txtData">데이터 대기</span></span>
+      <button class="btn icon" id="btnDiag" title="자기점검 — 데이터 상태 한눈에">🩺</button>
       <button class="btn icon" id="btnSettings" title="설정">⚙</button>
     </div>
   </header>
@@ -322,6 +323,15 @@
     데이터: Yahoo Finance(시세·재무·실적일·애널) · Google News(헤드라인) · 캐시: Firebase Firestore<br>
     본 도구는 개인 참고용 계산기이며, 투자 자문 및 매매 권유가 아닙니다. 어떤 지표 조합도 수익을 보장하지 않으며 투자 판단과 책임은 본인에게 있습니다.
   </footer>
+</div>
+
+<!-- (v4.17) 자기점검 패널 -->
+<div class="mask" id="maskDiag">
+  <div class="modal" style="max-width:760px">
+    <h2>🩺 자기점검</h2>
+    <div id="diagBody" style="font-size:12px;line-height:1.7;max-height:60vh;overflow:auto"></div>
+    <div class="foot"><button class="btn" id="btnDiagCopy" style="margin-right:auto">JSON 복사</button><button class="btn" data-close>닫기</button></div>
+  </div>
 </div>
 
 <!-- 종목 추가 모달 -->
@@ -549,6 +559,12 @@ function parseChart(j){
     l.push(+((q.low&&q.low[i])??ci));  c.push(+ci); v.push(+((q.volume&&q.volume[i])||0));
   }
   const m=r.meta||{};
+  /* (v4.16) 분할 이벤트를 읽는다. URL은 v4.0부터 `events=div,split`을 요청해 왔는데
+   * 여기서 r.events를 그냥 버리고 있었다. 야후는 분할 시 전체 봉을 소급 조정하지만,
+   * 주기 갱신은 light(7d)라 spliceCache가 최근 7봉만 덮어써 시리즈에 계단이 생긴다.
+   * splits가 있으면 runFetch가 full(2y) 재조회를 걸어 전체 스케일을 맞춘다. */
+  const spl=(r.events&&r.events.splits)||null;
+  const splitAt=spl?Math.max(...Object.values(spl).map(x=>+(x&&x.date)||0).filter(isFinite),0):0;
   // 방어적: 소스가 시간 역순으로 주는 경우 대비해 t 오름차순 정렬
   let ord=true; for(let i=1;i<t.length;i++){ if(t[i]<t[i-1]){ord=false;break;} }
   if(!ord){ const idx=t.map((_,ix)=>ix).sort((a,b)=>t[a]-t[b]);
@@ -557,7 +573,7 @@ function parseChart(j){
     return {t:stt,o:so,h:sh,l:sl,c:sc,v:sv,
       price:(m.regularMarketPrice!=null?+m.regularMarketPrice:(sc.length?sc[sc.length-1]:null)),
       prevClose:(sc.length>1?sc[sc.length-2]:(m.previousClose!=null?+m.previousClose:null)),
-      currency:m.currency||'USD', mktTime:(m.regularMarketTime||0)*1000};
+      currency:m.currency||'USD', mktTime:(m.regularMarketTime||0)*1000, splitAt};
   }
   return {t,o,h,l,c,v,
     price:(m.regularMarketPrice!=null?+m.regularMarketPrice:(c.length?c[c.length-1]:null)),
@@ -566,7 +582,7 @@ function parseChart(j){
      * 80,999원(약 1년 전 가격)으로 들어와 등락률이 +166.67%, SK하이닉스는 +620.49%로 표시됐다.
      * 캔들 배열의 직전 봉 종가가 정의상 전일 종가이므로 그것을 우선한다. */
     prevClose:(c.length>1?c[c.length-2]:(m.previousClose!=null?+m.previousClose:null)),
-    currency:m.currency||'USD', mktTime:(m.regularMarketTime||0)*1000};
+    currency:m.currency||'USD', mktTime:(m.regularMarketTime||0)*1000, splitAt};
 }
 
 /* ---------------- 지표 계산 ---------------- */
@@ -1266,10 +1282,9 @@ function compute(id,simPrice){
     ana:qAnalyst(anaI.n, recEff),
     stab:qStability(annVol)
   };
-  let qtw=0,qacc=0;
-  for(const key in qParts){ if(qParts[key]!=null){ qtw+=cw[key]; qacc+=qParts[key]*cw[key]; } }
+  const qRes=weighAnchored(qParts,cw,QW_LABELS);   // (v4.15) 재정규화 → 잔여 앵커
   k.qParts=qParts;
-  k.quality=qtw>0?clamp(qacc/qtw,0,100):null;
+  k.quality=qRes.score;
   /* (v4.10 · §19.9) 결측 성분 노출. 위 루프는 살아남은 성분만으로 가중 기저를
    * 재정규화한다 — 경고도 감쇠도 없다. v4.4가 blend()에서 고친 결함과 같은 종류이며
    * 적정가 경로는 D7로 해결했지만 이 경로는 그대로다.
@@ -1278,10 +1293,7 @@ function compute(id,simPrice){
    * NXPI(중→상)가 자리를 맞바꿨다. 기본 가중이 fin35·growth28·ana22·stab15라
    * 두 성분이 빠지면 63%가 사라지고 남은 37%가 100%로 재정규화된다.
    * ★ 계산식은 바꾸지 않는다 — 사실만 노출한다. 점수 의미의 변경은 별도 결정 사항. */
-  const QMISS_LBL={fin:'재무 품질',growth:'성장성',ana:'애널 신뢰',stab:'안정성'};
-  let qTotW=0; for(const key in qParts) qTotW+=(cw[key]||0);
-  k.qMiss=Object.keys(qParts).filter(x=>qParts[x]==null).map(x=>QMISS_LBL[x]||x);
-  k.qMissW=(qTotW>0)?Math.round((qTotW-qtw)/qTotW*100):0;
+  k.qMiss=qRes.miss; k.qMissW=qRes.missW;
   // 추세는 종합점수에서 뺐지만, 표시·타이밍 참고용으로 별도 계산 보관
   k.trendScore=qTrend(price,s50,s200,slope50,slope200);
 
@@ -1327,10 +1339,15 @@ function compute(id,simPrice){
        ?((scoreVP(price,vp1)??scoreVP(price,vp6))*0.6+(scoreVP(price,vp6)??scoreVP(price,vp1))*0.4):null,
     prox:scoreProx(price,s50)
   };
-  let atw=0,aacc=0;
-  for(const key in aParts){ if(aParts[key]!=null){ atw+=aw[key]; aacc+=aParts[key]*aw[key]; } }
+  /* (v4.15) 가격매력도도 같은 구조였다. up(상승여력)이 단일 성분으로 46% —
+   * 종합점수의 fin(35%)보다 크다. 실측(2026-07-31): AAOI 매력 76 · LITE 71이
+   * 상승여력 null 상태에서 나머지 54%로 산출되고 있었다. 앵커 적용 시 64 · 61.
+   * 지금은 G3(최소 안전마진)가 upside를 요구해 등급이 막히지만, 그건 우연한 방어다 —
+   * 화면의 매력 막대는 그대로 76으로 보였고 vp(14%) 결측은 G3도 막지 못한다. */
+  const aRes=weighAnchored(aParts,aw,AW_LABELS);
   k.aParts=aParts; k.upRaw=upRaw;
-  k.attract=atw>0?clamp(aacc/atw,0,100):null;
+  k.attract=aRes.score;
+  k.aMiss=aRes.miss; k.aMissW=aRes.missW;
 
   // 하위호환: 기존 코드가 참조하는 k.score/k.sub 유지(=가격매력도 매핑)
   k.score=k.attract;
@@ -1338,12 +1355,55 @@ function compute(id,simPrice){
 
   const cd=classifyDetail(k);
   k.tier=cd.tier; k.grd=cd;
+  /* (v4.17) 등급 변화 로그 — 세션 메모리에만 쌓는다(Firestore 쓰기 없음, v4.13 참조).
+   * 실측 경위: NVDA·NXPI가 39초 만에 상/중을 맞바꿨을 때 원인을 찾으려면 스냅샷을
+   * 여러 개 모아 대조해야 했다. 바뀌는 순간의 성분을 함께 남기면 즉시 추적된다.
+   * simPrice(시뮬레이션) 호출은 실제 상태가 아니므로 기록하지 않는다. */
+  if(simPrice==null){
+    S.tierSeen=S.tierSeen||{};
+    const prev=S.tierSeen[id];
+    if(prev!==undefined&&prev!==k.tier){
+      S.gradeLog=S.gradeLog||[];
+      S.gradeLog.unshift({t:Date.now(),id,nm:(st.market==='KR'?st.name:st.symbol),
+        from:prev,to:k.tier,price:k.price,
+        A:k.attract!=null?Math.round(k.attract):null,
+        Q:k.quality!=null?Math.round(k.quality):null,
+        U:k.upside!=null?+k.upside.toFixed(1):null,
+        n:cd.n,cap:!!cd.downtrend,blocked:cd.blocked,
+        miss:[].concat(k.qMissW>0?['종합'+k.qMissW+'%']:[],k.aMissW>0?['매력'+k.aMissW+'%']:[]).join(' ')||null});
+      if(S.gradeLog.length>300)S.gradeLog.length=300;
+    }
+    S.tierSeen[id]=k.tier;
+  }
   k.flags=rubricFlags(k);
   k.sim=simPrice!=null;
   return k;
 }
 const QW_DEF={fin:35,growth:28,ana:22,stab:15};
 const AW_DEF={up:46,rsi:16,bb:14,vp:14,prox:10};
+/* (v4.15 · 안 B) 결측 성분 잔여 앵커.
+ * v4.14까지 quality·attract는 살아남은 성분만으로 가중 기저를 재정규화했다.
+ * 결측 성분이 나머지 성분의 평균으로 조용히 채워지는 것과 같아서, 성분 하나가
+ * 사라지면 점수가 통째로 이동했다(실측 §19.9: 종합점수 −16 ~ +18점, NVDA·NXPI 상/중 교대).
+ * v4.4가 blend()에서 쓴 D7(신뢰 잔여 앵커)과 **같은 구조**를 점수에도 적용한다 —
+ * 빠진 가중치만큼을 척도의 중립점(50)에 앵커해 재정규화를 없앤다.
+ * 앵커 50은 임의값이 아니라 0~100 척도의 중앙이다(§20 '구조적 필연').
+ * 성질: '항상 보수적'이 아니라 '모르면 강한 견해를 갖지 않는다'.
+ *   실측 중앙값 fin 76.8 · growth 68.5 · ana 88.2 → 결측 시 대개 점수를 낮춘다.
+ *   stab은 중앙값 49.9라 절반은 올라간다. 중립으로 압축되는 것이 의도다.
+ * 성분이 **전부** 결측이면 앵커 없이 null을 돌려준다 — 근거가 하나도 없는데
+ * 50점을 주면 '판단 불가'가 '보통'으로 오분류된다(§20 D6과 같은 이유). */
+const SCORE_ANCHOR=50;
+function weighAnchored(parts,w,labels){
+  let tw=0,acc=0,missW=0; const miss=[];
+  for(const key in parts){ const ww=(w&&w[key])||0;
+    if(parts[key]!=null){ tw+=ww; acc+=parts[key]*ww; }
+    else { missW+=ww; miss.push((labels&&labels[key])||key); } }
+  const tot=tw+missW;
+  if(tot<=0||tw<=0) return {score:null,missW:tot>0?100:0,miss};
+  return {score:clamp((acc+SCORE_ANCHOR*missW)/tot,0,100),
+          missW:Math.round(missW/tot*100), miss};
+}
 function recalcAll(){
   for(const id in S.stocks)S.calc[id]=compute(id);
 }
@@ -1480,7 +1540,20 @@ async function runFetch(it){
       for(const kk in prev) if(!(kk in fresh)) fresh[kk]=prev[kk];
       S.cache[it.id]=fresh;
     }
-    else spliceCache(S.cache[it.id],data);
+    else {
+      const shift=spliceCache(S.cache[it.id],data);
+      /* (v4.16) 분할 감지 → full 재조회. 두 경로 중 하나라도 걸리면 건다.
+       *  ⓐ 야후 events.splits가 캐시 마지막 갱신 이후 날짜를 보고한 경우
+       *  ⓑ 겹치는 봉의 종가가 10% 넘게 바뀐 경우(events를 못 받은 분할)
+       * light(7d)만으로는 최근 7봉만 새 스케일이 되어 시리즈에 계단이 남는다. */
+      const splitNew=(data.splitAt>0)&&(data.splitAt*1000>((S.cache[it.id].splitSeen||0)));
+      if(shift||splitNew){
+        S.cache[it.id].splitSeen=Math.max(data.splitAt*1000||0,Date.now());
+        console.warn('[분할/스케일 변화 감지] '+it.id+' → 2년 전체 재조회');
+        toast(( S.stocks[it.id]&&(S.stocks[it.id].name||S.stocks[it.id].symbol) )+' 분할/스케일 변화 감지 — 전체 재조회','warn');
+        setTimeout(()=>enqueue(it.id,'full'),0);
+      }
+    }
     S.cache[it.id].updatedAt=Date.now();
     delete (S.fetchErr||{})[it.id];
     saveCache(it.id);
@@ -1497,11 +1570,17 @@ function trimCache(d){
     l:d.l.slice(s).map(r4),c:d.c.slice(s).map(r4),v:d.v.slice(s).map(x=>Math.round(x||0)),
     price:r4(d.price),prevClose:r4(d.prevClose),currency:d.currency,mktTime:d.mktTime||0};
 }
+/* (v4.16) 반환값 scaleShift: 겹치는 봉의 종가가 10% 넘게 바뀌면 스케일 변화 신호.
+ * 이미 확정된 과거 일봉의 종가가 그만큼 정정되는 일은 없다 — 분할·병합뿐이다.
+ * events.splits를 못 받은 경우(7일 지난 분할 등)를 위한 보조 감지 경로다. */
 function spliceCache(old,fresh){
   const map=new Map(old.t.map((tt,ix)=>[tt,ix]));
+  let scaleShift=false;
   for(let i=0;i<fresh.t.length;i++){
     const tt=fresh.t[i];
     if(map.has(tt)){ const ix=map.get(tt);
+      const prevC=old.c[ix], newC=fresh.c[i];
+      if(prevC>0&&newC>0&&Math.abs(newC/prevC-1)>0.10) scaleShift=true;
       old.o[ix]=r4(fresh.o[i]); old.h[ix]=r4(fresh.h[i]); old.l[ix]=r4(fresh.l[i]);
       old.c[ix]=r4(fresh.c[i]); old.v[ix]=Math.round(fresh.v[i]||0);
     }else{
@@ -1529,6 +1608,7 @@ function spliceCache(old,fresh){
   if(fresh.prevClose!=null)old.prevClose=r4(fresh.prevClose);
   if(fresh.currency)old.currency=fresh.currency;
   old.mktTime=fresh.mktTime||old.mktTime;
+  return scaleShift;
 }
 /* (v4.13) 캐시 저장 스로틀 + 직렬 드레인.
  * v4.12까지는 runFetch가 성공할 때마다 문서 전체(520봉 × 6배열 ≈ 28KB)를 무조건 썼다.
@@ -1725,7 +1805,14 @@ function render(){
       if(k.dataStale)warn.push('<span class="warnpill hz" title="캔들·시세가 '+(k.barAgeDays!=null?Math.round(k.barAgeDays)+'일':'기간 불명')+' 낡음 — 등급 보류">⚠ 데이터지연</span>');
       if(k.priceAnomaly)warn.push('<span class="warnpill hz" title="현재가 정합 이상 — '+esc((k.dataAnoms||[]).join(' · '))+'">⚠ 가격이상</span>');
       else if(k.autoScaleBad)warn.push('<span class="warnpill hz" title="이상 항목만 배제 — '+esc((k.dataAnoms||[]).join(' · '))+'">⚠ 데이터</span>');
-      if(k.qMissW>0)warn.push('<span class="warnpill hz" title="종합점수가 '+esc((k.qMiss||[]).join(' · '))+' 없이 산출됨 — 가중치 '+k.qMissW+'%가 빠지고 나머지가 재정규화됨. ⟳ 전체 갱신 시 값이 바뀔 수 있음">⚠ 재무결측 '+k.qMissW+'%</span>');
+      /* (v4.15) 종합점수·가격매력도의 결측을 하나의 pill로 합쳐 표시한다.
+       * 숫자는 둘 중 더 큰 소실 가중치 — '얼마나 근거가 비었나'를 한눈에 보이게. */
+      { const mw=Math.max(k.qMissW||0,k.aMissW||0);
+        if(mw>0){ const t=[];
+          if(k.qMissW>0)t.push('종합점수 '+k.qMissW+'% ('+(k.qMiss||[]).join(' · ')+')');
+          if(k.aMissW>0)t.push('가격매력도 '+k.aMissW+'% ('+(k.aMiss||[]).join(' · ')+')');
+          warn.push('<span class="warnpill hz" title="'+esc(t.join(' / '))
+            +' 성분이 수신되지 않아 그만큼을 중립값 50으로 대체해 산출했습니다. 실제 값이 들어오면 점수가 달라집니다">⚠ 성분결측 '+mw+'%</span>'); } }
       if(k.earnSoon)warn.push('<span class="warnpill earn" title="실적 발표 임박(±2일)">📅 실적</span>');
       if(k.hasHardHazard)warn.push('<span class="warnpill hz" title="'+esc(k.hazardMemo||'수동 악재 플래그')+'">⚠ 악재</span>');
       else if(k.crashPenalty<0.8)warn.push('<span class="warnpill crash" title="'+esc(k.crashLbl||'낙폭과대')+'">🪂 급락</span>');
@@ -2322,7 +2409,11 @@ function tierBoxHTML(k){
       +(d.statDown?' (200일선 −'+Math.round((1-k.ratioNow)*100)+'% 이탈 · 자기 이격분포 z='+k.ratioZ.toFixed(2)+'σ)'
         :' (50·200일선 하락 전환)')
       +' — 딥밸류라도 상/중 대신 <b>하(적립 시작)</b>까지만 허용됩니다.</div>':'')
-    +(k.qMissW>0?'<div class="grade-note" style="margin-top:4px"><span class="warnpill hz">⚠</span> <b>종합점수 성분 결측</b> — '+esc((k.qMiss||[]).join(' · '))+'이(가) 수신되지 않아 가중치 <b>'+k.qMissW+'%</b>가 빠진 채 나머지 성분만 재정규화해 산출한 값입니다. 실측에서 이 결측이 채워지며 종합점수가 최대 18점 움직인 사례가 있습니다 — <b>⟳ 전체 갱신을 다시 하면 등급이 바뀔 수 있습니다.</b></div>':'')
+    +(((k.qMissW||0)>0||(k.aMissW||0)>0)?'<div class="grade-note" style="margin-top:4px"><span class="warnpill hz">⚠</span> <b>점수 성분 결측</b> — '
+      +[(k.qMissW>0?'<b>종합점수</b>의 '+esc((k.qMiss||[]).join(' · '))+' (가중치 '+k.qMissW+'%)':null),
+        (k.aMissW>0?'<b>가격매력도</b>의 '+esc((k.aMiss||[]).join(' · '))+' (가중치 '+k.aMissW+'%)':null)]
+        .filter(Boolean).join(', ')
+      +'이(가) 수신되지 않았습니다. 그만큼은 <b>중립값 50</b>으로 대체해 산출했으므로(잔여 앵커), 실제 값이 들어오면 점수가 달라집니다. <b>⟳ 전체 갱신 후 다시 확인하세요.</b></div>':'')
     +(d.nearBoundary?'<div class="grade-note" style="margin-top:4px">⚖ <b>경계 판정</b> — 다음 항목이 임계선 10% 이내에서 결정됐습니다: '
       +d.margins.filter(m=>m.near).map(m=>esc(m.lbl)+' '+m.val.toFixed(m.dp!=null?m.dp:(m.unit==='σ'?2:1))+m.unit
         +' (기준 '+m.thr+m.unit+')').join(' · ')
@@ -2546,6 +2637,11 @@ async function refreshSummaries(force){
 
 let quoteTimer=null, quoteBusy=false;
 async function refreshQuotes(){
+  /* (v4.16) 백그라운드 탭은 건너뛴다. 탭을 여러 개 열면 각각 독립적으로 폴링·저장해
+   * 워커 요청과 Firestore 쓰기가 탭 수만큼 배증한다(v4.13의 저장 스로틀은 탭별
+   * 메모리라 교차로 듣지 않는다). 보고 있지 않은 화면을 갱신할 이유는 없다.
+   * 탭으로 돌아오면 visibilitychange 핸들러가 즉시 1회 갱신한다. */
+  if(typeof document!=='undefined'&&document.visibilityState==='hidden')return;
   if(quoteBusy)return; quoteBusy=true;
   try{
     const ids=Object.keys(S.stocks).filter(id=>S.stocks[id].market===S.tab);
@@ -2559,6 +2655,10 @@ function startQuoteLoop(){
   if(quoteTimer)clearInterval(quoteTimer);
   quoteTimer=setInterval(refreshQuotes, Math.max(10,S.settings.quoteSec||30)*1000);
 }
+/* (v4.16) 탭 복귀 즉시 1회 갱신 — 백그라운드에서 건너뛴 만큼 화면이 낡아 있다. */
+if(typeof document!=='undefined')document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible')refreshQuotes();
+});
 
 /* ---------------- 이벤트 ---------------- */
 $$('nav.tabs .tab').forEach(b=>b.addEventListener('click',()=>{
@@ -2581,6 +2681,7 @@ $('#list').addEventListener('click',e=>{
       if(confirm('['+S.stocks[id].name+'] 종목과 캐시를 삭제할까요?')){
         db.doc('qa_stocks/'+id).delete();
         db.doc('qa_cache/'+id).delete().catch(()=>{});
+        delete cacheSaveMeta[id];   // (v4.16) v4.13 스로틀 메타 정리 — 같은 ID 재등록 대비
         delete S.cache[id];delete S.calc[id];delete S.ui.open[id];
         toast('삭제되었습니다');
       }
@@ -2704,6 +2805,78 @@ function wrow(group,key,label,val){
     +'<input type="range" min="0" max="40" step="2" value="'+val+'" data-g="'+group+'" data-k="'+key+'">'
     +'<b class="num" id="wv_'+group+'_'+key+'">'+val+'%</b></div>';
 }
+/* (v4.17) 자기점검 — 이번 세션에서 콘솔 스니펫으로 확인하던 항목을 화면에 상시화한다.
+ * 계산은 전부 S.calc/S.cache를 읽기만 하며 어떤 판정도 바꾸지 않는다. */
+function diagCollect(){
+  const ids=Object.keys(S.stocks), nm=id=>S.stocks[id].market==='KR'?S.stocks[id].name:S.stocks[id].symbol;
+  const rows=ids.map(id=>({id,nm:nm(id),mkt:S.stocks[id].market,k:S.calc[id]||{},ch:S.cache[id]||{}}));
+  const graded=rows.filter(r=>r.k.tier&&r.k.tier!=='범위밖');
+  const sc=rows.map(r=>r.k.ratioSc).filter(v=>v!=null).sort((a,b)=>a-b);
+  const nn=rows.map(r=>r.k.ratioN).filter(v=>v!=null).sort((a,b)=>a-b);
+  const fundMiss=rows.filter(r=>fundMissing(r.id));
+  return {
+    빌드:'v4.17 (DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    시각:new Date().toLocaleString('ko-KR'),
+    종목수:ids.length,
+    요약패스:S.sumProg?((S.sumProg.retry?'재시도 ':'재무조회 ')+S.sumProg.done+'/'+S.sumProg.total):'완료',
+    등급분포:rows.reduce((a,r)=>(a[r.k.tier||'범위밖']=(a[r.k.tier||'범위밖']||0)+1,a),{}),
+    성분결측:rows.filter(r=>(r.k.qMissW||0)>0||(r.k.aMissW||0)>0)
+      .map(r=>r.nm+'('+[].concat(r.k.qMissW>0?['종합 '+r.k.qMissW+'%']:[],r.k.aMissW>0?['매력 '+r.k.aMissW+'%']:[]).join('·')+')'),
+    재무미수신:fundMiss.map(r=>r.nm),
+    이격계산불가:rows.filter(r=>r.k.ratioNow==null).map(r=>r.nm+'('+((r.ch.t||[]).length)+'봉)'),
+    데이터지연:rows.filter(r=>r.k.dataStale).map(r=>r.nm),
+    가격이상:rows.filter(r=>r.k.priceAnomaly).map(r=>r.nm),
+    데이터배제:rows.filter(r=>r.k.autoScaleBad).map(r=>r.nm+'('+((r.k.dataAnoms||[]).join('·'))+')'),
+    경계판정:rows.filter(r=>r.k.grd&&r.k.grd.nearBoundary).map(r=>r.nm),
+    추세캡:rows.filter(r=>r.k.grd&&r.k.grd.downtrend).map(r=>r.nm),
+    캡강등:graded.filter(r=>r.k.grd&&r.k.grd.downtrend).map(r=>{
+      let un=null; try{ un=classifyDetail(Object.assign({},r.k,{ratioZ:null,slope50:1,slope200:1})).tier; }catch(e){}
+      return (un&&un!==r.k.tier)?(r.nm+': '+r.k.tier+' ← '+un):null; }).filter(Boolean),
+    MAD척도:sc.length?{min:+sc[0].toFixed(4),max:+sc[sc.length-1].toFixed(4),'하한0.01미만':sc.filter(v=>v<RATIO_SC_MIN).length}:null,
+    관측수min:nn.length?nn[0]:null,
+    등급변화:(S.gradeLog||[]).slice(0,20)
+  };
+}
+function diagRender(){
+  const d=diagCollect(), esc2=x=>esc(String(x));
+  const bad=(a)=>Array.isArray(a)&&a.length>0;
+  const row=(label,val,warn)=>'<div style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--line)">'
+    +'<b style="min-width:104px;flex:none;color:'+(warn?'var(--down)':'inherit')+'">'+esc2(label)+'</b>'
+    +'<span style="word-break:break-all">'+val+'</span></div>';
+  const list=a=>bad(a)?a.map(esc2).join(' · '):'<span style="color:var(--up)">없음</span>';
+  let g='';
+  g+=row('빌드',esc2(d.빌드));
+  g+=row('점검 시각',esc2(d.시각)+' · 종목 '+d.종목수+' · 요약패스 '+esc2(d.요약패스));
+  g+=row('등급 분포',esc2(JSON.stringify(d.등급분포)));
+  g+=row('성분 결측',list(d.성분결측),bad(d.성분결측));
+  g+=row('재무 미수신',list(d.재무미수신),bad(d.재무미수신));
+  g+=row('이격 계산불가',list(d.이격계산불가));
+  g+=row('데이터 지연',list(d.데이터지연),bad(d.데이터지연));
+  g+=row('가격 이상',list(d.가격이상),bad(d.가격이상));
+  g+=row('입력 배제',list(d.데이터배제),bad(d.데이터배제));
+  g+=row('MAD 척도',d.MAD척도?esc2(JSON.stringify(d.MAD척도))+' · 관측수 min '+d.관측수min:'—',
+    d.MAD척도&&d.MAD척도['하한0.01미만']>0);
+  g+=row('추세 캡',list(d.추세캡));
+  g+=row('캡 강등',list(d.캡강등));
+  g+=row('경계 판정',list(d.경계판정));
+  g+='<div style="margin-top:10px"><b>등급 변화 (이번 세션 최근 20건)</b>'
+    +(d.등급변화.length?('<table style="width:100%;margin-top:4px;font-size:11px;border-collapse:collapse">'
+      +'<tr style="color:var(--muted)"><td>시각</td><td>종목</td><td>변화</td><td>A/Q/여력/확증</td><td>캡</td><td>비고</td></tr>'
+      +d.등급변화.map(e=>'<tr><td>'+new Date(e.t).toLocaleTimeString('ko-KR')+'</td><td>'+esc2(e.nm)+'</td>'
+        +'<td><b>'+esc2(e.from)+' → '+esc2(e.to)+'</b></td>'
+        +'<td>'+[e.A,e.Q,(e.U!=null?e.U+'%':'—'),e.n].join(' / ')+'</td>'
+        +'<td>'+(e.cap?'O':'—')+'</td><td>'+esc2(e.miss||e.blocked||'')+'</td></tr>').join('')
+      +'</table>'):'<div style="color:var(--muted);margin-top:4px">아직 변화 없음 — 등급이 바뀌면 여기에 성분과 함께 쌓입니다</div>')
+    +'</div>';
+  $('#diagBody').innerHTML=g;
+  return d;
+}
+let diagLast=null;
+$('#btnDiag').addEventListener('click',()=>{ diagLast=diagRender(); $('#maskDiag').classList.add('on'); });
+$('#btnDiagCopy').addEventListener('click',()=>{
+  try{ navigator.clipboard.writeText(JSON.stringify(diagLast||diagCollect(),null,1)); toast('자기점검 결과를 복사했습니다'); }
+  catch(e){ toast('복사 실패 — 콘솔에 출력했습니다','err'); console.log(diagLast||diagCollect()); }
+});
 $('#btnSettings').addEventListener('click',()=>{
   const qw=S.settings.qw||QW_DEF, aw=S.settings.aw||AW_DEF;
   $('#wQ').innerHTML=Object.keys(QW_LABELS).map(k=>wrow('q',k,QW_LABELS[k],qw[k])).join('');
