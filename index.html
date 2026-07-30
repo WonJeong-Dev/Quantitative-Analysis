@@ -1057,7 +1057,17 @@ function compute(id,simPrice){
   if(!st||!ch||!ch.c||ch.c.length<30)return null;
   const c=ch.c.slice(), h=ch.h, l=ch.l, v=ch.v, n=c.length;
   const man0=st.manual||{}, qt=S.quote[id];
-  let priceSrc='cache', priceTs=(ch.updatedAt||0)/1000, price=(ch.price!=null?ch.price:c[n-1]);
+  /* (v4.12) priceTs의 기준은 '그 가격이 체결된 시각'이어야 한다. v4.11까지는
+   * ch.updatedAt(우리가 캔들을 fetch한 벽시계 시각)을 썼는데, 아래 한 줄에서
+   * 그것을 qt.ts(실제 체결 시각)와 비교한다 — 종류가 다른 두 양의 비교다.
+   * 주기 갱신이 돌면 ch.updatedAt이 now로 점프하므로, 체결이 뜸한 프리마켓에서는
+   * 멀쩡한 시세가 기각되고 priceSrc가 'cache'로 남는다. 그 결과 배지가 '종가'로
+   * 바뀔 뿐 아니라 **표시 가격이 전일종가로 되돌아가** 등락률·RSI·%B·여력·등급이
+   * 함께 진동했다(실측: ASML 프리마켓 $1,612.50 ↔ 전일종가 $1,582.90).
+   * ch.mktTime은 그 캐시 가격의 regularMarketTime(ms)이라 qt.ts와 같은 종류다.
+   * mktTime이 0인 구버전 캐시는 종전대로 updatedAt으로 폴백한다. */
+  const cachedPriceTs=(ch.mktTime&&isFinite(ch.mktTime))?ch.mktTime/1000:(ch.updatedAt||0)/1000;
+  let priceSrc='cache', priceTs=cachedPriceTs, price=(ch.price!=null?ch.price:c[n-1]);
   if(qt&&qt.price!=null&&qt.ts>priceTs){ price=qt.price; priceTs=qt.ts; priceSrc=qt.src||'yahoo'; }
   if(man0.livePrice!=null&&+man0.livePrice>0&&man0.livePriceAt&&man0.livePriceAt/1000>priceTs){
     price=+man0.livePrice; priceTs=man0.livePriceAt/1000; priceSrc='manual'; }
