@@ -2629,17 +2629,23 @@ function newsSectionHTML(id,st){
  *  ② refreshSummaries의 대기시간·재시도 대상 판정
  * v4.10까지는 ①에만 있어서, 스킵된 종목에도 150ms를 쉬느라 57종목 무갱신 패스가
  * 8초 넘게 걸렸고 ②는 판정 자체가 없었다. */
-const fundMissing=id=>{ const c=S.cache[id];
+/* (v4.22) ETF는 재무제표가 없어 fund가 영원히 비어 있다. 주식과 같은 기준으로 보면
+ * 매 패스마다 전 ETF를 '미수신'으로 재조회하게 된다 — ETF는 etf 필드로 판단한다. */
+const fundMissing=id=>{ const c=S.cache[id], st=S.stocks[id];
+  if(st&&assetType(st)==='etf') return !(c&&c.etf&&(c.etf.exp!=null||c.etf.assets!=null||c.etf.cat));
   return !(c&&c.fund&&(c.fund.roe!=null||c.fund.epsFwd!=null||c.fund.margin!=null)); };
 const summaryStale=(id,force)=>{ const c=S.cache[id];
   return !!(force || fundMissing(id)
     || !(c&&c.ana&&c.ana.ts&&(Date.now()-c.ana.ts)<3*24*3600e3)); };
-function summaryURL(sym){
+/* (v4.22) ETF는 조회 모듈이 다르다. 주식용 모듈(financialData·earningsTrend 등)을
+ * ETF에 요청하면 야후가 404를 낸다 — 그 모듈이 존재하지 않기 때문이다.
+ * t=etf를 붙이면 워커(v6.2+)가 fundProfile·summaryDetail로 조회한다. */
+function summaryURL(sym,isEtf){
   const p=S.settings.proxy;
   if(!p||!p.includes('{url}'))return null;
   const base=p.split('?')[0].replace(/\/+$/,'');
   if(!/^https:\/\//.test(base))return null;
-  return base+'/summary?sym='+encodeURIComponent(sym);
+  return base+'/summary?sym='+encodeURIComponent(sym)+(isEtf?'&t=etf':'');
 }
 async function fetchSummary(id,force){
   const st=S.stocks[id]; if(!st)return;
@@ -2647,13 +2653,27 @@ async function fetchSummary(id,force){
   // 캐시 스킵 조건: ana가 3일 이내로 신선 AND fund(v5 재무·EPS)가 이미 존재할 때만.
   //  → v3/v4에서 캐시된 종목은 ana만 있고 fund가 없으므로, 신선해도 재조회해 재무를 백필한다.
   if(!summaryStale(id,force)) return;   // (v4.11) 스킵 조건 단일화 — 위 상수 참조
-  const u=summaryURL(st.symbol);
+  const isEtf=(assetType(st)==='etf');
+  const u=summaryURL(st.symbol,isEtf);
   if(!u){ if(force)toast('애널리스트 자동 조회는 커스텀 워커 프록시 설정 후 가능합니다','err'); return; }
   try{
     const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),9000);
     const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(to);
     if(!res.ok){ if(force)toast('애널리스트 자동 조회 실패(HTTP '+res.status+') — 워커가 /summary 지원 최신 버전인지 확인하세요','err'); return; }
     const j=await res.json();
+    if(isEtf){
+      /* (v4.22) ETF 축약 응답 — 보수율·순자산·배당수익률·카테고리·운용사.
+       * 판정에는 쓰지 않는다(v4.21에서 ETF는 가격·추세만으로 판정). 표시·비교 전용이다. */
+      const gn=x=>(x!=null&&isFinite(x))?+x:null;
+      const e={exp:gn(j.exp),assets:gn(j.assets),yld:gn(j.yld),nav:gn(j.nav),
+        cat:j.cat||null,family:j.family||null,beta3y:gn(j.beta3y),ts:Date.now()};
+      if(e.exp!=null||e.assets!=null||e.yld!=null||e.cat){
+        if(!S.cache[id])S.cache[id]={};
+        S.cache[id].etf=e; S.cache[id].ana={n:null,tgt:null,ts:Date.now()};   // ana.ts로 3일 캐시 성립
+        saveCache(id,true); S.calc[id]=compute(id); renderSoon();
+      }
+      return;
+    }
     let ana=null, fund=null;
     const gn=x=>(x!=null&&isFinite(x))?x:null;
     if(j&&(j.n!==undefined||j.tgt!==undefined||j.lg!==undefined)){ // 워커 v3/v4 축약형
