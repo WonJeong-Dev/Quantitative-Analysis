@@ -243,6 +243,18 @@
     padding:9px 11px;outline:none}
   .modal input:focus,.modal select:focus{border-color:var(--accent)}
   .modal .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+  /* (v4.24) 거래 기록 */
+  .lgtabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .lgt{border:1px solid var(--line);background:#fff;border-radius:8px 8px 0 0;padding:5px 12px;font-size:12px;cursor:pointer}
+  .lgt.on{background:var(--violet);color:#fff;border-color:var(--violet);font-weight:700}
+  .lgtbl{width:100%;border-collapse:collapse;font-size:11.5px}
+  .lgtbl th{text-align:left;color:var(--muted);font-weight:600;padding:5px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .lgtbl td{padding:5px 6px;border-bottom:1px solid #f0f2f6;white-space:nowrap}
+  .lgtbl tr:hover td{background:#fafbfe}
+  .lgcard{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin:0 8px 8px 0;min-width:158px;vertical-align:top}
+  .lgcard b{display:block;font-size:12px;margin-bottom:3px}
+  .lgcard small{color:var(--muted)}
+  .lgpos{color:var(--up)} .lgneg{color:var(--down)}
   /* (v4.20) 탭 안의 종목수·등급 요약 배지 */
   .tab .tcnt{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;opacity:.72;white-space:nowrap}
   .tab .tcnt em{font-style:normal;color:var(--down);margin-left:4px}
@@ -276,6 +288,7 @@
     <div class="head-right">
       <span class="statuschip" id="chipConn"><span class="dot" id="dotConn"></span><span id="txtConn">연결 중…</span></span>
       <span class="statuschip" id="chipData"><span class="dot" id="dotData"></span><span id="txtData">데이터 대기</span></span>
+      <button class="btn icon" id="btnLedger" title="거래 기록 — 매수·매도·평균단가·손익">📒</button>
       <button class="btn icon" id="btnDiag" title="자기점검 — 데이터 상태 한눈에">🩺</button>
       <button class="btn icon" id="btnSettings" title="설정">⚙</button>
     </div>
@@ -328,6 +341,23 @@
     데이터: Yahoo Finance(시세·재무·실적일·애널) · Google News(헤드라인) · 캐시: Firebase Firestore<br>
     본 도구는 개인 참고용 계산기이며, 투자 자문 및 매매 권유가 아닙니다. 어떤 지표 조합도 수익을 보장하지 않으며 투자 판단과 책임은 본인에게 있습니다.
   </footer>
+</div>
+
+<!-- (v4.24) 거래 기록 -->
+<div class="mask" id="maskLedger">
+  <div class="modal" style="max-width:1080px">
+    <h2>📒 거래 기록</h2>
+    <div class="lgtabs" id="lgTabs">
+      <button class="lgt on" data-lg="sum">요약</button>
+      <button class="lgt" data-lg="hold">보유</button>
+      <button class="lgt" data-lg="list">거래내역</button>
+      <button class="lgt" data-lg="add">추가</button>
+      <button class="lgt" data-lg="fx">환전</button>
+      <button class="lgt" data-lg="imp">가져오기</button>
+    </div>
+    <div id="lgBody" style="font-size:12px;max-height:62vh;overflow:auto;margin-top:10px"></div>
+    <div class="foot"><small style="margin-right:auto;color:var(--muted)">이동평균법 · 계산 보조이며 세무 조언이 아닙니다</small><button class="btn" data-close>닫기</button></div>
+  </div>
 </div>
 
 <!-- (v4.17) 자기점검 패널 -->
@@ -496,6 +526,19 @@ const AW_DEF={up:46,rsi:16,bb:14,vp:14,prox:10};
 const FVW_DEF={tech:40,target:30,mine:30};
 const SET_DEF={refreshMin:10,quoteSec:30,etfQuoteMin:30};   // (v4.20) ETF는 분 단위
 
+/* (v4.24) 계좌 유형.
+ * ISA·연금저축·IRP는 **해외 주식 직접투자가 불가**하다(2026년 기준). 국내 상장
+ * 해외 ETF로만 간접 투자할 수 있다. 거래 입력 시 이 규칙으로 경고를 띄운다.
+ * 세율·공제한도는 넣지 않는다 — 개정 중이고 개인 상황에 따라 다르다. */
+const ACCOUNTS={
+  general:{label:'일반 위탁', us:true,  krStock:true,  etf:true,  note:'해외 직접투자 가능 · 해외주식 양도세 대상'},
+  isa:    {label:'ISA',      us:false, krStock:true,  etf:'kr', note:'국내주식·국내상장 ETF만 · 손익통산 · 의무보유 3년'},
+  pension:{label:'연금저축',   us:false, krStock:false, etf:'kr', note:'국내상장 ETF·펀드만 · 납입 시 세액공제 · 55세까지 묶임'},
+  irp:    {label:'IRP',      us:false, krStock:false, etf:'kr', note:'국내상장 ETF·펀드만 · 위험자산 70% 한도'},
+  cma:    {label:'CMA',      us:false, krStock:false, etf:false,note:'예치·파킹 · 이자소득'}
+};
+const ASSET_LABEL={KR_stock:'국내주식',KR_etf:'국내ETF',US_stock:'미국주식',US_etf:'미국ETF'};
+
 /* ---------------- 상태 ---------------- */
 const S = {
   uid:null, connected:false,
@@ -513,7 +556,9 @@ const S = {
     refreshMin:SET_DEF.refreshMin, quoteSec:SET_DEF.quoteSec,
     etfQuoteMin:SET_DEF.etfQuoteMin, proxy:''
   },
-  ui:{sort:'grade', search:'', open:{}, sim:{}, prog:null, seeded:false}
+  ui:{sort:'grade', search:'', open:{}, sim:{}, prog:null, seeded:false},
+  trades:[],            // (v4.24) 거래 기록 — qa_trades
+  fxlog:[]              // (v4.24) 환전 이력 — qa_fx. 환차손익은 환전 시점에만 발생한다
 };
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 /* (v4.20) 탭 = 시장 × 자산유형 4분류. S.tab은 'KR_stock'|'KR_etf'|'US_stock'|'US_etf'.
@@ -1442,6 +1487,59 @@ function weighAnchored(parts,w,labels){
   return {score:clamp((acc+SCORE_ANCHOR*missW)/tot,0,100),
           missW:Math.round(missW/tot*100), miss};
 }
+/* (v4.24) 이동평균법 포지션 계산.
+ * 매수: 수량·원가 누적. 매도: 그 시점 평균단가로 원가를 덜어내고 차액을 실현손익으로.
+ * 매도해도 평균단가는 변하지 않는다 — 국내 증권사 화면과 같은 방식이다.
+ * 키는 (시장, 자산유형, 종목명, 계좌) 넷이다. 같은 종목이라도 계좌가 다르면 별개 포지션이며,
+ * 계좌 간 이동은 불가하므로 합산해서는 안 된다. */
+function positions(){
+  const byKey={};
+  const ts=(S.trades||[]).slice().sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:
+    ((a.side==='buy'?0:1)-(b.side==='buy'?0:1))));
+  for(const t of ts){
+    const key=[t.market,t.type||'stock',t.name,t.account||'general'].join('|');
+    const p=byKey[key]||(byKey[key]={market:t.market,type:t.type||'stock',name:t.name,
+      code:t.code||'',account:t.account||'general',qty:0,cost:0,realized:0,buys:0,sells:0,
+      first:t.date,last:t.date,snap:null});
+    p.last=t.date; if(t.code&&!p.code)p.code=t.code;
+    const q=+t.qty||0, pr=+t.price||0;
+    if(t.side==='buy'){ p.qty+=q; p.cost+=q*pr; p.buys++; if(t.snap&&!p.snap)p.snap=t.snap; }
+    else{
+      const avg=p.qty>0?p.cost/p.qty:0;
+      p.realized+=q*(pr-avg); p.cost-=q*avg; p.qty-=q; p.sells++;
+      if(p.qty<1e-9){ p.qty=0; p.cost=0; }
+    }
+  }
+  return Object.values(byKey).map(p=>{
+    p.avg=p.qty>0?p.cost/p.qty:null;
+    // 대시보드에 같은 종목이 있으면 현재가를 붙여 평가손익을 낸다
+    const id=findStockId(p);
+    const k=id?S.calc[id]:null;
+    p.stockId=id; p.price=(k&&k.price!=null)?k.price:null;
+    p.tier=(k&&k.tier)||null;
+    p.unreal=(p.qty>0&&p.price!=null&&p.avg!=null)?p.qty*(p.price-p.avg):null;
+    p.rate=(p.qty>0&&p.price!=null&&p.avg)?((p.price/p.avg-1)*100):null;
+    return p;
+  });
+}
+/* 거래 기록의 종목을 대시보드 종목과 잇는다. 코드 우선, 없으면 이름으로.
+ * 못 찾아도 기록은 그대로 유지된다 — 청산 완료 종목은 현재가가 필요 없다. */
+function findStockId(p){
+  if(p.code){ const a=p.market+'_'+p.code; if(S.stocks[a])return a; }
+  for(const id in S.stocks){ const s=S.stocks[id];
+    if(s.market!==p.market)continue;
+    if(s.name===p.name||s.symbol===p.code||s.code===p.code)return id; }
+  return null;
+}
+/* (v4.24) 달러 원가 — 환전 이동평균.
+ * 달러를 보유한 채 주식을 사고파는 것은 환차익과 무관하다. 원화 기준 손익은
+ * '그 달러를 만들 때 쓴 원화'로만 정해지므로, 환전 이력의 이동평균 환율을 쓴다. */
+function fxAvgRate(){
+  let usd=0,krw=0;
+  for(const f of (S.fxlog||[])){ const u=+f.usd||0, w=+f.krw||0;
+    if(u>0&&w>0){ usd+=u; krw+=w; } }
+  return usd>0?krw/usd:null;
+}
 function recalcAll(){
   for(const id in S.stocks)S.calc[id]=compute(id);
 }
@@ -1513,8 +1611,20 @@ function subscribe(){
 }
 async function postInit(){
   await loadCaches(Object.keys(S.stocks));
+  watchTrades();   // (v4.24) 거래·환전 이력 구독
   recalcAll(); render();
   refreshAll(); startInterval(); startQuoteLoop(); fetchIndices(); setTimeout(refreshQuotes,2500); setTimeout(refreshSummaries,7000);
+}
+/* (v4.24) 거래·환전 이력 로드. 실시간 반영이 필요하므로 onSnapshot을 쓴다. */
+function watchTrades(){
+  db.collection('qa_trades').onSnapshot(s=>{
+    S.trades=[]; s.forEach(d=>S.trades.push({id:d.id,...d.data()}));
+    if($('#maskLedger')&&$('#maskLedger').classList.contains('on'))renderLedger();
+  },e=>console.warn('trades',e&&e.code));
+  db.collection('qa_fx').onSnapshot(s=>{
+    S.fxlog=[]; s.forEach(d=>S.fxlog.push({id:d.id,...d.data()}));
+    if($('#maskLedger')&&$('#maskLedger').classList.contains('on'))renderLedger();
+  },e=>console.warn('fx',e&&e.code));
 }
 function loadCaches(ids){
   return Promise.all(ids.map(id=>db.doc('qa_cache/'+id).get()
@@ -2394,9 +2504,16 @@ function classifyDetail(k){
   /* (v4.21) ETF는 종합점수·상승여력 조건을 뺀다. 임계값(72/62/54 · 확증 3/2/1)과
    * 캡 적용 규칙은 주식과 같고, 라벨만 다르다 — 근거가 다른 판정에 같은 이름을 쓰면
    * '추천 상'이 무엇을 뜻하는지 흐려진다. */
+  /* (v4.23) ETF 확증 요구는 **항목 수에 비례**해야 한다.
+   * v4.21은 확증을 6개→3개로 줄이면서 요구 개수(3/2/1)를 그대로 둬, 같은 등급인데
+   * 요구 강도가 2배가 됐다(저점권: 주식 6개 중 3개 = 50% vs ETF 3개 중 3개 = 100%).
+   * ceil(주식요구 / 주식항목수 × ETF항목수) = 2 / 1 / 1.
+   * 관심권·중립은 확증 요구가 같아지지만 가격매력 임계(62 vs 54)로 갈린다.
+   * 실측(2026-07-31 · ETF 10종목)에서 판정 변화 0건 — 화면을 바꾸는 조정이 아니라
+   * 비율 정합 교정이다. 확증 0인 종목은 요구를 1로 낮춰도 여전히 대기다. */
   const TIER_SPEC=isETF?[
-    ['저점권',[['매력',A,72,''],['확증',n,3,'']],true],
-    ['관심권',[['매력',A,62,''],['확증',n,2,'']],true],
+    ['저점권',[['매력',A,72,''],['확증',n,2,'']],true],
+    ['관심권',[['매력',A,62,''],['확증',n,1,'']],true],
     ['중립',  [['매력',A,54,''],['확증',n,1,'']],false]
   ]:[
     ['상',[['매력',A,72,''],['종합',Q,60,''],['여력',U,30,'%'],['확증',n,3,'']],true],
@@ -3000,6 +3117,184 @@ function diagRender(){
   $('#diagBody').innerHTML=g;
   return d;
 }
+/* (v4.24) 거래 기록 화면. 판정 로직과 완전히 분리돼 있으며 positions()만 읽는다. */
+let lgTab='sum';
+const lgFmt=(v,mk)=>v==null?'—':(mk==='US'?'$':'₩')+(Math.abs(v)>=1000?Math.round(v).toLocaleString():(+v).toFixed(2));
+const lgSign=v=>v==null?'':(v>=0?'lgpos':'lgneg');
+function renderLedger(){
+  const P=positions(), body=$('#lgBody');
+  const held=P.filter(p=>p.qty>0), done=P.filter(p=>p.qty<=0);
+  let g='';
+  if(lgTab==='sum'){
+    for(const acc of Object.keys(ACCOUNTS)){
+      const ps=P.filter(p=>p.account===acc); if(!ps.length)continue;
+      const A=ACCOUNTS[acc];
+      g+='<div style="margin:6px 0 2px"><b style="font-size:13px">'+esc(A.label)+'</b> <small style="color:var(--muted)">'+esc(A.note)+'</small></div>';
+      for(const mk of ['KR','US'])for(const ty of ['stock','etf']){
+        const q=ps.filter(p=>p.market===mk&&p.type===ty); if(!q.length)continue;
+        const real=q.reduce((s,p)=>s+p.realized,0), un=q.reduce((s,p)=>s+(p.unreal||0),0);
+        const cost=q.filter(p=>p.qty>0).reduce((s,p)=>s+p.cost,0);
+        g+='<div class="lgcard"><b>'+ASSET_LABEL[mk+'_'+ty]+'</b>'
+          +'<small>보유 '+q.filter(p=>p.qty>0).length+'종목 · 청산 '+q.filter(p=>p.qty<=0).length+'</small><br>'
+          +'평가원가 '+lgFmt(cost,mk)+'<br>'
+          +'실현 <span class="'+lgSign(real)+'">'+lgFmt(real,mk)+'</span><br>'
+          +'미실현 <span class="'+lgSign(un)+'">'+(un?lgFmt(un,mk):'—')+'</span></div>';
+      }
+    }
+    const fr=fxAvgRate();
+    g+='<div style="margin-top:12px;padding:9px;background:#f7f9fc;border-radius:8px;line-height:1.7">'
+      +'<b>환율</b> — 달러를 보유한 채 재투자하는 동안에는 환차손익이 발생하지 않습니다. 원화 손익은 <b>환전 시점</b>에만 정해집니다.<br>'
+      +'환전 이동평균: <b>'+(fr!=null?Math.round(fr).toLocaleString()+' 원/$':'환전 이력 없음')+'</b>'
+      +(fr!=null?'':' — [환전] 탭에서 등록하세요')+'</div>';
+  }
+  else if(lgTab==='hold'||lgTab==='list'){
+    if(lgTab==='hold'){
+      g+='<table class="lgtbl"><tr><th>분류</th><th>계좌</th><th>종목</th><th>수량</th><th>평균단가</th><th>현재가</th><th>평가손익</th><th>수익률</th><th>실현손익</th><th>등급</th></tr>';
+      for(const p of held.sort((a,b)=>(b.rate??-999)-(a.rate??-999)))
+        g+='<tr><td>'+ASSET_LABEL[p.market+'_'+p.type]+'</td><td>'+ACCOUNTS[p.account].label+'</td>'
+          +'<td><b>'+esc(p.name)+'</b>'+(p.code?' <small style="color:var(--muted)">'+esc(p.code)+'</small>':'')+'</td>'
+          +'<td>'+p.qty.toLocaleString()+'</td><td>'+lgFmt(p.avg,p.market)+'</td>'
+          +'<td>'+lgFmt(p.price,p.market)+'</td>'
+          +'<td class="'+lgSign(p.unreal)+'">'+lgFmt(p.unreal,p.market)+'</td>'
+          +'<td class="'+lgSign(p.rate)+'">'+(p.rate!=null?(p.rate>=0?'+':'')+p.rate.toFixed(1)+'%':'—')+'</td>'
+          +'<td class="'+lgSign(p.realized)+'">'+(p.realized?lgFmt(p.realized,p.market):'—')+'</td>'
+          +'<td>'+(p.tier||'—')+'</td></tr>';
+      g+='</table>';
+      if(done.length)g+='<div style="margin-top:10px;color:var(--muted)">청산 완료 '+done.length+'종목 — [거래내역] 탭에서 볼 수 있습니다</div>';
+    }else{
+      const ts=(S.trades||[]).slice().sort((a,b)=>a.date<b.date?1:-1);
+      g+='<div style="margin-bottom:6px;color:var(--muted)">총 '+ts.length+'건</div>';
+      g+='<table class="lgtbl"><tr><th>일자</th><th>구분</th><th>분류</th><th>계좌</th><th>종목</th><th>단가</th><th>수량</th><th>금액</th><th></th></tr>';
+      for(const t of ts)
+        g+='<tr><td>'+esc(t.date)+'</td>'
+          +'<td class="'+(t.side==='buy'?'lgneg':'lgpos')+'">'+(t.side==='buy'?'매수':'매도')+'</td>'
+          +'<td>'+ASSET_LABEL[t.market+'_'+(t.type||'stock')]+'</td>'
+          +'<td>'+(ACCOUNTS[t.account||'general']||{}).label+'</td>'
+          +'<td>'+esc(t.name)+'</td><td>'+lgFmt(+t.price,t.market)+'</td><td>'+(+t.qty).toLocaleString()+'</td>'
+          +'<td>'+lgFmt(+t.price*+t.qty,t.market)+'</td>'
+          +'<td><button class="btn" style="padding:1px 7px;font-size:11px" data-del="'+esc(t.id)+'">삭제</button></td></tr>';
+      g+='</table>';
+    }
+  }
+  else if(lgTab==='add'){
+    g+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:8px">'
+      +'<div><label>일자</label><input type="date" id="tdDate"></div>'
+      +'<div><label>구분</label><select id="tdSide"><option value="buy">매수</option><option value="sell">매도</option></select></div>'
+      +'<div><label>시장</label><select id="tdMk"><option value="KR">국내</option><option value="US">미국</option></select></div>'
+      +'<div><label>자산</label><select id="tdTy"><option value="stock">주식</option><option value="etf">ETF</option></select></div>'
+      +'<div><label>계좌</label><select id="tdAcc">'+Object.keys(ACCOUNTS).map(a=>'<option value="'+a+'">'+ACCOUNTS[a].label+'</option>').join('')+'</select></div>'
+      +'<div><label>종목명</label><input type="text" id="tdName" placeholder="예: 엔비디아"></div>'
+      +'<div><label>코드·티커</label><input type="text" id="tdCode" placeholder="NVDA / 005930"></div>'
+      +'<div><label>단가</label><input type="text" inputmode="decimal" id="tdPrice"></div>'
+      +'<div><label>수량</label><input type="text" inputmode="decimal" id="tdQty"></div>'
+      +'</div>'
+      +'<div id="tdWarn" style="margin-top:8px"></div>'
+      +'<button class="btn primary" id="tdSave" style="margin-top:10px">기록 추가</button>';
+  }
+  else if(lgTab==='fx'){
+    g+='<div style="padding:9px;background:#f7f9fc;border-radius:8px;margin-bottom:10px;line-height:1.7">'
+      +'원화 → 달러 환전만 기록합니다. <b>달러를 보유한 채 주식을 사고파는 것은 환차익과 무관</b>하므로 거래마다 환율을 붙이지 않습니다.</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:8px">'
+      +'<div><label>일자</label><input type="date" id="fxDate"></div>'
+      +'<div><label>환전 원화</label><input type="text" inputmode="decimal" id="fxKrw"></div>'
+      +'<div><label>받은 달러</label><input type="text" inputmode="decimal" id="fxUsd"></div>'
+      +'</div><button class="btn primary" id="fxSave" style="margin-top:10px">환전 기록 추가</button>';
+    const fl=(S.fxlog||[]).slice().sort((a,b)=>a.date<b.date?1:-1);
+    if(fl.length){ g+='<table class="lgtbl" style="margin-top:12px"><tr><th>일자</th><th>원화</th><th>달러</th><th>환율</th><th></th></tr>';
+      for(const f of fl)g+='<tr><td>'+esc(f.date)+'</td><td>₩'+(+f.krw).toLocaleString()+'</td>'
+        +'<td>$'+(+f.usd).toLocaleString()+'</td><td>'+Math.round(f.krw/f.usd).toLocaleString()+'</td>'
+        +'<td><button class="btn" style="padding:1px 7px;font-size:11px" data-delfx="'+esc(f.id)+'">삭제</button></td></tr>';
+      g+='</table>'; }
+  }
+  else if(lgTab==='imp'){
+    g+='<div style="padding:9px;background:#f7f9fc;border-radius:8px;margin-bottom:10px;line-height:1.7">'
+      +'거래 JSON 배열을 붙여넣으세요. 필드: <code>시장 · 유형 · 종목명 · 코드 · 구분 · 일자 · 단가 · 수량 · 계좌</code><br>'
+      +'<b>같은 일자·종목·구분·수량</b>이 이미 있으면 건너뜁니다 — 여러 번 눌러도 중복되지 않습니다.</div>'
+      +'<textarea id="impBox" style="width:100%;height:180px;font-family:ui-monospace,monospace;font-size:11px" '
+      +'placeholder=\'[{"시장":"US","유형":"stock","종목명":"엔비디아","코드":"NVDA","구분":"매수","일자":"2026-06-15","단가":208.5,"수량":21,"계좌":"general"}]\'></textarea>'
+      +'<button class="btn primary" id="impGo" style="margin-top:8px">가져오기</button>'
+      +'<div id="impMsg" style="margin-top:8px"></div>';
+  }
+  body.innerHTML=g;
+  if(lgTab==='add'){ $('#tdDate').value=new Date().toISOString().slice(0,10);
+    ['tdMk','tdTy','tdAcc'].forEach(i=>$('#'+i).addEventListener('change',lgCheckAcc)); lgCheckAcc();
+    $('#tdSave').addEventListener('click',lgAddTrade); }
+  if(lgTab==='fx'){ $('#fxDate').value=new Date().toISOString().slice(0,10);
+    $('#fxSave').addEventListener('click',lgAddFx); }
+  if(lgTab==='imp')$('#impGo').addEventListener('click',lgImport);
+}
+/* 계좌별 투자 가능 여부 경고. 규칙은 ACCOUNTS 한 곳에만 있다. */
+function lgCheckAcc(){
+  const mk=$('#tdMk').value, ty=$('#tdTy').value, acc=$('#tdAcc').value, A=ACCOUNTS[acc];
+  let bad=null;
+  if(mk==='US'&&ty==='stock'&&!A.us)bad='미국 개별주는 '+A.label+'에서 매수할 수 없습니다 — 일반 위탁계좌만 가능합니다';
+  else if(mk==='US'&&ty==='etf'&&A.etf!==true)bad='해외 상장 ETF는 '+A.label+'에서 매수할 수 없습니다 — 국내 상장 ETF만 가능합니다';
+  else if(mk==='KR'&&ty==='stock'&&!A.krStock)bad='국내 개별주는 '+A.label+'에서 매수할 수 없습니다 — ETF·펀드만 가능합니다';
+  else if(ty==='etf'&&A.etf===false)bad=A.label+'은 투자계좌가 아닙니다';
+  $('#tdWarn').innerHTML=bad?'<div style="color:var(--down)">⚠ '+esc(bad)+'</div>'
+    :'<div style="color:var(--muted)">'+esc(A.note)+'</div>';
+}
+/* 매수 시점 스냅샷 — §19.3의 검증 데이터가 실거래로 쌓이기 시작한다. */
+function lgSnap(market,code,name){
+  const id=findStockId({market,code,name}); if(!id)return null;
+  const k=S.calc[id]; if(!k)return null;
+  return {tier:k.tier||null,fvTarget:k.fvTarget!=null?+k.fvTarget.toFixed(2):null,
+    upside:k.upside!=null?+k.upside.toFixed(1):null,
+    A:k.attract!=null?Math.round(k.attract):null,Q:k.quality!=null?Math.round(k.quality):null,
+    n:(k.grd||{}).n,cap:!!(k.grd||{}).downtrend,at:Date.now()};
+}
+async function lgAddTrade(){
+  const v={date:$('#tdDate').value,side:$('#tdSide').value,market:$('#tdMk').value,
+    type:$('#tdTy').value,account:$('#tdAcc').value,name:$('#tdName').value.trim(),
+    code:$('#tdCode').value.trim(),price:+$('#tdPrice').value,qty:+$('#tdQty').value};
+  if(!v.date||!v.name||!(v.price>0)||!(v.qty>0)){ toast('일자·종목명·단가·수량을 확인하세요','err'); return; }
+  if(v.side==='buy')v.snap=lgSnap(v.market,v.code,v.name);
+  v.createdAt=Date.now();
+  try{ await db.collection('qa_trades').add(v); toast('기록을 추가했습니다');
+    $('#tdName').value='';$('#tdCode').value='';$('#tdPrice').value='';$('#tdQty').value='';
+  }catch(e){ toast('추가 실패: '+e.message,'err'); }
+}
+async function lgAddFx(){
+  const v={date:$('#fxDate').value,krw:+$('#fxKrw').value,usd:+$('#fxUsd').value,createdAt:Date.now()};
+  if(!v.date||!(v.krw>0)||!(v.usd>0)){ toast('일자·원화·달러를 확인하세요','err'); return; }
+  try{ await db.collection('qa_fx').add(v); toast('환전 기록을 추가했습니다 ('+Math.round(v.krw/v.usd).toLocaleString()+' 원/$)');
+    $('#fxKrw').value='';$('#fxUsd').value='';
+  }catch(e){ toast('추가 실패: '+e.message,'err'); }
+}
+async function lgImport(){
+  let arr; try{ arr=JSON.parse($('#impBox').value); }catch(e){ $('#impMsg').innerHTML='<span style="color:var(--down)">JSON 파싱 실패: '+esc(e.message)+'</span>'; return; }
+  if(!Array.isArray(arr)){ $('#impMsg').innerHTML='<span style="color:var(--down)">배열이어야 합니다</span>'; return; }
+  const key=t=>[t.date,t.name,t.side,t.qty,t.price].join('|');
+  const have=new Set((S.trades||[]).map(key));
+  const add=[],skip=[];
+  for(const r of arr){
+    const t={date:String(r.일자||r.date||'').slice(0,10),
+      side:(r.구분||r.side)==='매도'||(r.구분||r.side)==='sell'?'sell':'buy',
+      market:(r.시장||r.market)==='KR'?'KR':'US', type:(r.유형||r.type)==='etf'?'etf':'stock',
+      account:r.계좌||r.account||'general', name:String(r.종목명||r.name||'').trim(),
+      code:String(r.코드||r.code||'').trim(), price:+(r.단가||r.price), qty:+(r.수량||r.qty)};
+    if(!t.date||!t.name||!(t.price>0)||!(t.qty>0)){ skip.push(t.name+' (필드 누락)'); continue; }
+    if(have.has(key(t))){ skip.push(t.name+' '+t.date+' (중복)'); continue; }
+    have.add(key(t)); t.createdAt=Date.now(); add.push(t);
+  }
+  if(!add.length){ $('#impMsg').innerHTML='추가할 거래가 없습니다 (건너뜀 '+skip.length+'건)'; return; }
+  if(!confirm(add.length+'건을 추가합니다. 계속할까요?'))return;
+  try{ /* 배치는 500건 한도라 나눠 커밋한다 */
+    for(let i=0;i<add.length;i+=400){ const b=db.batch();
+      add.slice(i,i+400).forEach(t=>b.set(db.collection('qa_trades').doc(),t)); await b.commit(); }
+    $('#impMsg').innerHTML='<span style="color:var(--up)">'+add.length+'건 추가 · 건너뜀 '+skip.length+'건</span>'
+      +(skip.length?'<div style="color:var(--muted);margin-top:4px">'+esc(skip.slice(0,10).join(' / '))+'</div>':'');
+  }catch(e){ $('#impMsg').innerHTML='<span style="color:var(--down)">실패: '+esc(e.message)+'</span>'; }
+}
+$('#btnLedger').addEventListener('click',()=>{ renderLedger(); $('#maskLedger').classList.add('on'); });
+$$('#lgTabs .lgt').forEach(b=>b.addEventListener('click',()=>{
+  lgTab=b.dataset.lg; $$('#lgTabs .lgt').forEach(x=>x.classList.toggle('on',x===b)); renderLedger();
+}));
+$('#lgBody').addEventListener('click',async e=>{
+  const d=e.target.closest('[data-del]'), f=e.target.closest('[data-delfx]');
+  if(d&&confirm('이 거래를 삭제할까요?')){ try{ await db.doc('qa_trades/'+d.dataset.del).delete(); toast('삭제했습니다'); }catch(x){ toast('삭제 실패','err'); } }
+  if(f&&confirm('이 환전 기록을 삭제할까요?')){ try{ await db.doc('qa_fx/'+f.dataset.delfx).delete(); toast('삭제했습니다'); }catch(x){ toast('삭제 실패','err'); } }
+});
 let diagLast=null;
 $('#btnDiag').addEventListener('click',()=>{ diagLast=diagRender(); $('#maskDiag').classList.add('on'); });
 $('#btnDiagCopy').addEventListener('click',()=>{
