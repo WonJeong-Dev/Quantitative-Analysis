@@ -365,7 +365,7 @@
       <input type="number" id="setRefresh" min="1" max="120" step="1"></div>
     <div class="mrow"><label>커스텀 CORS 프록시 (선택, {url} 자리에 대상 URL 삽입)</label>
       <input type="text" id="setProxy" placeholder="예: https://my-worker.example.workers.dev/?u={url}"></div>
-    <div class="foot"><button class="btn" id="btnLogout" style="margin-right:auto">로그아웃</button><button class="btn" data-close>닫기</button><button class="btn primary" id="btnSetSave">저장</button></div>
+    <div class="foot"><button class="btn" id="btnLogout" style="margin-right:auto">로그아웃</button><button class="btn" id="btnSetReset" title="가중치와 갱신 주기를 처음 값으로 되돌립니다. 커스텀 프록시는 그대로 둡니다 — 지우면 시세·재무 조회가 끊깁니다. 저장을 눌러야 실제로 적용됩니다">기본값</button><button class="btn" data-close>닫기</button><button class="btn primary" id="btnSetSave">저장</button></div>
   </div>
 </div>
 
@@ -466,6 +466,15 @@ const SEED_KR = [
 ["035420","NAVER","소프트웨어",350000,450000]
 ];
 
+/* (v4.18) 설정 기본값 — **한 곳에서만** 정의한다.
+ * v4.17까지 아래 S.settings 초기화부와 QW_DEF/AW_DEF가 같은 숫자를 따로 갖고 있어서,
+ * 한쪽만 고치면 조용히 갈라졌다(v4.9에서 등급 임계를 TIER_SPEC으로 모은 것과 같은 이유).
+ * S.settings는 이 값을 **복사**해 쓰므로 사용자가 설정을 바꿔도 기본값은 오염되지 않는다. */
+const QW_DEF={fin:35,growth:28,ana:22,stab:15};
+const AW_DEF={up:46,rsi:16,bb:14,vp:14,prox:10};
+const FVW_DEF={tech:40,target:30,mine:30};
+const SET_DEF={refreshMin:10,quoteSec:30};
+
 /* ---------------- 상태 ---------------- */
 const S = {
   uid:null, connected:false,
@@ -477,10 +486,10 @@ const S = {
   quote:{},             // id -> 실시간 시세 {price,ts,session,src,base}
   settings:{
     weights:{rsi:20,bb:20,ma:20,vp:15,up:25}, // (구) 하위호환 보존
-    qw:{fin:35,growth:28,ana:22,stab:15}, // 종합점수(기업품질) — 추세 제외, 순수 재무·성장·애널·안정
-    aw:{up:46,rsi:16,bb:14,vp:14,prox:10},        // 가격매력도 가중치
-    fvw:{tech:40,target:30,mine:30},
-    refreshMin:10, quoteSec:30, proxy:''
+    qw:{...QW_DEF},   // 종합점수(기업품질) — 추세 제외, 순수 재무·성장·애널·안정
+    aw:{...AW_DEF},   // 가격매력도 가중치
+    fvw:{...FVW_DEF},
+    refreshMin:SET_DEF.refreshMin, quoteSec:SET_DEF.quoteSec, proxy:''
   },
   ui:{sort:'grade', search:'', open:{}, sim:{}, prog:null, seeded:false}
 };
@@ -1365,7 +1374,7 @@ function compute(id,simPrice){
     if(prev!==undefined&&prev!==k.tier){
       S.gradeLog=S.gradeLog||[];
       S.gradeLog.unshift({t:Date.now(),id,nm:(st.market==='KR'?st.name:st.symbol),
-        from:prev,to:k.tier,price:k.price,
+        from:prev||'범위밖',to:k.tier||'범위밖',price:k.price,   // (v4.19) 화면 표기와 일치
         A:k.attract!=null?Math.round(k.attract):null,
         Q:k.quality!=null?Math.round(k.quality):null,
         U:k.upside!=null?+k.upside.toFixed(1):null,
@@ -1379,8 +1388,6 @@ function compute(id,simPrice){
   k.sim=simPrice!=null;
   return k;
 }
-const QW_DEF={fin:35,growth:28,ana:22,stab:15};
-const AW_DEF={up:46,rsi:16,bb:14,vp:14,prox:10};
 /* (v4.15 · 안 B) 결측 성분 잔여 앵커.
  * v4.14까지 quality·attract는 살아남은 성분만으로 가중 기저를 재정규화했다.
  * 결측 성분이 나머지 성분의 평균으로 조용히 채워지는 것과 같아서, 성분 하나가
@@ -1740,11 +1747,19 @@ function renderCounts(){
 }
 function gaugeColor(s){ return s>=72?'#c2323f':(s>=62?'#e2702e':(s>=54?'var(--amber)':'#9aa6bd')); }
 function qColor(s){ if(s==null)return '#9aa6bd'; return s>=70?'#2a6fd6':(s>=55?'#3b82c4':(s>=42?'#6b8fb8':'#9aa6bd')); }
-function catBadge(t){
-  if(t==='상')return '<span class="badge b-t1">추천 상</span>';
-  if(t==='중')return '<span class="badge b-t2">추천 중</span>';
-  if(t==='하')return '<span class="badge b-t3">추천 하</span>';
-  return '<span class="badge b-none">범위 밖</span>';
+/* (v4.19) 경계 종목은 배지에 ⚖를 붙인다.
+ * 실사용 로그(2026-07-31): BE가 20초 간격으로 중↔하를 14회 왕복했다. 가격 범위는
+ * 205.05~205.61(0.27%)뿐이고 원인은 가격매력도 A가 중 임계 62에 정확히 걸린 것이다.
+ * v4.9의 경계 판정은 BE를 이미 잡고 있었지만 상세 패널을 펼쳐야만 보였다 —
+ * 등급이 흔들리는 종목은 목록에서 바로 알아야 한다.
+ * 히스테리시스로 진동을 없애지 않는 이유는 §9의 원칙 그대로다:
+ * 임계값을 신뢰하게 만드는 대신 불확실성을 보이게 한다. */
+function catBadge(t,near){
+  const m=near?'<span title="등급이 임계선 10% 이내에서 결정됐습니다 — 지표가 조금만 움직여도 바뀝니다"> ⚖</span>':'';
+  if(t==='상')return '<span class="badge b-t1">추천 상'+m+'</span>';
+  if(t==='중')return '<span class="badge b-t2">추천 중'+m+'</span>';
+  if(t==='하')return '<span class="badge b-t3">추천 하'+m+'</span>';
+  return '<span class="badge b-none">범위 밖'+m+'</span>';
 }
 function stripHTML(k){
   if(!k)return '<div class="strip"></div>';
@@ -1825,7 +1840,7 @@ function render(){
         +'</div>'
         +'<div class="fv g-fv num"><div class="v">'+(k.fv!=null?curSym(k.currency)+fmtP(k.fv,k.currency):'—')+'</div>'
         +'<div class="u '+chgCls(k.upside)+'">'+(k.upside!=null?'여력 '+fmtPct(k.upside):'')+'</div></div>'
-        +'<div class="gradecell g-gr"><div style="display:flex;flex-direction:column;gap:4px;align-items:center">'+catBadge(k.tier)
+        +'<div class="gradecell g-gr"><div style="display:flex;flex-direction:column;gap:4px;align-items:center">'+catBadge(k.tier,!!(k.grd&&k.grd.nearBoundary))
           +(warn.length?'<div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">'+warn.join('')+'</div>':'')+'</div></div>'
         +'<div class="rsi g-rs num" style="color:'+(k.rsi!=null?(k.rsi<30?'var(--up)':(k.rsi>70?'var(--down)':'inherit')):'inherit')+'">'+(k.rsi!=null?k.rsi.toFixed(1):'—')
         +'<small>'+(k.rsi==null?'':(k.rsi<30?'과매도':(k.rsi>70?'과매수':'중립')))+'</small></div>'
@@ -2396,7 +2411,7 @@ function tierBoxHTML(k){
   const mk=x=>'<span class="flag '+(x[1]?'b':'h')+'">'+(x[1]?'✓ ':'✕ ')+esc(x[0])+'</span>';
   const mkc=x=>'<span class="flag '+(x[1]?'b':'h')+'">'+(x[1]?'✓ ':'— ')+esc(x[0])+'</span>';
   return '<div class="dsec">매수 등급 <small>손실 최소화 우선 — 하드 게이트 전부 통과 + 저평가 확증 충족 시에만 추천</small></div>'
-    +'<div style="margin:2px 0 7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+catBadge(d.tier)
+    +'<div style="margin:2px 0 7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+catBadge(d.tier,!!d.nearBoundary)
     +'<span class="qa-chip qa-q" title="기업 자체 품질(가격 무관)">종합 '+(k.quality!=null?k.quality.toFixed(0):'—')+'</span>'
     +'<span class="qa-chip qa-a" title="현재 가격의 매력도">가격매력 '+(k.attract!=null?k.attract.toFixed(0):'—')+'</span>'
     +'<span class="qa-chip qa-u" title="기대적정가 대비 상승여력">여력 '+fmtPct(k.upside)+'</span>'
@@ -2802,7 +2817,12 @@ const AW_LABELS={up:'상승여력',rsi:'RSI 반등',bb:'볼린저',vp:'매물대
 const FV_LABELS={tech:'기술적 앵커',target:'애널리스트 목표가',mine:'내 적정가'};
 function wrow(group,key,label,val){
   return '<div class="wrow"><span>'+label+'</span>'
-    +'<input type="range" min="0" max="40" step="2" value="'+val+'" data-g="'+group+'" data-k="'+key+'">'
+    /* (v4.18) max는 40이 아니라 100이어야 한다. 가중치는 0~100%의 값이고,
+     * 상한이 기본값보다 낮으면 브라우저가 조용히 값을 잘라낸다.
+     * 실측 버그: AW_DEF.up=46인데 max=40이라 설정 창을 열고 [저장]만 눌러도
+     * 상승여력 가중치가 46→40으로 떨어지고 합계가 94가 됐다(실효 비중 46%→42.6%).
+     * 100은 임의 상한이 아니라 척도 그 자체다 — 어떤 기본값도 잘리지 않는다. */
+    +'<input type="range" min="0" max="100" step="2" value="'+val+'" data-g="'+group+'" data-k="'+key+'">'
     +'<b class="num" id="wv_'+group+'_'+key+'">'+val+'%</b></div>';
 }
 /* (v4.17) 자기점검 — 이번 세션에서 콘솔 스니펫으로 확인하던 항목을 화면에 상시화한다.
@@ -2812,7 +2832,10 @@ function diagCollect(){
   const rows=ids.map(id=>({id,nm:nm(id),mkt:S.stocks[id].market,k:S.calc[id]||{},ch:S.cache[id]||{}}));
   const graded=rows.filter(r=>r.k.tier&&r.k.tier!=='범위밖');
   const sc=rows.map(r=>r.k.ratioSc).filter(v=>v!=null).sort((a,b)=>a-b);
-  const nn=rows.map(r=>r.k.ratioN).filter(v=>v!=null).sort((a,b)=>a-b);
+  /* (v4.19) 이격 z를 실제로 계산한 종목만 센다. v4.17은 계산불가 종목(QNT 39봉·
+   * SPCX 33봉)의 ratioN=0까지 넣어 하한이 항상 0으로 나왔다 — §19.2가 보려는
+   * "RATIO_MIN_N=250에 얼마나 여유가 있는가"를 전혀 보여주지 못했다. */
+  const nn=rows.filter(r=>r.k.ratioNow!=null).map(r=>r.k.ratioN).filter(v=>v!=null).sort((a,b)=>a-b);
   const fundMiss=rows.filter(r=>fundMissing(r.id));
   return {
     빌드:'v4.17 (DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
@@ -2891,6 +2914,20 @@ $('#maskSet').addEventListener('input',e=>{
   if(e.target.matches('input[type=range]')){
     $('#wv_'+e.target.dataset.g+'_'+e.target.dataset.k).textContent=e.target.value+'%';
   }
+});
+/* (v4.18) 기본값 되돌리기.
+ * 폼 필드만 바꾸고 S.settings나 Firestore는 건드리지 않는다 — 저장을 눌러야 적용되고,
+ * 그냥 닫으면 취소된다. 슬라이더 리스너는 #maskSet에 위임돼 있어 innerHTML을 갈아도
+ * 다시 바인딩할 필요가 없다.
+ * ★ 커스텀 프록시(#setProxy)는 되돌리지 않는다. 점수 설정이 아니라 인프라이며,
+ *   비우면 야후·네이버 조회가 전부 CORS로 막혀 대시보드가 즉시 멈춘다. */
+$('#btnSetReset').addEventListener('click',()=>{
+  $('#wQ').innerHTML=Object.keys(QW_LABELS).map(k=>wrow('q',k,QW_LABELS[k],QW_DEF[k])).join('');
+  $('#wA').innerHTML=Object.keys(AW_LABELS).map(k=>wrow('a',k,AW_LABELS[k],AW_DEF[k])).join('');
+  $('#wFv').innerHTML=Object.keys(FV_LABELS).map(k=>wrow('f',k,FV_LABELS[k],FVW_DEF[k])).join('');
+  $('#setQuote').value=SET_DEF.quoteSec;
+  $('#setRefresh').value=SET_DEF.refreshMin;
+  toast('기본값으로 되돌렸습니다 — 저장을 눌러야 적용됩니다 (프록시는 유지)');
 });
 $('#btnSetSave').addEventListener('click',async()=>{
   const qw={},aw={},f={};
