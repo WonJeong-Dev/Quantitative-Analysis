@@ -757,10 +757,17 @@ function parseYMD(s){
   const t=Date.parse(String(s).trim().replace(/[./]/g,'-'));
   return isFinite(t)?t:null;
 }
-function targetFresh(man,ch,price){
+function targetFresh(man,ch,price,hi52,anaTgt){
   let ts=parseYMD(man&&man.targetDate), src='수동';
   if(ts==null&&ch&&ch.ana&&ch.ana.lg){ ts=ch.ana.lg*1000; src='자동'; }
-  if(ts==null)return{ts:null,src:null,age:null,f:1,label:'기준일 미확인'};
+  /* (v4.4 · D2) 기준일 불명은 '신뢰 근거 없음'이다. v4.3까지 f=1(무조건 100% 신뢰)이라,
+   * 야후가 upgradeDowngradeHistory를 주지 않는 시장(KRX 전 종목 lg=null)에서는 노후 감쇠와
+   * 괴리 감쇠가 모두 무력화됐다. 실측 국장 9/9가 f=1.00이었다.
+   * 등급 체계(≤45일 0.7 / ≤90일 0.4)의 중간값 0.5를 '불명' 기본값으로 둔다. */
+  if(ts==null){
+    const s0=staleTargetMul(price,hi52,anaTgt);
+    return{ts:null,src:null,age:null,f:0.5*s0.f,label:'기준일 미확인 — 보수 50% 반영'+s0.lbl};
+  }
   const age=Math.max(0,Math.floor((Date.now()-ts)/86400e3));
   let fAge,ageLbl;
   if(age<=AGE_FRESH){fAge=1;ageLbl='최신';}
@@ -779,10 +786,30 @@ function targetFresh(man,ch,price){
       else if(d>=DRIFT_WARN){fDr=0.5;drLbl=' · 기준일 대비 괴리 '+Math.round(d*100)+'%';}
     }
   }
-  const f=fAge*fDr;
+  const s1=staleTargetMul(price,hi52,anaTgt);
+  const f=fAge*fDr*s1.f;
   const dt=new Date(ts), mmdd=(dt.getMonth()+1)+'/'+dt.getDate();
-  const label='기준일 '+mmdd+' ('+src+') · '+age+'일 경과 · '+ageLbl+drLbl;
+  const label='기준일 '+mmdd+' ('+src+') · '+age+'일 경과 · '+ageLbl+drLbl+s1.lbl;
   return{ts,src,age,f,label};
+}
+/* (v4.4 · D5) 기준일 없이도 작동하는 '목표가 미갱신' 정합성 검사.
+ * 기존 괴리 검사는 기준일 종가가 있어야만 돈다. 기준일을 주지 않는 시장에서도 같은 위험
+ * (급락 후 컨센서스 미하향)을 잡으려면 날짜에 의존하지 않는 신호가 필요하다.
+ *   조건 A: 목표가 > 52주 고점 × 1.1  → 그 목표가는 고점권 이상에서 설정된 것
+ *   조건 B: 현재가 ≤ 52주 고점 × 0.75 → 그 후 25% 이상 급락
+ *  A∧B = "고점 낙관 목표가 + 미갱신" → 기존 괴리 15% 단계와 같은 강도(×0.5)로 감쇠.
+ * 52주 고점을 모를 때만 백스톱으로 목표가/현재가 3배 초과를 본다.
+ * 실측 19종목 중 3종목(삼성전자·SK하이닉스·마이크론)에서만 발동 — 좁지만 최악 케이스를 정확히 잡는다. */
+function staleTargetMul(price,hi52,anaTgt){
+  const ok=x=>(x!=null&&isFinite(x)&&x>0);
+  if(!ok(price)||!ok(anaTgt))return{f:1,lbl:''};
+  if(ok(hi52)){
+    if(anaTgt>hi52*1.1&&price<=hi52*0.75)
+      return{f:0.5,lbl:' · 52주 고점 초과 목표가 + 급락 미갱신 — 50% 축소'};
+    return{f:1,lbl:''};
+  }
+  if(anaTgt/price>3)return{f:0.5,lbl:' · 목표가가 현재가 3배 초과 — 50% 축소'};
+  return{f:1,lbl:''};
 }
 
 /* ============================================================================
@@ -828,7 +855,11 @@ function fairPSR(growth){
  * 반환 { now, target, basis } — now=현재실적기준, target=선행기준(성장반영) */
 function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality){
   const gp = (growth!=null&&isFinite(growth))?growth:null;
-  const epsPos = (epsTtm!=null&&epsTtm>0) || (epsFwd!=null&&epsFwd>0);
+  /* (v4.4) 선행EPS가 음수면 적자 전환이다. v4.3까지는 '후행·선행 중 하나라도 양수'면 PER
+   * 경로로 갔으므로, 과거 흑자로 미래 밸류를 매기는 오류가 났다.
+   * 실측: 아이온큐 epsTtm +0.39 / epsFwd −1.126 → PER 경로 진입(VM_META per:0이 우연히 막았을 뿐).
+   * 선행EPS를 알면 그것이 판정하고, 모를 때만 후행으로 폴백한다. */
+  const epsPos = (epsFwd!=null&&isFinite(epsFwd)) ? (epsFwd>0) : (epsTtm!=null&&epsTtm>0);
   if(epsPos){
     const per = fairPER(gp!=null?gp:8, quality);      // 목표가용: 성장 완전 반영
     if(per==null)return null;
@@ -859,7 +890,7 @@ function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality){
  *  - 애널 목표가가 있으면 그것이 '주 앵커'(전문가의 12개월 밸류에이션). 펀더멘털은 교차검증·폴백.
  *  - 목표가가 없거나(신규상장) 커버리지 얇으면 펀더멘털이 주 앵커.
  *  - 현재적정가(하방)는 성장을 '완화 반영'(제거가 아님) — 고성장주가 프리미엄받는 현실 인정. */
-function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, price){
+function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, psrReliable, price){
   const fw=S.settings.fvw;
   const num=x=>(x!=null&&x!==''&&isFinite(+x)&&+x>0)?+x:null;
 
@@ -876,8 +907,15 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, pric
 
   // --- 펀더멘털 밸류 (흑자=PER, 적자=PSR) ---
   let fund2=null;
-  if(fund) fund2=fundamentalFV(num(fund.epsFwd),num(fund.epsTtm),num(fund.revPS),
+  if(fund){
+    /* (v4.4) num()은 0 이하를 null로 죽인다. 그래서 '선행EPS가 음수 = 적자 전환'이라는 정보가
+     * fundamentalFV에 도달하지 못하고, 후행 흑자로 PER 밸류를 매기는 오류가 났다.
+     * (아이온큐 epsFwd −1.126이 null로 변해 epsTtm +0.39로 PER 경로 진입)
+     * EPS는 부호를 살려 전달한다. fundamentalFV의 PER 분기는 내부에서 다시 >0을 검사하므로 안전하다. */
+    const sgn=x=>(x!=null&&x!==''&&isFinite(+x))?+x:null;
+    fund2=fundamentalFV(sgn(fund.epsFwd),sgn(fund.epsTtm),num(fund.revPS),
                     (fund.growth!=null&&isFinite(fund.growth))?fund.growth:null, quality);
+  }
 
   // PER 신뢰도(perReliable): 사이클주(반도체·메모리 등)는 저점 EPS로 PER 밸류가 폭주하므로
   // 펀더멘털 비중을 크게 낮추고, 애널 목표가(사이클 정상화 반영)를 신뢰한다.
@@ -885,7 +923,12 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, pric
   const pr = (perReliable==null)?2:perReliable;
   const isPERbasis = fund2 && fund2.basis==='PER';
   // 사이클주 펀더멘털 가중 승수: PER 신뢰 낮을수록 축소
-  const fundMul = isPERbasis ? (pr>=2?1.0:(pr===1?0.35:0.0)) : 1.0; // PSR 경로는 그대로
+  /* (v4.4) PSR 경로에도 신뢰도를 적용한다. v4.3까지 PSR 경로는 무조건 1.0이어서 VM_META의
+   * psr 등급(2/1/0)이 적정가 엔진에서 전혀 쓰이지 않았다. 위 epsPos 수정으로 적자 전환 종목이
+   * PSR 경로로 옮겨가므로, 그대로 두면 신뢰 낮은 PSR이 만점 가중을 받는 새 구멍이 열린다. */
+  const ps = (psrReliable==null)?2:psrReliable;
+  const fundMul = isPERbasis ? (pr>=2?1.0:(pr===1?0.35:0.0))
+                             : (ps>=2?1.0:(ps===1?0.35:0.0));
 
   /* 사이클주 안전장치 (v4.3 변경): 펀더멘털이 애널목표의 2배(현재값 1.6배)를 넘으면
    *  상한 '대입'이 아니라 '이상치 배제'한다.
@@ -919,14 +962,20 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, pric
   if(anaTgtAdj!=null) tParts.push([anaTgtAdj, 0.80*anaConf + 0.10]);
   if(fund2&&fund2.target!=null) tParts.push([fund2.target, (anaTgtAdj!=null?0.18:0.85)*fundMul]);
   if(myFair!=null) tParts.push([myFair, 0.30]);
-  let fvTarget=blend(tParts);
+  let fvTarget=blend(tParts, price);
 
   /* ---- 현재 적정가 (하방) ---- */
   const nParts=[];
-  if(anaTgtAdj!=null) nParts.push([anaTgtAdj*0.88, 0.70*anaConf + 0.10]);
+  /* (v4.4 · D6) 애널 목표가는 12개월 후 가격이고 '현재 적정가'는 지금 실적 기준 정당가다.
+   * 개념이 달라 0.88 할인만으로는 메워지지 않는다. 실측: 국장 9/9가 하방여유 +10~138%로
+   * 나와 하드게이트 G2(하방 안전)가 9/9 통과 — 애널 낙관을 그대로 상속해 판별력이 0이었다.
+   * 할인 0.88→0.80, 가중 (0.70·conf+0.10)→(0.45·conf+0.05)로 낮추고 줄어든 몫은 D7 앵커가
+   * 현재가로 채운다. 절편 0.05를 남긴 이유: 0으로 두면 목표가만 있는 종목의 fvNow가 null이
+   * 되고, G2는 하방여유 null이면 통과시키므로 '판단 불가'가 '안전'으로 오분류된다. */
+  if(anaTgtAdj!=null) nParts.push([anaTgtAdj*0.80, 0.45*anaConf + 0.05]);
   if(fund2&&fund2.now!=null) nParts.push([fund2.now, (anaTgtAdj!=null?0.22:0.85)*fundMul]);
   if(myFair!=null) nParts.push([myFair*0.95, 0.28]);
-  let fvNow=blend(nParts);
+  let fvNow=blend(nParts, price);
 
   // 폴백: 한쪽만 있으면 다른 쪽 근사
   if(fvTarget==null&&fvNow!=null)fvTarget=fvNow;
@@ -941,11 +990,22 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, pric
           fundFV:((fundMul>0&&fundUsable)?fund2:null), fundOutlier,
           basis:basis.join('+')||'—', techRef};
 }
-function blend(parts){
+/* (v4.4 · D7) 신뢰 잔여 앵커 — 가중 합이 1에 못 미치는 만큼은 '현재가'를 적정가로 본다.
+ * v4.3까지 blend는 총가중으로 정규화만 했다. 그래서 소스가 하나뿐이면 가중치를 0.01로
+ * 낮춰도 그 값이 100% 채택됐고, 신뢰도 감쇠(신선도·분산·기준일 불명·사이클)가 전부 무효였다.
+ * 실측: 스페이스X는 목표가 분산 3.12배($62~$800)로 anaConf가 0.250까지 깎였는데도 여력 +110%.
+ * 설계 §18의 '분산 큰 종목 신뢰 감쇠' 수용기준이 사실상 미구현 상태였다.
+ * 잔여분을 현재가로 채우면 "확신하지 못하는 만큼은 지금 가격이 적정가"가 되어, 신뢰도가
+ * 낮을수록 여력이 0으로 수렴한다. 임계 절벽이 없어 연속적이고, 신뢰도 높은 종목은
+ * 거의 영향받지 않는다(실측: anaConf 0.8↑ 종목은 여력 변동 3%p 이내). */
+function blend(parts, anchor){
   if(!parts.length)return null;
   const w=parts.reduce((s,x)=>s+x[1],0);
   if(w<=0)return null;
-  return parts.reduce((s,x)=>s+x[0]*x[1],0)/w;
+  const useAnchor=(anchor!=null&&isFinite(anchor)&&anchor>0&&w<1);
+  const ps=useAnchor?parts.concat([[anchor,1-w]]):parts;
+  const w2=ps.reduce((s,x)=>s+x[1],0);
+  return ps.reduce((s,x)=>s+x[0]*x[1],0)/w2;
 }
 
 /* 기존 엑셀 매수/매도/관망 체크리스트 신호 */
@@ -1051,7 +1111,8 @@ function compute(id,simPrice){
   if(consMan!=null&&consMan>=1&&consMan<=5) recEff=consMan;
   else if(recAuto!=null&&isFinite(recAuto)&&recAuto>=1&&recAuto<=5) recEff=recAuto;
   const anaI=anaInfo(man,autoN,recEff);
-  const tgtF=targetFresh(man,ch,price);
+  const tgtF=targetFresh(man,ch,price,(isFinite(hi52)?hi52:null),
+    (ch.ana&&ch.ana.tgt!=null&&isFinite(ch.ana.tgt))?ch.ana.tgt:null);
   const tgtW=anaI.f*tgtF.f;
 
   // 기술앵커(참고용) — 적정가엔 미반영, 차트/포지션 참고선으로만
@@ -1166,7 +1227,7 @@ function compute(id,simPrice){
     targetLow:  (man.targetLow!=null&&man.targetLow!=='')? man.targetLow  : (Feff.tgtLo!=null?Feff.tgtLo:null)
   });
   const vmR=effVM(id); // 사업분야별 지표 신뢰도 (per/pbr/psr: 2핵심/1참고/0제외)
-  const fvr=fairValue(manFV, tgtW, fundInput, k.quality, tgtSpread, techRef, vmR.per, price);
+  const fvr=fairValue(manFV, tgtW, fundInput, k.quality, tgtSpread, techRef, vmR.per, vmR.psr, price);
   k.fvNow=fvr.fvNow; k.fvTarget=fvr.fvTarget; k.tgtUsed=fvr.tgtUsed; k.anaConf=fvr.anaConf; k.fundFV=fvr.fundFV; k.fvBasis=fvr.basis;
   k.fvTech=techRef; // 하위호환 표시용
   k.fv=k.fvTarget;  // 하위호환: 기존 k.fv 참조 → 적정목표가로 매핑
