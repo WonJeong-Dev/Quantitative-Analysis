@@ -375,11 +375,14 @@
     <h2>종목 추가</h2>
     <div class="mrow"><label>시장</label>
       <select id="addMarket"><option value="KR">한국 (KOSPI/KOSDAQ)</option><option value="US">미국</option></select></div>
+    <div class="mrow"><label>종류</label>
+      <select id="addKind"><option value="stock">개별주식</option><option value="etf">ETF</option></select></div>
     <div class="mrow"><label id="addSymLabel">종목코드 (6자리 숫자)</label>
       <input type="text" id="addSym" placeholder="예: 005930"></div>
     <div class="mrow"><label>종목명</label><input type="text" id="addName" placeholder="예: 삼성전자"></div>
     <div class="mrow"><label>업종 (선택)</label><input type="text" id="addSector" placeholder="예: 반도체"></div>
-    <div class="note">한국 종목은 .KS(코스피)/.KQ(코스닥)을 자동 판별합니다. 미국은 티커(예: NVDA)를 입력하세요. 추가 시 데이터 조회로 유효성을 검증합니다.</div>
+    <div class="note">한국 종목은 .KS(코스피)/.KQ(코스닥)을 자동 판별합니다. 미국은 티커(예: NVDA)를 입력하세요. 추가 시 데이터 조회로 유효성을 검증합니다.<br>
+      <b>ETF</b>를 고르면 ETF 탭으로 들어가고 적정가·종합점수를 요구하지 않는 판정 경로를 씁니다. 나중에 바꾸려면 삭제 후 다시 추가하세요.</div>
     <div class="foot"><button class="btn" data-close>취소</button><button class="btn primary" id="btnAddGo">검증 후 추가</button></div>
   </div>
 </div>
@@ -1843,7 +1846,7 @@ function updTabCounts(){
     const [mk,ty]=String(b.dataset.tab).split('_');
     const ids=Object.keys(S.stocks).filter(id=>{ const s=S.stocks[id];
       return s && s.market===mk && assetType(s)===(ty||'stock'); });
-    const graded=ids.filter(id=>{ const t=(S.calc[id]||{}).tier; return t&&t!=='범위밖'; }).length;
+    const graded=(ty==='etf')?0:ids.filter(id=>{ const t=(S.calc[id]||{}).tier; return t&&t!=='범위밖'; }).length;
     const el=b.querySelector('.tcnt');
     if(el)el.innerHTML=ids.length+(graded?'<em>추천 '+graded+'</em>':'');
   });
@@ -1894,6 +1897,10 @@ function sortedIds(){
   });
 }
 function renderCounts(){
+  /* (v4.26) ETF 탭은 등급을 매기지 않는다. 칩 라벨이 '상/중/하'로 박혀 있어(구 L1901)
+   * ETF 등급명 저점권·관심권·중립이 어느 갈래도 못 타고 전부 '범위 밖'으로 세어졌다 —
+   * QQQ가 중립인데 범위 밖 9에 들어가고 탭의 '추천 1'과 어긋난 원인. 함께 사라진다. */
+  if(tabType()==='etf'){ $('#counts').innerHTML=''; return; }
   let t1=0,t2=0,t3=0,out=0;
   Object.keys(S.stocks).forEach(id=>{
     if(!inTab(id))return;
@@ -1952,7 +1959,9 @@ function render(){
     list.innerHTML='<div class="empty">'+(Object.keys(S.stocks).length?'검색 결과가 없습니다':'등록된 종목이 없습니다. 우측 상단의 [+ 종목 추가]로 시작하세요.')+'</div>';
     return;
   }
-  const gradeSort=(S.ui.sort==='grade');
+  /* (v4.26) ETF 탭은 등급을 표시하지 않으므로 '여기까지 매수 후보' 구분선과
+   * 상위 3종목 강조도 함께 끈다. 보이지 않는 기준으로 줄을 긋지 않는다. */
+  const gradeSort=(S.ui.sort==='grade'&&tabType()!=='etf');
   let dividerShown=false;
   list.innerHTML=ids.map((id,i)=>{
     const st=S.stocks[id], k=S.calc[id], open=!!S.ui.open[id];
@@ -1982,7 +1991,9 @@ function render(){
       else if(k.autoScaleBad)warn.push('<span class="warnpill hz" title="이상 항목만 배제 — '+esc((k.dataAnoms||[]).join(' · '))+'">⚠ 데이터</span>');
       /* (v4.15) 종합점수·가격매력도의 결측을 하나의 pill로 합쳐 표시한다.
        * 숫자는 둘 중 더 큰 소실 가중치 — '얼마나 근거가 비었나'를 한눈에 보이게. */
-      { const mw=Math.max(k.qMissW||0,k.aMissW||0);
+      /* (v4.26) ETF는 야후가 ROE·마진·성장을 주지 않아 결측이 상시다. 구조적 정상인데
+       * 개별주의 결측과 같은 배지가 뜨면 데이터 사고로 읽힌다. 등급을 안 매기므로 감춘다. */
+      { const mw=((k&&k.assetType)==='etf')?0:Math.max(k.qMissW||0,k.aMissW||0);
         if(mw>0){ const t=[];
           if(k.qMissW>0)t.push('종합점수 '+k.qMissW+'% ('+(k.qMiss||[]).join(' · ')+')');
           if(k.aMissW>0)t.push('가격매력도 '+k.aMissW+'% ('+(k.aMiss||[]).join(' · ')+')');
@@ -1995,12 +2006,14 @@ function render(){
         +'<div class="c '+chgCls(k.chg)+'">'+fmtPct(k.chg)+' <span class="live lv-'+fi.cls+'"><i class="ld"></i>'+fi.label+'</span></div>'
         +(stale&&fi.cls==='close'?'<div class="stale">캐시 '+ago(k.updatedAt)+'</div>':'')+'</div>'
         +'<div class="twoscore g-sc">'
-          +'<div class="ts-row"><span class="ts-lab">종합</span><div class="ts-bar"><i style="width:'+(qv!=null?qv.toFixed(0):0)+'%;background:'+qColor(qv)+'"></i></div><span class="ts-val" style="color:'+qColor(qv)+'">'+(qv!=null?qv.toFixed(0):'—')+'</span></div>'
+          /* (v4.26) ETF의 종합점수는 fin·growth·ana가 통째로 없어 85%가 잔여 앵커(50)다.
+           * v4.21 이후 ETF 판정에 쓰이지도 않는데 화면에서만 크게 보였다. 뺀다. */
+          +(((k&&k.assetType)==='etf')?'':'<div class="ts-row"><span class="ts-lab">종합</span><div class="ts-bar"><i style="width:'+(qv!=null?qv.toFixed(0):0)+'%;background:'+qColor(qv)+'"></i></div><span class="ts-val" style="color:'+qColor(qv)+'">'+(qv!=null?qv.toFixed(0):'—')+'</span></div>')
           +'<div class="ts-row"><span class="ts-lab">매력</span><div class="ts-bar"><i style="width:'+(av!=null?av.toFixed(0):0)+'%;background:'+gaugeColor(av||0)+'"></i></div><span class="ts-val" style="color:'+gaugeColor(av||0)+'">'+(av!=null?av.toFixed(0):'—')+'</span></div>'
         +'</div>'
         +'<div class="fv g-fv num"><div class="v">'+(k.fv!=null?curSym(k.currency)+fmtP(k.fv,k.currency):'—')+'</div>'
         +'<div class="u '+chgCls(k.upside)+'">'+(k.upside!=null?'여력 '+fmtPct(k.upside):'')+'</div></div>'
-        +'<div class="gradecell g-gr"><div style="display:flex;flex-direction:column;gap:4px;align-items:center">'+catBadge(k.tier,!!(k.grd&&k.grd.nearBoundary),(k&&k.assetType)==='etf')
+        +'<div class="gradecell g-gr"><div style="display:flex;flex-direction:column;gap:4px;align-items:center">'+(((k&&k.assetType)==='etf')?'<span class="badge b-none" title="ETF는 적정가·품질이 없어 매수등급을 산출하지 않습니다 — 가격 위치만 봅니다">가격 위치</span>':catBadge(k.tier,!!(k.grd&&k.grd.nearBoundary),false))
           +(warn.length?'<div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">'+warn.join('')+'</div>':'')+'</div></div>'
         +'<div class="rsi g-rs num" style="color:'+(k.rsi!=null?(k.rsi<30?'var(--up)':(k.rsi>70?'var(--down)':'inherit')):'inherit')+'">'+(k.rsi!=null?k.rsi.toFixed(1):'—')
         +'<small>'+(k.rsi==null?'':(k.rsi<30?'과매도':(k.rsi>70?'과매수':'중립')))+'</small></div>'
@@ -2594,7 +2607,7 @@ function tierBoxHTML(k){
   const mk=x=>'<span class="flag '+(x[1]?'b':'h')+'">'+(x[1]?'✓ ':'✕ ')+esc(x[0])+'</span>';
   const mkc=x=>'<span class="flag '+(x[1]?'b':'h')+'">'+(x[1]?'✓ ':'— ')+esc(x[0])+'</span>';
   return '<div class="dsec">매수 등급 <small>손실 최소화 우선 — 하드 게이트 전부 통과 + 저평가 확증 충족 시에만 추천</small></div>'
-    +'<div style="margin:2px 0 7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+catBadge(d.tier,!!d.nearBoundary,!!d.isETF)
+    +'<div style="margin:2px 0 7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+(d.isETF?'<span class="badge b-none" title="ETF는 매수등급을 산출하지 않습니다">가격 위치</span>':catBadge(d.tier,!!d.nearBoundary,false))
     +'<span class="qa-chip qa-q" title="기업 자체 품질(가격 무관)">종합 '+(k.quality!=null?k.quality.toFixed(0):'—')+'</span>'
     +'<span class="qa-chip qa-a" title="현재 가격의 매력도">가격매력 '+(k.attract!=null?k.attract.toFixed(0):'—')+'</span>'
     +'<span class="qa-chip qa-u" title="기대적정가 대비 상승여력">여력 '+fmtPct(k.upside)+'</span>'
@@ -2992,7 +3005,10 @@ $$('.mask').forEach(m=>{
 
 /* ---------------- 종목 추가 ---------------- */
 $('#btnAdd').addEventListener('click',()=>{
-  $('#addMarket').value=S.tab;syncAddLabel();
+  /* (v4.25) S.tab은 'KR_stock'|'KR_etf'|'US_stock'|'US_etf' 4분류 키다. 시장 select에는
+   * 'KR'|'US'만 있어 통째로 넣으면 일치하는 option이 없어 value가 ''가 되고,
+   * 그러면 mkt===''라 한국 코드가 미국 티커 경로로 샌다(L3005 분기). 축을 나눠 넣는다. */
+  $('#addMarket').value=tabMarket();$('#addKind').value=tabType();syncAddLabel();
   $('#addSym').value='';$('#addName').value='';$('#addSector').value='';
   $('#maskAdd').classList.add('on');$('#addSym').focus();
 });
@@ -3002,8 +3018,9 @@ function syncAddLabel(){
   $('#addSym').placeholder=$('#addMarket').value==='KR'?'예: 005930':'예: NVDA';
 }
 $('#btnAddGo').addEventListener('click',async()=>{
-  const mkt=$('#addMarket').value;
+  const mkt=$('#addMarket').value, kind=$('#addKind').value;
   let raw=$('#addSym').value.trim(),name=$('#addName').value.trim(),sec=$('#addSector').value.trim();
+  if(mkt!=='KR'&&mkt!=='US'){toast('시장을 선택하세요','err');return;}
   if(!raw||!name){toast('코드/티커와 종목명을 입력하세요','err');return;}
   const btn=$('#btnAddGo');btn.disabled=true;btn.textContent='검증 중…';
   try{
@@ -3026,7 +3043,13 @@ $('#btnAddGo').addEventListener('click',async()=>{
       idKey='US_'+symbol.replace(/[\/]/g,'_');
     }
     if(S.stocks[idKey])throw new Error('이미 등록된 종목입니다');
-    await db.doc('qa_stocks/'+idKey).set({market:mkt,symbol,code,name,sector:sec||null,manual:{},createdAt:Date.now()});
+    /* (v4.25) type이 없으면 assetType()이 주식으로 본다(L569). ETF를 주식으로 넣으면
+     * 게이트 G3(상승여력)·G4(현재적정가)·G8(종합점수)가 EPS를 요구해 영구 범위밖이 되고,
+     * 요약 조회도 t=etf 없이 나가 v4.22에서 고친 404가 되돌아온다.
+     * 필드 모양은 SEED_ETF(L1652)와 맞춘다 — 시드분과 수동 추가분이 갈라지면 안 된다. */
+    const isEtf=(kind==='etf');
+    await db.doc('qa_stocks/'+idKey).set(Object.assign({market:mkt},isEtf?{type:'etf'}:{},
+      {symbol,code,name,sector:sec||(isEtf?'ETF':null),manual:{},createdAt:Date.now()}));
     $('#maskAdd').classList.remove('on');
     toast('['+name+'] 추가 완료 — 데이터 수집 중');
     enqueue(idKey,'full');
