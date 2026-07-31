@@ -406,7 +406,7 @@
       <input type="number" id="setRefresh" min="1" max="120" step="1"></div>
     <div class="mrow"><label>커스텀 CORS 프록시 (선택, {url} 자리에 대상 URL 삽입)</label>
       <input type="text" id="setProxy" placeholder="예: https://my-worker.example.workers.dev/?u={url}"></div>
-    <div class="foot"><button class="btn" id="btnLogout" style="margin-right:auto">로그아웃</button><button class="btn" id="btnSeedMissing" title="시드 목록에 있는데 아직 등록되지 않은 종목을 한 번에 추가합니다. 이미 있는 종목은 건드리지 않습니다">누락 종목 추가</button><button class="btn" id="btnSetReset" title="가중치와 갱신 주기를 처음 값으로 되돌립니다. 커스텀 프록시는 그대로 둡니다 — 지우면 시세·재무 조회가 끊깁니다. 저장을 눌러야 실제로 적용됩니다">기본값</button><button class="btn" data-close>닫기</button><button class="btn primary" id="btnSetSave">저장</button></div>
+    <div class="foot"><button class="btn" id="btnLogout" style="margin-right:auto">로그아웃</button><button class="btn danger" id="btnManualWipe" title="Firestore에 저장된 수동 입력값(초기 엑셀 시드 포함)을 전 종목에서 지웁니다. 지운 뒤에는 모든 칸이 자동조회값 기준으로 동작합니다. 종목·캐시·거래기록은 건드리지 않습니다">수동값 전체 초기화</button><button class="btn" id="btnSeedMissing" title="시드 목록에 있는데 아직 등록되지 않은 종목을 한 번에 추가합니다. 이미 있는 종목은 건드리지 않습니다">누락 종목 추가</button><button class="btn" id="btnSetReset" title="가중치와 갱신 주기를 처음 값으로 되돌립니다. 커스텀 프록시는 그대로 둡니다 — 지우면 시세·재무 조회가 끊깁니다. 저장을 눌러야 실제로 적용됩니다">기본값</button><button class="btn" data-close>닫기</button><button class="btn primary" id="btnSetSave">저장</button></div>
   </div>
 </div>
 
@@ -666,30 +666,88 @@ function fxOf(from,to){
   const r=S.fx[from+to];
   return (r&&r.v!=null&&isFinite(r.v)&&r.v>0)?+r.v:null;
 }
-const fxBusy={};
+/* (v4.29) 환율을 S.fx에 기록한다. 워커 응답으로 받은 값도 이 문을 통과시켜
+ * 같은 통화쌍을 쓰는 다른 종목이 곧바로 혜택을 보게 한다. */
+function fxPut(from,to,v,src){
+  if(!from||!to||from===to)return false;
+  if(v==null||!isFinite(v)||v<=0)return false;
+  S.fx[from+to]={v:+v,ts:Date.now(),src:src||'net'};
+  try{ localStorage.setItem('qa_fx_rates',JSON.stringify(S.fx)); }catch(e){}
+  return true;
+}
+/* (v4.29) 진행 중인 요청을 **공유**한다. v4.28은 이미 요청 중이면 대기자에게 즉시
+ * false를 돌려줬고, 그 대기자는 성공을 영영 통보받지 못해 재계산을 걸지 않았다.
+ * EUR 종목이 둘 이상이면 뒤쪽 종목의 PSR이 이 이유로 비었다. */
+const fxPending={};
 async function ensureFX(from,to){
   if(!from||!to)return false;
   if(from===to)return true;
   const key=from+to, cur=S.fx[key];
   if(cur&&cur.ts&&(Date.now()-cur.ts)<FX_TTL&&cur.v>0)return true;
-  if(fxBusy[key])return false;
-  fxBusy[key]=true;
+  if(fxPending[key])return fxPending[key];
+  fxPending[key]=(async()=>{
+    try{
+      const px=async sym=>{
+        const j=await fetchJSON('https://query1.finance.yahoo.com/v8/finance/chart/'
+          +encodeURIComponent(sym)+'?range=5d&interval=1d');
+        const m=j&&j.chart&&j.chart.result&&j.chart.result[0]&&j.chart.result[0].meta;
+        const v=m&&m.regularMarketPrice;
+        return (v!=null&&isFinite(v)&&v>0)?+v:null;
+      };
+      /* ① 워커 /fx — 서버가 같은 사다리를 타므로 브라우저 CORS·프록시 사정과 무관하다. */
+      const wu=fxURL(from,to);
+      if(wu){
+        try{
+          const ctrl=new AbortController(); const to2=setTimeout(()=>ctrl.abort(),9000);
+          const r=await fetch(wu,{signal:ctrl.signal}); clearTimeout(to2);
+          if(r.ok){ const j=await r.json();
+            if(j&&j.v!=null&&isFinite(j.v)&&j.v>0) return fxPut(from,to,j.v,'w:'+(j.src||'?')); }
+        }catch(e){}
+      }
+      /* ② 교차쌍 → ③ 역쌍 → ④ USD 삼각환산.
+       * 야후 FX 심볼 규약이 하나가 아니다. EURUSD=X는 있지만 TWDUSD=X는 없고
+       * USD기준 단축형 TWD=X(= USD 1 → TWD)만 있는 통화가 존재한다. v4.28은 ②③에서
+       * 멈춰 그런 통화(TSM=TWD)의 환율을 영영 못 구했다. */
+      let v=await px(key+'=X'), src='pair';
+      if(v==null){ const inv=await px(to+from+'=X'); if(inv!=null&&inv>0){v=1/inv;src='inv';} }
+      if(v==null){
+        const usdTo=async ccy=>{ if(ccy==='USD')return 1;
+          const a=await px(ccy+'=X'); return a!=null?a:await px('USD'+ccy+'=X'); };
+        const a=await usdTo(from), b=await usdTo(to);
+        if(a!=null&&a>0&&b!=null&&b>0){ v=b/a; src='usd'; }
+      }
+      return v!=null?fxPut(from,to,v,src):false;
+    }catch(e){ return false; }
+  })();
+  try{ return await fxPending[key]; } finally{ delete fxPending[key]; }
+}
+/* (v4.29) 캐시에만 있는 종목의 환율을 뒤늦게 메운다 — §근본원인 ①.
+ * 환율은 브라우저 localStorage, 그 환율을 쓰는 fund는 Firestore 3일 캐시였다.
+ * 저장 위치도 수명도 다른 두 값이 짝을 이뤄야 PSR이 나오는데, 짝을 맞추는 코드가
+ * fetchSummary 안에만 있었다 — 캐시가 신선해 재조회가 스킵되면 실행되지 않는다.
+ * 그래서 조회 경로와 **무관하게** 부팅 때 한 번, 요약 패스 끝에 한 번 훑는다. */
+let fxSyncBusy=false;
+async function syncFX(){
+  if(fxSyncBusy)return; fxSyncBusy=true;
   try{
-    const px=async sym=>{
-      const j=await fetchJSON('https://query1.finance.yahoo.com/v8/finance/chart/'
-        +encodeURIComponent(sym)+'?range=5d&interval=1d');
-      const m=j&&j.chart&&j.chart.result&&j.chart.result[0]&&j.chart.result[0].meta;
-      const v=m&&m.regularMarketPrice;
-      return (v!=null&&isFinite(v)&&v>0)?+v:null;
-    };
-    let v=await px(key+'=X');
-    if(v==null){ const inv=await px(to+from+'=X'); if(inv!=null&&inv>0)v=1/inv; }  // 역방향 심볼 폴백
-    if(v==null)return false;
-    S.fx[key]={v,ts:Date.now()};
-    try{ localStorage.setItem('qa_fx_rates',JSON.stringify(S.fx)); }catch(e){}
-    return true;
-  }catch(e){ return false; }
-  finally{ delete fxBusy[key]; }
+    const need={};   // 'EURUSD' -> [id,...]
+    for(const id in S.stocks){
+      const f=S.cache[id]&&S.cache[id].fund; if(!f)continue;
+      const fc=f.fcur, qc=f.qcur||(S.cache[id]&&S.cache[id].currency);
+      if(!fc||!qc||fc===qc)continue;
+      if(f.fx!=null&&isFinite(f.fx)&&f.fx>0){ fxPut(fc,qc,f.fx,'worker'); continue; }
+      if(fxOf(fc,qc)!=null)continue;
+      (need[fc+'|'+qc]=need[fc+'|'+qc]||[]).push(id);
+    }
+    const keys=Object.keys(need);
+    if(!keys.length)return;
+    let hit=0;
+    for(const k of keys){
+      const [fc,qc]=k.split('|');
+      if(await ensureFX(fc,qc))hit++;
+    }
+    if(hit){ recalcAll(); renderSoon(); }
+  } finally{ fxSyncBusy=false; }
 }
 /* 미국 세션 — ET 벽시계로 판정. gmtoffset은 야후 meta가 준다(서머타임 포함).
  * 데이마켓(ATS 오버나이트)은 ET 20:00~익일 04:00, 일요일 저녁~금요일 새벽만 선다.
@@ -1350,7 +1408,14 @@ function compute(id,simPrice){
    * 환율을 못 받았으면 null → 해당 입력만 결측 처리한다(추측해서 채우지 않는다). */
   const qcur=F.qcur||ch.currency||'USD';
   const curMismatch=!!(F.fcur&&F.fcur!==qcur);
-  const fxq=fxOf(F.fcur||qcur,qcur);            // 재무제표통화 1단위 = 시세통화 fxq
+  /* (v4.29) 환율은 워커가 fund와 **같은 응답**에 실어 보낸 값(F.fx)을 정본으로 쓴다.
+   * 이 값은 Firestore에 fund와 함께 저장되므로 기기를 바꿔도 따라온다 — v4.28에서
+   * PSR이 비던 근본 원인(브라우저 localStorage 환율 ↔ Firestore 3일 캐시 fund의
+   * 수명·저장위치 불일치)이 여기서 사라진다. 구버전 워커면 F.fx가 null이고,
+   * 그때만 브라우저가 받아 둔 S.fx(fxOf)로 내려간다. */
+  const fxW=(F.fx!=null&&isFinite(F.fx)&&F.fx>0)?+F.fx:null;
+  const fxq=fxW!=null?fxW:fxOf(F.fcur||qcur,qcur);   // 재무제표통화 1단위 = 시세통화 fxq
+  const fxSrc=fxW!=null?(F.fxSrc||'worker'):(fxq!=null?'local':null);
   const revPSq=(F.revPS!=null&&isFinite(F.revPS)&&F.revPS>0&&fxq!=null)?F.revPS*fxq:null;
 
   /* ===== 데이터 정합 안전장치 v4.3 — 신호별 독립 판정 =====
@@ -1419,7 +1484,7 @@ function compute(id,simPrice){
    * PER·PSR은 현재가로 직접 계산한다 — 야후 스냅샷 멀티플은 조회 시점 가격에 굳어
    * 장중에 움직이지 않는다. PBR은 주당순자산을 받지 않으므로 야후 값을 환산만 한다.
    * 야후 원값(psrY/pbrY)은 fcur 기준이므로 fxq로 나눠야 시세통화 기준이 된다. */
-  k.fcur=F.fcur||null; k.qcur=qcur; k.fxq=fxq; k.curMismatch=curMismatch;
+  k.fcur=F.fcur||null; k.qcur=qcur; k.fxq=fxq; k.fxSrc=fxSrc; k.curMismatch=curMismatch;
   k.revPSq=revPSq; k.revPSraw=(F.revPS!=null&&isFinite(F.revPS))?+F.revPS:null;
   k.perAuto=(price>0&&Feff.epsTtm!=null&&Feff.epsTtm>0)?price/Feff.epsTtm:null;
   k.perFwdAuto=(price>0&&Feff.epsFwd!=null&&Feff.epsFwd>0)?price/Feff.epsFwd:null;
@@ -1735,6 +1800,9 @@ async function postInit(){
   await loadCaches(Object.keys(S.stocks));
   watchTrades();   // (v4.24) 거래·환전 이력 구독
   recalcAll(); render();
+  /* (v4.29) 캐시를 읽자마자 환율을 맞춘다. 요약 재조회(3일 캐시·스킵 가능)에 얹지 않는다 —
+   * 그 결합이 v4.28에서 ASML·TSM PSR이 비어 있던 직접 원인이었다. */
+  syncFX();
   refreshAll(); startInterval(); startQuoteLoop(); fetchIndices(); setTimeout(refreshQuotes,2500); setTimeout(refreshSummaries,7000);
 }
 /* (v4.24) 거래·환전 이력 로드. 실시간 반영이 필요하므로 onSnapshot을 쓴다. */
@@ -1755,19 +1823,23 @@ function loadCaches(ids){
        * 페이지를 열 때마다 전 종목이 "처음 저장"으로 취급돼 57건이 한꺼번에 나간다. */
       cacheSaveMeta[id]={ts:v.updatedAt||0,bars:(v.t||[]).length}; } }).catch(()=>{})));
 }
+/* (v4.29) 시드는 **종목 목록만** 심는다. v4.28까지는 엑셀에서 옮겨온 목표가·의견·
+ * 컨센서스·적립/차익 기준가를 manual에 함께 써 넣었다. 수동값은 항상 자동값보다
+ * 우선하므로(§4), 이 값들이 들어가 있으면 자동 산출이 화면에 드러나지 않고
+ * '수동값 전체 초기화'로 지워도 종목을 새로 추가할 때마다 되살아난다.
+ * SEED_US·SEED_KR 배열의 숫자는 그대로 남겨 둔다 — 되돌릴 때 다시 쓸 수 있게. */
 async function seed(){
   updConnChip('busy','초기 시드 등록');
   const batch=db.batch();
   SEED_US.forEach(a=>{
-    const [tk,name,sec,target,opinion,consensus,accum,take]=a;
+    const [tk,name,sec]=a;
     batch.set(db.doc('qa_stocks/US_'+tk),{market:'US',symbol:tk,name,sector:sec,
-      manual:{target,opinion,consensus,accum,take,consensusDate:target!=null?'2026-07 시드':null},
-      createdAt:Date.now()});
+      manual:{},createdAt:Date.now()});
   });
   SEED_KR.forEach(a=>{
-    const [code,name,sec,accum,take]=a;
+    const [code,name,sec]=a;
     batch.set(db.doc('qa_stocks/KR_'+code),{market:'KR',symbol:code+'.KS',code,name,sector:sec,
-      manual:{accum,take},createdAt:Date.now()});
+      manual:{},createdAt:Date.now()});
   });
   SEED_ETF.forEach(a=>{
     const [code,name,idx,mkt]=a;
@@ -2349,7 +2421,10 @@ function detailHTML(id){
       +(m.consensusDate?' <span style="opacity:.75">('+esc(m.consensusDate)+')</span>':'')
       +(excl.length?' <span style="text-decoration:line-through;opacity:.55">'+excl.join(' · ')+'</span> <span style="opacity:.7">← 이 사업모델에선 신뢰 낮아 제외</span>':'')
       +(k.curMismatch?'<div style="font-size:11.5px;margin-top:3px">재무제표 통화 <b>'+esc(k.fcur)+'</b> ≠ 시세 통화 <b>'+esc(k.qcur)
-        +'</b> — '+(k.fxq!=null?('환율 '+k.fxq.toFixed(4)+'로 환산해 산출했습니다'):'<span style="color:var(--amber);font-weight:700">환율 미확보로 PSR을 비워 뒀습니다</span>')+'</div>':'')
+        +'</b> — '+(k.fxq!=null
+            ?('환율 '+k.fxq.toFixed(6)+'로 환산해 산출했습니다 <span style="opacity:.7">('+esc(k.fxSrc||'?')+')</span>'
+              +(k.psrY!=null?' · 야후 원값 '+k.psrY.toFixed(2)+' ÷ 환율 = '+(k.psrY/k.fxq).toFixed(2):''))
+            :'<span style="color:var(--amber);font-weight:700">환율 미확보로 PSR을 비워 뒀습니다</span> — 워커를 v6.5로 갱신하면 서버가 환율까지 확정해 보냅니다')+'</div>':'')
       +'</div>':'')
     +(vm.note?'<div class="vmnote">사업분야 분석 — '+esc(vm.note)+'</div>':'')
     +'<canvas class="chart" data-id="'+esc(id)+'"></canvas>'
@@ -2924,7 +2999,11 @@ const fundMissing=id=>{ const c=S.cache[id], st=S.stocks[id];
    * v3/v4 캐시에 fund를 백필하던 것과 같은 처방이다.
    * 구버전 워커에 물려 있어도 fetchSummary가 fcur:null을 '키로' 써 넣으므로
    * 한 번 돌고 나면 다시 미수신으로 잡히지 않는다(무한 재조회 없음). */
-  return !(f && Object.prototype.hasOwnProperty.call(f,'fcur')); };
+  /* (v4.29) 같은 처방을 fx 키에 한 번 더 쓴다. 워커 v6.5가 환율을 응답에 실어 보내는데
+   * 기존 캐시에는 그 키가 없고, ana.ts 3일 신선도가 재조회를 막아 새 필드가 영영
+   * 도착하지 않는다. 이번에도 구버전 워커면 fx:null이 '키로' 들어가므로 한 번만 돈다. */
+  return !(f && Object.prototype.hasOwnProperty.call(f,'fcur')
+             && Object.prototype.hasOwnProperty.call(f,'fx')); };
 const summaryStale=(id,force)=>{ const c=S.cache[id];
   return !!(force || fundMissing(id)
     || !(c&&c.ana&&c.ana.ts&&(Date.now()-c.ana.ts)<3*24*3600e3)); };
@@ -2937,6 +3016,14 @@ function summaryURL(sym,isEtf){
   const base=p.split('?')[0].replace(/\/+$/,'');
   if(!/^https:\/\//.test(base))return null;
   return base+'/summary?sym='+encodeURIComponent(sym)+(isEtf?'&t=etf':'');
+}
+/* (v4.29) 워커 v6.5의 환율 단독 조회. 워커 미설정·구버전이면 null → 앱이 야후를 직접 탄다. */
+function fxURL(from,to){
+  const p=S.settings.proxy;
+  if(!p||!p.includes('{url}'))return null;
+  const base=p.split('?')[0].replace(/\/+$/,'');
+  if(!/^https:\/\//.test(base))return null;
+  return base+'/fx?from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to);
 }
 async function fetchSummary(id,force){
   const st=S.stocks[id]; if(!st)return;
@@ -2982,6 +3069,9 @@ async function fetchSummary(id,force){
                * 되고, 그때 PSR 자동값은 생기지 않는다(틀린 값을 만들지 않는다). */
               fcur:(typeof j.fcur==='string'&&j.fcur)?j.fcur:null,
               qcur:(typeof j.qcur==='string'&&j.qcur)?j.qcur:null,
+              /* (v4.29) 워커 v6.5가 확정한 환율. fund와 함께 Firestore에 저장되므로
+               * 기기·세션이 바뀌어도 PSR 계산 재료가 흩어지지 않는다. */
+              fx:gn(j.fx), fxSrc:(typeof j.fxSrc==='string'&&j.fxSrc)?j.fxSrc:null,
               psrY:gn(j.psrY),pbrY:gn(j.pbrY),perT:gn(j.perT),perF:gn(j.perF),mcap:gn(j.mcap),
               ts:Date.now()};
       }
@@ -2997,10 +3087,17 @@ async function fetchSummary(id,force){
     if(!S.cache[id])S.cache[id]={};
     S.cache[id].ana=ana;
     if(fund&&(fund.roe!=null||fund.margin!=null||fund.revG!=null||fund.epsG!=null||fund.de!=null||fund.epsFwd!=null||fund.revPS!=null)) S.cache[id].fund=fund;
-    /* (v4.28) 재무제표 통화 ≠ 시세 통화면 환율을 받아온 뒤 다시 계산한다.
-     * 환율을 못 받으면 그 종목 PSR은 비어 있게 둔다 — 틀린 값보다 빈 값이 낫다. */
-    if(fund&&fund.fcur&&fund.qcur&&fund.fcur!==fund.qcur&&fxOf(fund.fcur,fund.qcur)==null){
-      ensureFX(fund.fcur,fund.qcur).then(ok=>{ if(ok){ S.calc[id]=compute(id); renderSoon(); } });
+    /* (v4.29) 통화가 다르면 환율이 필요하다. 순서가 중요하다:
+     *  ① 워커가 이미 확정해 보냈으면(F.fx) 그대로 쓴다 — 브라우저는 아무것도 더 하지 않는다.
+     *     같은 통화쌍을 쓰는 다른 종목이 곧바로 쓰도록 S.fx에도 심어 둔다.
+     *  ② 구버전 워커라 fx가 없을 때만 브라우저가 직접 받아온다.
+     * 못 받으면 그 종목 PSR은 비어 있게 둔다 — 틀린 값보다 빈 값이 낫다. */
+    if(fund&&fund.fcur&&fund.qcur&&fund.fcur!==fund.qcur){
+      if(fund.fx!=null&&isFinite(fund.fx)&&fund.fx>0){
+        fxPut(fund.fcur,fund.qcur,fund.fx,'worker');
+      }else if(fxOf(fund.fcur,fund.qcur)==null){
+        ensureFX(fund.fcur,fund.qcur).then(ok=>{ if(ok){ recalcAll(); renderSoon(); } });
+      }
     }
     saveCache(id,true);   // (v4.13) 재무·애널은 비싸다 — 스로틀 예외 (§19.9)
     S.calc[id]=compute(id); renderSoon();
@@ -3035,7 +3132,8 @@ async function refreshSummaries(force){
       S.sumProg={done:0,total:again.length,retry:true}; updDataChip();
       for(const id of again){ await fetchSummary(id,true); S.sumProg.done++; updDataChip(); await sleep(400); }
     }
-  }finally{ sumBusy=false; S.sumProg=null; updDataChip(); renderSoon(); }
+  }finally{ sumBusy=false; S.sumProg=null; updDataChip(); renderSoon();
+    syncFX();   /* (v4.29) 패스가 스킵으로 끝났든 조회로 끝났든, 환율 결손은 여기서 다시 훑는다 */ }
 }
 
 let quoteTimer=null, quoteBusy=false;
@@ -3257,7 +3355,7 @@ function diagCollect(){
   const nn=rows.filter(r=>r.k.ratioNow!=null).map(r=>r.k.ratioN).filter(v=>v!=null).sort((a,b)=>a-b);
   const fundMiss=rows.filter(r=>fundMissing(r.id));
   return {
-    빌드:'v4.28.1 (DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v4.29 (DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     시각:new Date().toLocaleString('ko-KR'),
     종목수:ids.length,
     요약패스:S.sumProg?((S.sumProg.retry?'재시도 ':'재무조회 ')+S.sumProg.done+'/'+S.sumProg.total):'완료',
@@ -3286,10 +3384,17 @@ function diagCollect(){
         +' ['+(r.k.fcur||'통화태그없음')+(r.k.fxq!=null?(' @'+r.k.fxq.toFixed(4)):' @환율미확보')+']'
         +(r.k.psrY!=null?(' · 야후원값 '+r.k.psrY.toFixed(2)):' · 야후원값 없음')),
     통화불일치:rows.filter(r=>r.k.curMismatch).map(r=>r.nm+' '+r.k.fcur+'→'+r.k.qcur
-      +(r.k.fxq!=null?(' @'+r.k.fxq.toFixed(4)):' @환율미확보')
+      +(r.k.fxq!=null?(' @'+r.k.fxq.toFixed(6)+'['+(r.k.fxSrc||'?')+']'):' @환율미확보')
       +(r.k.psrNoFx!=null?(' · PSR 환산전 '+r.k.psrNoFx.toFixed(2)):'')
-      +(r.k.psrAuto!=null?(' → '+r.k.psrAuto.toFixed(2)):'')
-      +(r.k.psrY!=null?(' · 야후원값 '+r.k.psrY.toFixed(2)):'')),
+      +(r.k.psrAuto!=null?(' → '+r.k.psrAuto.toFixed(2)):' → 없음')
+      +(r.k.psrY!=null?(' · 야후원값 '+r.k.psrY.toFixed(2)
+          +(r.k.fxq!=null?('/환율='+(r.k.psrY/r.k.fxq).toFixed(2)):'')):' · 야후원값 없음')),
+    /* (v4.29) 환율 결손은 PSR 공백의 유일한 원인이었다. 몇 개가 남아 있고 어느 경로로
+     * 잡혔는지를 늘 보이게 둔다 — 값이 비는 것보다 '왜 비는지 모르는' 게 더 나빴다. */
+    환율출처:(()=>{const c={};rows.forEach(r=>{ if(!r.k.curMismatch)return;
+      const s=r.k.fxq!=null?(r.k.fxSrc||'?'):'미확보'; c[s]=(c[s]||0)+1; });
+      return Object.keys(c).length?c:'통화불일치 종목 없음';})(),
+    환율미확보:rows.filter(r=>r.k.curMismatch&&r.k.fxq==null).map(r=>r.nm+' '+r.k.fcur+'→'+r.k.qcur),
     /* 야후 스냅샷 PSR과 현재가 재계산값의 정합. 큰 괴리는 규약 변경 신호다. */
     PSR정합:rows.filter(r=>r.k.psrY!=null&&r.k.psrNoFx!=null&&r.k.psrY>0)
       .map(r=>({nm:r.nm,비:+(r.k.psrNoFx/r.k.psrY).toFixed(3)}))
@@ -3542,18 +3647,61 @@ $('#maskSet').addEventListener('input',e=>{
  * 다시 바인딩할 필요가 없다.
  * ★ 커스텀 프록시(#setProxy)는 되돌리지 않는다. 점수 설정이 아니라 인프라이며,
  *   비우면 야후·네이버 조회가 전부 CORS로 막혀 대시보드가 즉시 멈춘다. */
+/* (v4.29) 수동값 전체 초기화 — 자동값 기준으로 되돌린다.
+ * 상세 패널의 수동 입력란에 미리 채워져 있던 값들은 자동조회 결과가 아니라 §14 초기
+ * 엑셀 시드로 Firestore에 들어간 값이다. 수동값은 항상 자동값보다 우선하므로(§4),
+ * 이 값들이 남아 있는 한 자동 산출 로직이 화면에 드러나지 않는다.
+ * 지우는 대상: qa_stocks/{id}.manual 전체. 건드리지 않는 것: 종목 자체·qa_cache(자동
+ * 데이터)·qa_trades·qa_fx·설정. 되돌리기는 없으므로 무엇이 몇 개 지워지는지 먼저 센다. */
+const MAN_LABEL={myFair:'내 적정가',target:'애널 목표가',analysts:'애널리스트 수',targetDate:'목표가 기준일',
+  opinion:'종목의견',consensus:'컨센서스 rec',consensusDate:'컨센 기준일',per:'PER',pbr:'PBR',psr:'PSR',
+  vmPer:'PER 신뢰도',vmPbr:'PBR 신뢰도',vmPsr:'PSR 신뢰도',roe:'ROE',margin:'영업이익률',de:'부채비율 D/E',
+  revG:'매출성장률',epsG:'EPS성장률',epsFwd:'선행 EPS',epsTtm:'후행 EPS',revPS:'주당매출',
+  targetHigh:'목표가 최고',targetLow:'목표가 최저',rsiLo:'RSI 하단',rsiHi:'RSI 상단',mcap:'시가총액',
+  accum:'적립 유지가',take:'차익 실현가',memo:'메모',hazard:'악재 보류',hazardMemo:'악재 사유',
+  livePrice:'수동 현재가',livePriceAt:'수동가 입력시각'};
+$('#btnManualWipe').addEventListener('click',async()=>{
+  const ids=Object.keys(S.stocks);
+  if(!ids.length){ toast('등록된 종목이 없습니다'); return; }
+  const cnt={}; let docs=0;
+  ids.forEach(id=>{ const m=S.stocks[id].manual||{}; let any=false;
+    Object.keys(m).forEach(kk=>{ const v=m[kk];
+      if(v===null||v===undefined||v==='')return;   // 이미 빈 칸은 세지 않는다
+      cnt[kk]=(cnt[kk]||0)+1; any=true; });
+    if(any)docs++; });
+  const keys=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);
+  if(!keys.length){ toast('지울 수동값이 없습니다 — 이미 전부 자동값 기준입니다'); return; }
+  const lines=keys.map(kk=>'  · '+(MAN_LABEL[kk]||kk)+' — '+cnt[kk]+'종목').join('\n');
+  if(!confirm('수동 입력값을 '+docs+'개 종목에서 전부 지웁니다.\n\n'+lines
+    +'\n\n지운 뒤에는 모든 칸이 자동조회값 기준으로 동작합니다.\n'
+    +'종목·시세캐시·거래기록·설정은 그대로 둡니다.\n\n되돌릴 수 없습니다. 계속할까요?'))return;
+  const btn=$('#btnManualWipe'), lbl=btn.textContent;
+  btn.disabled=true; btn.textContent='정리 중…';
+  try{
+    /* update()는 manual 맵을 통째로 교체한다. set(...,{merge:true})는 맵을 병합하므로
+     * 빈 객체를 넣어도 기존 키가 남는다 — 여기서 set을 쓰면 아무 일도 일어나지 않는다. */
+    for(let i=0;i<ids.length;i+=400){
+      const b=db.batch();
+      ids.slice(i,i+400).forEach(id=>b.update(db.doc('qa_stocks/'+id),{manual:{},updatedAt:Date.now()}));
+      await b.commit();
+    }
+    toast(docs+'개 종목의 수동값을 지웠습니다 — 이제 전부 자동값 기준입니다');
+  }catch(e){ toast('초기화 실패: '+((e&&e.message)||e),'err'); }
+  finally{ btn.disabled=false; btn.textContent=lbl; }
+});
 /* (v4.21) 누락 시드 일괄 등록.
  * §14대로 시드는 Firestore가 비어 있을 때만 1회 돈다. 그래서 v4.20에서 추가한
  * ETF 10종목·카카오·풍산이 기존 사용자에게는 등록되지 않는다.
  * 이미 있는 종목은 건너뛰므로 여러 번 눌러도 안전하다(기존 수동 입력값 보존). */
 $('#btnSeedMissing').addEventListener('click',async()=>{
   const add=[];
-  SEED_KR.forEach(a=>{ const [code,name,sec,accum,take]=a; const id='KR_'+code;
+  /* (v4.29) 여기도 manual을 비워 심는다 — seed()와 같은 이유(§자동값 기준 유지). */
+  SEED_KR.forEach(a=>{ const [code,name,sec]=a; const id='KR_'+code;
     if(!S.stocks[id])add.push([id,{market:'KR',symbol:code+'.KS',code,name,sector:sec,
-      manual:{accum,take},createdAt:Date.now()}]); });
-  SEED_US.forEach(a=>{ const [tk,name,sec,target,opinion,consensus,accum,take]=a; const id='US_'+tk;
+      manual:{},createdAt:Date.now()}]); });
+  SEED_US.forEach(a=>{ const [tk,name,sec]=a; const id='US_'+tk;
     if(!S.stocks[id])add.push([id,{market:'US',symbol:tk,code:tk,name,sector:sec,
-      manual:{target,opinion,consensus,accum,take},createdAt:Date.now()}]); });
+      manual:{},createdAt:Date.now()}]); });
   SEED_ETF.forEach(a=>{ const [code,name,idx,mkt]=a; const id=mkt+'_'+code;
     if(!S.stocks[id])add.push([id,{market:mkt,type:'etf',symbol:(mkt==='KR'?code+'.KS':code),
       code,name,sector:'ETF',index:idx,manual:{},createdAt:Date.now()}]); });
