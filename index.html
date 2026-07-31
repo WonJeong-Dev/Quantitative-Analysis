@@ -569,6 +569,19 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
  * 각각 고쳐야 하고 한 곳만 놓쳐도 조용히 갈라진다 — 한 함수로 모은다. */
 const tabMarket=()=>String(S.tab||'KR_stock').split('_')[0];
 const tabType  =()=>String(S.tab||'KR_stock').split('_')[1]||'stock';
+/* (v4.27) ETF에 존재하지 않는 정렬 기준. 등급은 산출하지 않고(v4.26), 종합점수는
+ * fin·growth·ana 결측으로 85%가 잔여 앵커이며, 상승여력은 적정가가 없어 전부 null이다.
+ * 셋 다 고를 수 있게 두면 조용히 무의미한 순서가 나온다. */
+const SORT_NA_ETF=['grade','quality','upside'];
+/* 사용자 선택(S.ui.sort)은 보존하고 화면에 쓰는 '유효 정렬'만 대체한다.
+ * 주식 탭으로 돌아가면 원래 고른 기준이 그대로 살아난다. */
+const effSort=()=>{ const s=S.ui&&S.ui.sort||'grade';
+  return (tabType()==='etf'&&SORT_NA_ETF.includes(s))?'score':s; };
+function syncSortSel(){
+  const etf=(tabType()==='etf'), sel=$('#sortSel'); if(!sel)return;
+  $$('#sortSel option').forEach(o=>{ o.disabled=etf&&SORT_NA_ETF.includes(o.value); });
+  sel.value=effSort();
+}
 const assetType=st=>((st&&st.type)==='etf')?'etf':'stock';   // type 미지정 구종목은 주식으로 본다
 const inTab=id=>{ const s=S.stocks[id];
   return !!s && s.market===tabMarket() && assetType(s)===tabType(); };
@@ -1878,7 +1891,7 @@ function sortedIds(){
   const q=S.ui.search.trim().toLowerCase();
   if(q)ids=ids.filter(id=>{const s=S.stocks[id];
     return (s.name||'').toLowerCase().includes(q)||(s.symbol||'').toLowerCase().includes(q)||(s.code||'').includes(q);});
-  let key=S.ui.sort; const nn=x=>x==null?-1e18:x;
+  let key=effSort(); const nn=x=>x==null?-1e18:x;
   const KEYMAP={score:'attract',quality:'quality',attract:'attract',up:'upside',upside:'upside',chg:'chg'};
   return ids.sort((a,b)=>{
     if(key==='name')return (S.stocks[a].name||'').localeCompare(S.stocks[b].name||'','ko');
@@ -1961,7 +1974,7 @@ function render(){
   }
   /* (v4.26) ETF 탭은 등급을 표시하지 않으므로 '여기까지 매수 후보' 구분선과
    * 상위 3종목 강조도 함께 끈다. 보이지 않는 기준으로 줄을 긋지 않는다. */
-  const gradeSort=(S.ui.sort==='grade'&&tabType()!=='etf');
+  const gradeSort=(effSort()==='grade');
   let dividerShown=false;
   list.innerHTML=ids.map((id,i)=>{
     const st=S.stocks[id], k=S.calc[id], open=!!S.ui.open[id];
@@ -1976,7 +1989,7 @@ function render(){
       divider='<div class="listdiv">'+(anyGraded?'▲ 여기까지 매수 후보 (관문 통과) · 아래부터는 범위 밖 — 종합점수(기업 품질) 높은 순'
         :'현재 매수 관문을 통과한 종목이 없습니다 · 아래는 참고용으로 종합점수(기업 품질) 높은 순')+'</div>';
     }
-    const topSort=(S.ui.sort==='score'||S.ui.sort==='quality');
+    const topSort=(effSort()==='score'||effSort()==='quality');
     // 골드 강조: 등급순일 땐 '실제 등급받은' 상위만, 그 외 점수순일 땐 상위 3
     const goldTop=gradeSort?(graded&&i<3):(i<3&&topSort);
     let main='<div class="main">'
@@ -2904,6 +2917,7 @@ $$('nav.tabs .tab').forEach(b=>b.addEventListener('click',()=>selectTab(b.datase
 /* (v4.20) 탭 전환. ETF는 시세 주기가 달라 startQuoteLoop을 다시 건다. */
 function selectTab(t){
   S.tab=t;
+  syncSortSel();                 // (v4.27) 탭마다 고를 수 있는 기준이 다르다
   $$('nav.tabs .tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===t));
   render(); startQuoteLoop(); refreshQuotes();
   $('#addMarket')&&($('#addMarket').value=tabMarket());
@@ -2917,7 +2931,7 @@ document.addEventListener('keydown',e=>{
   if(map[e.key]){ e.preventDefault(); selectTab(map[e.key]); }
 });
 $('#sortSel').addEventListener('change',e=>{S.ui.sort=e.target.value;render();});
-$('#sortSel').value=S.ui.sort;
+syncSortSel();   /* (v4.27) 초기 1회 — 탭별 가능 기준이 다르다 */
 $('#searchIn').addEventListener('input',e=>{S.ui.search=e.target.value;renderSoon();});
 $('#btnRefresh').addEventListener('click',()=>{refreshAll();toast('전체 데이터 갱신을 시작합니다');});
 
