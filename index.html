@@ -1310,7 +1310,16 @@ function compute(id,simPrice){
   const k={price,rsi,bbU,bbL,bbM:s20,pB,e20,s50,s200,s50b,s200b,slope50,slope200,vp6,vp1,
     hi52,lo52,rvol,chg,prevClose,lastLow:l[i],lastHigh:h[i],s5:s5v,
     prevBBL:ps20!=null?ps20-2*psd20:null,prevBBU:ps20!=null?ps20+2*psd20:null,prevBBM:ps20,
-    annVol,rsiLo,rsiHi,rsiBandSrc,priceSrc,priceTs,session:(priceSrc!=='cache'&&priceSrc!=='manual'&&qt)?qt.session:null,
+    annVol,rsiLo,rsiHi,rsiBandSrc,priceSrc,priceTs,
+    /* (v4.28.1) 세션은 '시장 국면'이고 priceSrc는 '이 가격의 출처'다 — 다른 양이다(§22-⑫).
+     * 둘을 묶어 둔 탓에 데이마켓 라벨이 화면에 못 붙었다: 오버나이트에는 새 체결이 없어
+     * qt.ts == 캐시 mktTime(둘 다 직전 정규장 regularMarketTime)이고, L1187의
+     * `qt.ts > priceTs`가 false라 priceSrc가 'cache'로 남는다 → session이 null로 지워졌다.
+     * pre/regular/post는 v4.12 규약을 그대로 둔다(낡은 캐시가를 LIVE로 부르지 않기 위함).
+     * 'day'만 예외로 통과시킨다 — 그 국면의 표시가는 **정의상** 직전 정규장 종가이고
+     * 캐시와 값이 같으므로, 라벨이 가격을 오도할 여지가 없다. */
+    session:(priceSrc!=='cache'&&priceSrc!=='manual'&&qt)?qt.session
+            :((qt&&qt.session==='day'&&priceSrc==='cache')?'day':null),
     currency:ch.currency||'USD',updatedAt:ch.updatedAt,lastClose:ch.c[n-1],
     listedBars,ret20,ret60,ddFromHi,makingNewLow,above5};
   const man=man0;
@@ -2907,7 +2916,15 @@ function newsSectionHTML(id,st){
  * 매 패스마다 전 ETF를 '미수신'으로 재조회하게 된다 — ETF는 etf 필드로 판단한다. */
 const fundMissing=id=>{ const c=S.cache[id], st=S.stocks[id];
   if(st&&assetType(st)==='etf') return !(c&&c.etf&&(c.etf.exp!=null||c.etf.assets!=null||c.etf.cat));
-  return !(c&&c.fund&&(c.fund.roe!=null||c.fund.epsFwd!=null||c.fund.margin!=null)); };
+  const f=c&&c.fund;
+  if(!(f&&(f.roe!=null||f.epsFwd!=null||f.margin!=null)))return true;
+  /* (v4.28.1) 스키마 마이그레이션. v4.28에서 통화 태그(fcur/qcur)가 새로 생겼는데
+   * 기존 캐시에는 그 **키 자체가 없고**, summaryStale이 ana.ts 3일 신선도로 스킵해
+   * 재조회가 영영 돌지 않는다 — 실측에서 '통화 불일치: 없음'으로 나타났다.
+   * v3/v4 캐시에 fund를 백필하던 것과 같은 처방이다.
+   * 구버전 워커에 물려 있어도 fetchSummary가 fcur:null을 '키로' 써 넣으므로
+   * 한 번 돌고 나면 다시 미수신으로 잡히지 않는다(무한 재조회 없음). */
+  return !(f && Object.prototype.hasOwnProperty.call(f,'fcur')); };
 const summaryStale=(id,force)=>{ const c=S.cache[id];
   return !!(force || fundMissing(id)
     || !(c&&c.ana&&c.ana.ts&&(Date.now()-c.ana.ts)<3*24*3600e3)); };
@@ -3240,7 +3257,7 @@ function diagCollect(){
   const nn=rows.filter(r=>r.k.ratioNow!=null).map(r=>r.k.ratioN).filter(v=>v!=null).sort((a,b)=>a-b);
   const fundMiss=rows.filter(r=>fundMissing(r.id));
   return {
-    빌드:'v4.28 (DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v4.28.1 (DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     시각:new Date().toLocaleString('ko-KR'),
     종목수:ids.length,
     요약패스:S.sumProg?((S.sumProg.retry?'재시도 ':'재무조회 ')+S.sumProg.done+'/'+S.sumProg.total):'완료',
@@ -3261,6 +3278,13 @@ function diagCollect(){
     관측수min:nn.length?nn[0]:null,
     /* (v4.28) 통화 불일치 실측표. "몇 종목이 걸려 있고, 환율은 잡혔고, 환산 전후로
      * 얼마나 달라지는가"를 눈으로 확인한 뒤에 신뢰한다(§22-③). */
+    /* (v4.28.1) 함의PSR이 튄 종목은 결론(배수)만 보면 원인을 못 찾는다.
+     * 분자·분모·통화·환율을 그대로 늘어놓는다 — 추정 대신 관측으로 좁힌다(§22-⑥). */
+    PSR입력:rows.filter(r=>(r.k.dataAnoms||[]).some(x=>/함의PSR/.test(String(x))))
+      .map(r=>r.nm+': 현재가 '+(r.k.price!=null?(+r.k.price).toFixed(2):'—')
+        +' ÷ 주당매출 '+(r.k.revPSraw!=null?(+r.k.revPSraw).toFixed(4):'없음')
+        +' ['+(r.k.fcur||'통화태그없음')+(r.k.fxq!=null?(' @'+r.k.fxq.toFixed(4)):' @환율미확보')+']'
+        +(r.k.psrY!=null?(' · 야후원값 '+r.k.psrY.toFixed(2)):' · 야후원값 없음')),
     통화불일치:rows.filter(r=>r.k.curMismatch).map(r=>r.nm+' '+r.k.fcur+'→'+r.k.qcur
       +(r.k.fxq!=null?(' @'+r.k.fxq.toFixed(4)):' @환율미확보')
       +(r.k.psrNoFx!=null?(' · PSR 환산전 '+r.k.psrNoFx.toFixed(2)):'')
@@ -3292,6 +3316,7 @@ function diagRender(){
   g+=row('데이터 지연',list(d.데이터지연),bad(d.데이터지연));
   g+=row('가격 이상',list(d.가격이상),bad(d.가격이상));
   g+=row('입력 배제',list(d.데이터배제),bad(d.데이터배제));
+  g+=row('PSR 입력값',list(d.PSR입력),bad(d.PSR입력));
   g+=row('통화 불일치',list(d.통화불일치),bad(d.통화불일치));
   g+=row('PSR 정합이상',list(d.PSR정합),bad(d.PSR정합));
   g+=row('세션 분포',esc2(d.세션));
