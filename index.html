@@ -82,6 +82,9 @@
   .lv-delay{background:var(--amber-soft);color:var(--amber)}.lv-delay .ld{background:var(--amber)}
   .lv-close{background:var(--gray-soft);color:var(--sub)}.lv-close .ld{background:#9aa6bd}
   .lv-manual{background:var(--accent-soft);color:var(--accent)}.lv-manual .ld{background:var(--accent)}
+  .lv-day{background:#efeafd;color:#6b46c1}.lv-day .ld{background:#7c5cd6}
+  .srct{font-size:9.5px;font-weight:800;padding:0 4px;border-radius:4px;margin-left:3px;vertical-align:1px}
+  .src-a{background:#e8f0fe;color:#2b62d6}.src-m{background:var(--gray-soft);color:var(--sub)}
   @keyframes qpulse{0%{opacity:1}50%{opacity:.22}100%{opacity:1}}
   .vmnote{font-size:11.5px;color:var(--sub);background:#f6f7fb;border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin:2px 0 8px;line-height:1.55}
   .vmtag{display:inline-block;font-size:10px;font-weight:800;border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:1px}
@@ -551,6 +554,7 @@ const S = {
   calc:{},              // id -> 계산 결과
   idx:{},               // 지수 칩
   quote:{},             // id -> 실시간 시세 {price,ts,session,src,base}
+  fx:{},                // (v4.28) '통화쌍' -> {v,ts} 환율 캐시 (localStorage 백업 · Firestore 미사용)
   settings:{
     weights:{rsi:20,bb:20,ma:20,vp:15,up:25}, // (구) 하위호환 보존
     qw:{...QW_DEF},   // 종합점수(기업품질) — 추세 제외, 순수 재무·성장·애널·안정
@@ -640,6 +644,74 @@ async function fetchJSON(url){
     }catch(e){ clearTimeout(to); lastErr=e; }
   }
   throw lastErr||new Error('네트워크 실패');
+}
+
+/* ============== (v4.28) 통화 정합 · 미국 세션 판정 ==============
+ * 이번에 잡힌 두 결함은 뿌리가 같다 — "받아온 숫자가 어떤 단위/어떤 시간대인가"를
+ * 확인하지 않고 그대로 쓴 것이다(§22-⑫).
+ *  ① 야후 financialData·summaryDetail의 금액 계열은 **재무제표 통화**로 온다
+ *     (ASML=EUR · TSM=TWD). 현재가는 상장 통화(USD)다. 주당매출(revPS)이 여기 걸린다.
+ *     EPS는 야후가 이미 상장통화로 환산해 준다(trailingPE=price/trailingEps로 정합),
+ *     그래서 PER 경로는 멀쩡했고 PSR만 정확히 환율배만큼 부풀려져 있었다.
+ *     실측 교차검증: ASML 20.5배(야후 원값) ÷ 1.1029 = 18.6배 (외부 소스와 일치).
+ *  ② 야후 currentTradingPeriod에는 pre/regular/post 세 창뿐이다. 국내 증권사
+ *     '데이마켓'(주간거래)은 미국 ATS 오버나이트(ET 20:00~04:00)라 야후에 아예 없다.
+ *     없는 값을 지어내지 않되, '장 마감'이라고 잘못 말하지도 않는다 — 라벨만 정직하게. */
+const FX_TTL=12*3600e3;
+try{ const _fx=localStorage.getItem('qa_fx_rates'); if(_fx)S.fx=JSON.parse(_fx)||{}; }catch(e){}
+/* 동기 조회 — compute()에서 쓴다. 모르면 null을 준다(1로 가정하지 않는다). */
+function fxOf(from,to){
+  if(!from||!to)return null;
+  if(from===to)return 1;
+  const r=S.fx[from+to];
+  return (r&&r.v!=null&&isFinite(r.v)&&r.v>0)?+r.v:null;
+}
+const fxBusy={};
+async function ensureFX(from,to){
+  if(!from||!to)return false;
+  if(from===to)return true;
+  const key=from+to, cur=S.fx[key];
+  if(cur&&cur.ts&&(Date.now()-cur.ts)<FX_TTL&&cur.v>0)return true;
+  if(fxBusy[key])return false;
+  fxBusy[key]=true;
+  try{
+    const px=async sym=>{
+      const j=await fetchJSON('https://query1.finance.yahoo.com/v8/finance/chart/'
+        +encodeURIComponent(sym)+'?range=5d&interval=1d');
+      const m=j&&j.chart&&j.chart.result&&j.chart.result[0]&&j.chart.result[0].meta;
+      const v=m&&m.regularMarketPrice;
+      return (v!=null&&isFinite(v)&&v>0)?+v:null;
+    };
+    let v=await px(key+'=X');
+    if(v==null){ const inv=await px(to+from+'=X'); if(inv!=null&&inv>0)v=1/inv; }  // 역방향 심볼 폴백
+    if(v==null)return false;
+    S.fx[key]={v,ts:Date.now()};
+    try{ localStorage.setItem('qa_fx_rates',JSON.stringify(S.fx)); }catch(e){}
+    return true;
+  }catch(e){ return false; }
+  finally{ delete fxBusy[key]; }
+}
+/* 미국 세션 — ET 벽시계로 판정. gmtoffset은 야후 meta가 준다(서머타임 포함).
+ * 데이마켓(ATS 오버나이트)은 ET 20:00~익일 04:00, 일요일 저녁~금요일 새벽만 선다.
+ * 휴장일 표는 박지 않는다(§20 상수 부패 회피) — 이 값은 라벨 전용이며 가격 채택에 쓰지 않는다. */
+function etSession(gmtoffset){
+  let off=(gmtoffset!=null&&isFinite(gmtoffset))?+gmtoffset:null;
+  if(off==null){
+    /* 서머타임 전환일을 상수로 박지 않는다(§20 상수 부패) — 브라우저 tz DB에서 뽑는다. */
+    try{ const s=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',timeZoneName:'shortOffset'})
+           .formatToParts(new Date()).find(p=>p.type==='timeZoneName').value;   // 'GMT-4'
+      const mm=/GMT([+-])(\d+)(?::(\d+))?/.exec(s);
+      if(mm)off=(mm[1]==='-'?-1:1)*((+mm[2])*3600+(+(mm[3]||0))*60);
+    }catch(e){}
+    if(off==null)off=-4*3600;
+  }
+  const d=new Date(Date.now()+off*1000);
+  const w=d.getUTCDay(), t=d.getUTCHours()*60+d.getUTCMinutes(), wd=(w>=1&&w<=5);
+  if(wd&&t>=570&&t<960)return 'regular';                        // 09:30~16:00
+  if(wd&&t>=240&&t<570)return 'pre';                            // 04:00~09:30
+  if(wd&&t>=960&&t<1200)return 'post';                          // 16:00~20:00
+  if((t>=1200&&w<=4)||(t<240&&w>=1&&w<=5))return 'day';         // 20:00~04:00 = 국내 데이마켓
+  return null;
 }
 
 function yahooChartURL(sym,range){
@@ -1264,6 +1336,13 @@ function compute(id,simPrice){
   // 펀더멘털 입력 병합 (수동 우선 > 자동조회). 성장률·EPS·주당매출.
   const F=ch.fund||{};
   const gnum=(a,b)=>{ const f=x=>(x!=null&&x!==''&&isFinite(+x))?+x:null; const va=f(a); return va!=null?va:f(b); };
+  /* (v4.28) 통화 정합 — §22-⑫ "같은 종류의 양끼리만 비교한다".
+   * revPS는 재무제표 통화, price는 상장 통화다. 환산한 뒤에만 쓴다.
+   * 환율을 못 받았으면 null → 해당 입력만 결측 처리한다(추측해서 채우지 않는다). */
+  const qcur=F.qcur||ch.currency||'USD';
+  const curMismatch=!!(F.fcur&&F.fcur!==qcur);
+  const fxq=fxOf(F.fcur||qcur,qcur);            // 재무제표통화 1단위 = 시세통화 fxq
+  const revPSq=(F.revPS!=null&&isFinite(F.revPS)&&F.revPS>0&&fxq!=null)?F.revPS*fxq:null;
 
   /* ===== 데이터 정합 안전장치 v4.3 — 신호별 독립 판정 =====
    * v4.2는 '자동목표가/현재가 > 5배' 단일 비율로 판정해 야후 펀더멘털 전체를 배제했다.
@@ -1287,8 +1366,8 @@ function compute(id,simPrice){
     const iper=price/F.epsFwd;
     if(iper<1||iper>300){ badEps=true; dataAnoms.push('함의PER '+iper.toFixed(1)+'배'); }
   }
-  if(price>0 && F.revPS!=null && isFinite(F.revPS) && F.revPS>0){
-    const ipsr=price/F.revPS;
+  if(price>0 && revPSq!=null && revPSq>0){         // (v4.28) 환산본으로 검사 — 미환산값은 환율배만큼 틀린다
+    const ipsr=price/revPSq;
     if(ipsr<0.05||ipsr>80){ badRev=true; dataAnoms.push('함의PSR '+ipsr.toFixed(2)+'배'); }
   }
   // 둘 이상 극단 → 공통 분모(현재가)의 이상으로 판단 → 등급 하드게이트에서 차단
@@ -1304,6 +1383,7 @@ function compute(id,simPrice){
   const autoScaleBad=(badTgt||badEps||badRev);   // 표시용 통합 플래그(하위호환)
   // 항목별 배제 — 이상 신호가 가리키는 입력만 무효화. ROE·마진·성장률(%)은 스케일 무관이라 유지.
   const Feff=Object.assign({},F);
+  Feff.revPS=revPSq;                              // (v4.28) 엔진에는 환산본만 넣는다
   if(badEps){ Feff.epsFwd=null; Feff.epsTtm=null; }
   if(badRev){ Feff.revPS=null; }
   if(badTgt){ Feff.tgtHi=null; Feff.tgtLo=null; }
@@ -1323,6 +1403,23 @@ function compute(id,simPrice){
     revPS:  gnum(man.revPS,  Feff.revPS),
     growth: growthEff
   };
+
+  /* (v4.28) ★ 가치지표 자동 산출 — v4.27까지 PER/PBR/PSR은 **수동 입력 전용**이었다.
+   * 화면에 값이 보이던 것은 자동조회 결과가 아니라 Firestore manual에 저장돼 있던
+   * 값(초기 엑셀 시드 포함)이다. 여기서 처음으로 자동값이 생긴다.
+   * PER·PSR은 현재가로 직접 계산한다 — 야후 스냅샷 멀티플은 조회 시점 가격에 굳어
+   * 장중에 움직이지 않는다. PBR은 주당순자산을 받지 않으므로 야후 값을 환산만 한다.
+   * 야후 원값(psrY/pbrY)은 fcur 기준이므로 fxq로 나눠야 시세통화 기준이 된다. */
+  k.fcur=F.fcur||null; k.qcur=qcur; k.fxq=fxq; k.curMismatch=curMismatch;
+  k.revPSq=revPSq; k.revPSraw=(F.revPS!=null&&isFinite(F.revPS))?+F.revPS:null;
+  k.perAuto=(price>0&&Feff.epsTtm!=null&&Feff.epsTtm>0)?price/Feff.epsTtm:null;
+  k.perFwdAuto=(price>0&&Feff.epsFwd!=null&&Feff.epsFwd>0)?price/Feff.epsFwd:null;
+  k.psrAuto=(price>0&&Feff.revPS!=null&&Feff.revPS>0)?price/Feff.revPS
+           :((F.psrY!=null&&isFinite(F.psrY)&&fxq!=null&&fxq>0)?F.psrY/fxq:null);
+  k.pbrAuto=(F.pbrY!=null&&isFinite(F.pbrY)&&fxq!=null&&fxq>0)?F.pbrY/fxq:null;
+  // 교차검증용 원값 — 자기점검 패널에서 야후 스냅샷과 재계산값의 정합을 눈으로 본다.
+  k.psrY=(F.psrY!=null&&isFinite(F.psrY))?+F.psrY:null;
+  k.psrNoFx=(price>0&&F.revPS!=null&&F.revPS>0)?price/F.revPS:null;
 
   // 목표가 분산 비율 (고가-저가)/평균 — 스케일 불량 시 자동 소스 배제
   let tgtSpread=null;
@@ -2083,7 +2180,10 @@ function detailHTML(id){
       :'—',
     (k.ana?('커버리지 '+(k.ana.f<1?amb(k.ana.label):k.ana.label)):'')
     +(k.tgtF?(' · '+(k.tgtF.f<1?amb(k.tgtF.label):k.tgtF.label)):'')
-    +(k.anaRef!=null?' · 야후 평균목표 '+curSym(C)+fmtP(k.anaRef,C):''));
+    +(k.anaRef!=null?' · 야후 평균목표 '+curSym(C)+fmtP(k.anaRef,C):'')
+    /* (v4.28) 시드로 들어온 목표가는 사용자가 입력한 값이 아니다. §14 시드는
+     * consensusDate에 '시드' 표식을 남긴다 — 그 표식이 있으면 출처를 밝힌다. */
+    +(/시드/.test(String(m.consensusDate||''))?' · <b style="color:var(--amber)">초기 엑셀 시드값(수동 취급)</b>':''));
   // 기술앵커는 이제 참고선(적정가 미반영)
   g+=stat('기술 지지/저항 (참고)',k.techRef!=null?curSym(C)+fmtP(k.techRef,C):'—','POC·이평 — 타이밍 참고, 적정가 미반영');
   if(k.dataStale){
@@ -2165,6 +2265,7 @@ function detailHTML(id){
   const F=(key,label,ph)=>'<div class="fld"><label>'+label+'</label><input type="text" inputmode="decimal" data-f="'+key+'" value="'+(m[key]!=null?esc(m[key]):'')+'" placeholder="'+(ph||'')+'"></div>';
   const fnd=(S.cache[id]&&S.cache[id].fund)||{};
   const autoHint=(v,unit)=>v!=null&&isFinite(v)?('자동 '+(+v).toFixed(0)+(unit||'')):'';
+  const autoHint2=(v)=>v!=null&&isFinite(v)?('자동 '+(+v).toFixed(2)):'';   // (v4.28) 배수는 소수 2자리
   const manual='<div class="manual">'
     +F('myFair','내 적정가 ('+curSym(C)+')','직접 산정 값')
     +F('target','애널리스트 목표가','컨센서스 목표가')
@@ -2173,7 +2274,9 @@ function detailHTML(id){
     +F('opinion','종목의견 (표시 전용·미반영)','예: 3.9')
     +F('consensus','컨센서스 rec ★점수반영 (1=강력매수)','예: 1.2')
     +F('consensusDate','컨센서스 기준일 (표시용)','예: 2026-07-16')
-    +F('per','PER','')+F('pbr','PBR','')+F('psr','PSR','')
+    +F('per','PER (비우면 자동)',autoHint2(k.perAuto)||'예: 32.5')
+    +F('pbr','PBR (비우면 자동)',autoHint2(k.pbrAuto)||'예: 8.4')
+    +F('psr','PSR (비우면 자동)',autoHint2(k.psrAuto)||'예: 18.59')
     +SelVM('vmPer','PER 신뢰도',m)+SelVM('vmPbr','PBR 신뢰도',m)+SelVM('vmPsr','PSR 신뢰도',m)
     +F('roe','ROE % (비우면 자동)',autoHint(fnd.roe,'%')||'예: 22')
     +F('margin','영업이익률 % (자동)',autoHint(fnd.margin,'%')||'예: 25')
@@ -2194,12 +2297,21 @@ function detailHTML(id){
     +'</div>';
 
   const vm=effVM(id), vtag=v=>v===2?'<span class="vmtag vm-core">핵심</span>':(v===1?'<span class="vmtag vm-ref">참고</span>':'');
-  const fund=[];
-  [['per','PER'],['pbr','PBR'],['psr','PSR']].forEach(pr=>{
-    const kk=pr[0],lb=pr[1];
-    if(vm[kk]>0&&m[kk]!=null&&m[kk]!=='')fund.push(lb+' '+esc(m[kk])+vtag(vm[kk]));
-  });
-  const excl=[['per','PER'],['pbr','PBR'],['psr','PSR']].filter(pr=>vm[pr[0]]===0&&m[pr[0]]!=null&&m[pr[0]]!=='').map(pr=>pr[1]+' '+esc(m[pr[0]]));
+  /* (v4.28) 값 옆에 출처를 붙인다. "이 숫자가 내가 넣은 건가, 받아온 건가"가
+   * 화면에서 구분되지 않아 생긴 혼동이 이번 보고의 절반이었다. */
+  const autoV={per:k.perAuto,pbr:k.pbrAuto,psr:k.psrAuto};
+  const srcT=a=>'<span class="srct '+(a?'src-a':'src-m')+'">'+(a?'자동':'수동')+'</span>';
+  const vlist=pick=>[['per','PER'],['pbr','PBR'],['psr','PSR']].filter(pr=>pick(vm[pr[0]])).map(pr=>{
+    const kk=pr[0], lb=pr[1];
+    const mv=(m[kk]!=null&&m[kk]!=='')?esc(m[kk]):null;
+    const av=(autoV[kk]!=null&&isFinite(autoV[kk]))?(+autoV[kk]).toFixed(2):null;
+    if(mv==null&&av==null)return null;
+    return lb+' '+(mv!=null?mv:av)+srcT(mv==null)
+      +((mv!=null&&av!=null)?'<span class="muted" style="font-size:11px"> (자동 '+av+')</span>':'')
+      +vtag(vm[kk]);
+  }).filter(Boolean);
+  const fund=vlist(v=>v>0);
+  const excl=vlist(v=>v===0);
   if(m.opinion!=null&&m.opinion!=='')fund.push('의견 '+esc(m.opinion));
   if(m.consensus!=null&&m.consensus!=='')fund.push('컨센 '+esc(m.consensus));
 
@@ -2226,7 +2338,10 @@ function detailHTML(id){
     +'<div class="dgrid">'+g+'</div>'
     +((fund.length||excl.length)?'<div class="muted" style="font-size:12px;margin-bottom:4px">가치지표: '+fund.join(' · ')
       +(m.consensusDate?' <span style="opacity:.75">('+esc(m.consensusDate)+')</span>':'')
-      +(excl.length?' <span style="text-decoration:line-through;opacity:.55">'+excl.join(' · ')+'</span> <span style="opacity:.7">← 이 사업모델에선 신뢰 낮아 제외</span>':'')+'</div>':'')
+      +(excl.length?' <span style="text-decoration:line-through;opacity:.55">'+excl.join(' · ')+'</span> <span style="opacity:.7">← 이 사업모델에선 신뢰 낮아 제외</span>':'')
+      +(k.curMismatch?'<div style="font-size:11.5px;margin-top:3px">재무제표 통화 <b>'+esc(k.fcur)+'</b> ≠ 시세 통화 <b>'+esc(k.qcur)
+        +'</b> — '+(k.fxq!=null?('환율 '+k.fxq.toFixed(4)+'로 환산해 산출했습니다'):'<span style="color:var(--amber);font-weight:700">환율 미확보로 PSR을 비워 뒀습니다</span>')+'</div>':'')
+      +'</div>':'')
     +(vm.note?'<div class="vmnote">사업분야 분석 — '+esc(vm.note)+'</div>':'')
     +'<canvas class="chart" data-id="'+esc(id)+'"></canvas>'
     +tierBoxHTML(k)+gradeExtra
@@ -2244,7 +2359,7 @@ function detailHTML(id){
     +(sim!=null?'<span class="simnote">시뮬레이션 적용 중 (실제가 '+curSym(C)+fmtP(S.calc[id]?S.calc[id].price:null,C)+')</span><button class="btn sm" data-act="simclear">해제</button>':'<span class="muted" style="font-size:12px">입력 후 Enter</span>')
     +'</div>'
     +'<div class="dsec">악재 보류 · 수동 리스크 <small>뉴스는 사람이 판단하고, 반영의 일관성은 시스템이 담당</small></div>'+hazardBox
-    +'<div class="dsec">수동 입력 <small>실시간 조회가 어려운 값 — 저장 시 적정가·표시에 반영. 재무는 워커 연결 시 자동</small></div>'+manual
+    +'<div class="dsec">수동 입력 <small>이미 채워져 있는 값은 <b>자동조회 결과가 아니라</b> Firestore에 저장된 값입니다 — 초기 엑셀 시드(§14)로 들어온 목표가·의견·컨센서스가 여기 해당합니다. 칸을 <b>비우고 저장</b>하면 자동값으로 되돌아갑니다. 회색 안내문구가 보이는 칸은 현재 자동값이 있다는 뜻입니다</small></div>'+manual
     +'<div class="actions"><button class="btn sm primary" data-act="save">수동값 저장</button>'
     +'<button class="btn sm" data-act="refresh">⟳ 개별 갱신</button>'
     +'<button class="btn sm" data-act="loadnews">📰 뉴스 새로고침</button>'
@@ -2656,6 +2771,11 @@ function freshInfo(k){
   const now=Date.now()/1000, ts=k.priceTs||0, age=now-ts;
   if(k.priceSrc==='manual')return{cls:'manual',label:'수동',sub:'직접 입력 · '+ago(ts*1000)};
   const ses=k.session;
+  /* (v4.28) 데이마켓 = 국내 주간거래(미국 ATS 오버나이트). 야후는 이 시간대 체결을
+   * 제공하지 않는다. 표시가는 직전 정규장 종가이며, 그 사실을 그대로 말한다. */
+  if(ses==='day')return{cls:'day',label:'데이마켓',
+    sub:'국내 주간거래 시간대 · 야후 미제공 → 직전 정규장 종가'+(ts?' ('+ago(ts*1000)+')':'')
+        +' · 필요하면 아래 [실시간 현재가 수동 입력]을 쓰세요'};
   const sl=ses==='pre'?'프리':(ses==='post'?'애프터':(ses==='regular'?'정규':null));
   if(sl){
     if(age<=150)return{cls:'live',label:'LIVE·'+sl,sub:(k.priceSrc==='naver'?'네이버 실시간':'야후')+' · '+ago(ts*1000)};
@@ -2689,8 +2809,19 @@ async function fetchQuote(id){
     const now=Date.now()/1000, ctp=meta.currentTradingPeriod||{};
     const within=w=>!!(w&&now>=w.start&&now<w.end);
     let session=within(ctp.regular)?'regular':(within(ctp.pre)?'pre':(within(ctp.post)?'post':null));
+    /* (v4.28) 야후 세션 창으로 안 잡히는 두 경우를 ET 벽시계로 메운다.
+     *  ① 국내 '데이마켓'(주간거래) = 미국 ATS 오버나이트(ET 20:00~04:00). 야후에는
+     *     이 창도, 이 체결도 없다. 값은 못 가져오지만 '장 마감'이라 말하지는 않는다.
+     *  ② currentTradingPeriod가 비어 오는 응답(실측 사례 있음) — 그때 세션이 영구
+     *     null이 되어 시세가 항상 '종가'로 굳는다.
+     * 가격 채택 규칙은 그대로다. 'day'는 라벨 전용이며 아래에서 종가로 떨어진다. */
+    if(session==null&&st.market==='US'){
+      const hasCTP=!!(ctp.regular||ctp.pre||ctp.post), es=etSession(meta.gmtoffset);
+      if(es==='day')session='day';
+      else if(!hasCTP&&es)session=es;
+    }
     let price=lp, ts=lt;
-    if(session==null||price==null){
+    if(session==null||session==='day'||price==null){
       price=(meta.regularMarketPrice!=null?meta.regularMarketPrice:lp);
       ts=meta.regularMarketTime||lt||now;
     }
@@ -2829,7 +2960,13 @@ async function fetchSummary(id,force){
         const revGeff = (j.revGrowthEst!=null&&isFinite(j.revGrowthEst))?j.revGrowthEst:gn(j.revG);
         fund={roe:gn(j.roe),margin:gn(j.margin),de:gn(j.de),revG:revGeff,epsG:epsGeff,
               epsTtm:gn(j.epsTtm),epsFwd:gn(j.epsFwd),revPS:gn(j.revPS),
-              tgtHi:gn(j.tgtHi),tgtLo:gn(j.tgtLo),ts:Date.now()};
+              tgtHi:gn(j.tgtHi),tgtLo:gn(j.tgtLo),
+              /* (v4.28) 워커 v6.4의 통화 태그·야후 멀티플. 구버전 워커면 전부 undefined→null이
+               * 되고, 그때 PSR 자동값은 생기지 않는다(틀린 값을 만들지 않는다). */
+              fcur:(typeof j.fcur==='string'&&j.fcur)?j.fcur:null,
+              qcur:(typeof j.qcur==='string'&&j.qcur)?j.qcur:null,
+              psrY:gn(j.psrY),pbrY:gn(j.pbrY),perT:gn(j.perT),perF:gn(j.perF),mcap:gn(j.mcap),
+              ts:Date.now()};
       }
     }else{ // 구버전 워커(quoteSummary 원본) 호환
       const fd=j&&j.quoteSummary&&j.quoteSummary.result&&j.quoteSummary.result[0]
@@ -2843,6 +2980,11 @@ async function fetchSummary(id,force){
     if(!S.cache[id])S.cache[id]={};
     S.cache[id].ana=ana;
     if(fund&&(fund.roe!=null||fund.margin!=null||fund.revG!=null||fund.epsG!=null||fund.de!=null||fund.epsFwd!=null||fund.revPS!=null)) S.cache[id].fund=fund;
+    /* (v4.28) 재무제표 통화 ≠ 시세 통화면 환율을 받아온 뒤 다시 계산한다.
+     * 환율을 못 받으면 그 종목 PSR은 비어 있게 둔다 — 틀린 값보다 빈 값이 낫다. */
+    if(fund&&fund.fcur&&fund.qcur&&fund.fcur!==fund.qcur&&fxOf(fund.fcur,fund.qcur)==null){
+      ensureFX(fund.fcur,fund.qcur).then(ok=>{ if(ok){ S.calc[id]=compute(id); renderSoon(); } });
+    }
     saveCache(id,true);   // (v4.13) 재무·애널은 비싸다 — 스로틀 예외 (§19.9)
     S.calc[id]=compute(id); renderSoon();
     if(force){
@@ -3098,7 +3240,7 @@ function diagCollect(){
   const nn=rows.filter(r=>r.k.ratioNow!=null).map(r=>r.k.ratioN).filter(v=>v!=null).sort((a,b)=>a-b);
   const fundMiss=rows.filter(r=>fundMissing(r.id));
   return {
-    빌드:'v4.17 (DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v4.28 (DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     시각:new Date().toLocaleString('ko-KR'),
     종목수:ids.length,
     요약패스:S.sumProg?((S.sumProg.retry?'재시도 ':'재무조회 ')+S.sumProg.done+'/'+S.sumProg.total):'완료',
@@ -3117,6 +3259,19 @@ function diagCollect(){
       return (un&&un!==r.k.tier)?(r.nm+': '+r.k.tier+' ← '+un):null; }).filter(Boolean),
     MAD척도:sc.length?{min:+sc[0].toFixed(4),max:+sc[sc.length-1].toFixed(4),'하한0.01미만':sc.filter(v=>v<RATIO_SC_MIN).length}:null,
     관측수min:nn.length?nn[0]:null,
+    /* (v4.28) 통화 불일치 실측표. "몇 종목이 걸려 있고, 환율은 잡혔고, 환산 전후로
+     * 얼마나 달라지는가"를 눈으로 확인한 뒤에 신뢰한다(§22-③). */
+    통화불일치:rows.filter(r=>r.k.curMismatch).map(r=>r.nm+' '+r.k.fcur+'→'+r.k.qcur
+      +(r.k.fxq!=null?(' @'+r.k.fxq.toFixed(4)):' @환율미확보')
+      +(r.k.psrNoFx!=null?(' · PSR 환산전 '+r.k.psrNoFx.toFixed(2)):'')
+      +(r.k.psrAuto!=null?(' → '+r.k.psrAuto.toFixed(2)):'')
+      +(r.k.psrY!=null?(' · 야후원값 '+r.k.psrY.toFixed(2)):'')),
+    /* 야후 스냅샷 PSR과 현재가 재계산값의 정합. 큰 괴리는 규약 변경 신호다. */
+    PSR정합:rows.filter(r=>r.k.psrY!=null&&r.k.psrNoFx!=null&&r.k.psrY>0)
+      .map(r=>({nm:r.nm,비:+(r.k.psrNoFx/r.k.psrY).toFixed(3)}))
+      .filter(x=>Math.abs(x.비-1)>0.15).map(x=>x.nm+' '+x.비+'배'),
+    세션:(()=>{const c={};rows.forEach(r=>{const s=(r.k.session||'종가');c[s]=(c[s]||0)+1;});
+      return JSON.stringify(c)+' · ET '+(typeof etSession==='function'?(etSession(null)||'휴장/장외'):'-');})(),
     등급변화:(S.gradeLog||[]).slice(0,20)
   };
 }
@@ -3137,6 +3292,9 @@ function diagRender(){
   g+=row('데이터 지연',list(d.데이터지연),bad(d.데이터지연));
   g+=row('가격 이상',list(d.가격이상),bad(d.가격이상));
   g+=row('입력 배제',list(d.데이터배제),bad(d.데이터배제));
+  g+=row('통화 불일치',list(d.통화불일치),bad(d.통화불일치));
+  g+=row('PSR 정합이상',list(d.PSR정합),bad(d.PSR정합));
+  g+=row('세션 분포',esc2(d.세션));
   g+=row('MAD 척도',d.MAD척도?esc2(JSON.stringify(d.MAD척도))+' · 관측수 min '+d.관측수min:'—',
     d.MAD척도&&d.MAD척도['하한0.01미만']>0);
   g+=row('추세 캡',list(d.추세캡));
