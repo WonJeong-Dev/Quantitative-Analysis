@@ -1956,15 +1956,35 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const db=firebase.firestore(), auth=firebase.auth();
 let initDone=false;
 
+/* (v5.1) ── 사용자별 데이터 격리 ─────────────────────────────────────────────
+ * v5.0까지 모든 Firestore 경로가 'qa_stocks/…' 같은 전역 상수였다. 구글 로그인은
+ * subscribe()를 호출할지 말지를 정하는 문지기였을 뿐, 경로에는 들어가지 않았다.
+ * 그래서 어느 계정으로 들어와도 같은 문서 하나를 함께 읽고 함께 썼다.
+ * 이제 모든 경로 앞에 'users/{uid}/'를 붙인다. 아래 C()·D()가 유일한 통로이고,
+ * db.collection()·db.doc()을 직접 부르면 다시 전역 경로로 새므로 쓰지 않는다.
+ * (db.batch()는 경로를 갖지 않으므로 그대로 쓴다.)
+ * 세그먼트 수는 접두사가 짝수(2개)라 컬렉션=홀수·문서=짝수 규칙이 그대로 유지된다. */
+let UBASE=null;                       // 로그인 전에는 null — 경로 조립 자체를 막는다
+function ubase(){
+  if(!UBASE)throw new Error('로그인 전에는 Firestore에 접근할 수 없습니다');
+  return UBASE;
+}
+function C(n){ return db.collection(ubase()+n); }
+function D(p){ return db.doc(ubase()+p); }
+
 let authSubscribed=false;
 async function start(){
   auth.onAuthStateChanged(u=>{
     if(u){
-      S.uid=u.uid; hideLogin();
+      /* 계정이 바뀌면 이미 붙어 있는 onSnapshot 리스너가 이전 사용자 경로를 계속
+       * 보고 있다. 리스너를 하나씩 떼어내는 것보다 새로 고치는 편이 확실하다. */
+      if(S.uid&&S.uid!==u.uid){ location.reload(); return; }
+      S.uid=u.uid; UBASE='users/'+u.uid+'/'; hideLogin();
       if(u.email)$('#txtConn').title=u.email;
       if(!authSubscribed){ authSubscribed=true; updConnChip('busy','연결 중'); subscribe(); }
       return;
     }
+    S.uid=null; UBASE=null;
     showLogin();
   });
 }
@@ -1989,7 +2009,7 @@ async function doGoogleLogin(){
 $('#btnGoogleLogin').addEventListener('click',doGoogleLogin);
 $('#btnLogout').addEventListener('click',()=>{ auth.signOut().then(()=>location.reload()); });
 function subscribe(){
-  db.collection('qa_stocks').onSnapshot(snap=>{
+  C('qa_stocks').onSnapshot(snap=>{
     S.stocks={}; snap.forEach(d=>S.stocks[d.id]={id:d.id,...d.data()});
     S.connected=true; updConnChip('ok','연결됨');
     if(!initDone){
@@ -2001,9 +2021,9 @@ function subscribe(){
     recalcAll(); renderSoon();
   },err=>{
     updConnChip('err','권한 오류');
-    toast('Firestore 접근 오류: '+err.message+' — 보안 규칙을 확인하세요 (구글 로그인 계정이 규칙의 허용 이메일과 일치하는지, 소문자 표기인지 확인)','err');
+    toast('Firestore 접근 오류: '+err.message+' — 보안 규칙을 확인하세요 (users/{uid} 규칙이 배포되어 있는지, request.auth.uid == uid 조건인지 확인)','err');
   });
-  db.doc('qa_settings/global').onSnapshot(d=>{
+  D('qa_settings/global').onSnapshot(d=>{
     if(d.exists){ const x=d.data();
       // 구버전 qw(추세 성분 trend 포함)는 v5에서 성분 구성이 바뀌었으므로 무시하고 신 기본값 사용
       const qwSaved=(x.qw&&x.qw.trend===undefined&&x.qw.fin!=null)?x.qw:null;
@@ -2033,29 +2053,29 @@ function lgTouch(){
   else renderSoon();          // 보드 화면의 보유 배지도 거래에 따라 달라진다
 }
 function watchTrades(){
-  db.collection('qa_trades').onSnapshot(s=>{
+  C('qa_trades').onSnapshot(s=>{
     S.trades=[]; s.forEach(d=>S.trades.push({id:d.id,...d.data()}));
     updTabCounts(); lgTouch();
     lgAutoScanOnce();          // (v4.30) 세션 1회 — 분할·병합 자동 점검
   },e=>console.warn('trades',e&&e.code));
-  db.collection('qa_fx').onSnapshot(s=>{
+  C('qa_fx').onSnapshot(s=>{
     S.fxlog=[]; s.forEach(d=>S.fxlog.push({id:d.id,...d.data()}));
     lgTouch();
   },e=>console.warn('fx',e&&e.code));
-  db.collection('qa_splits').onSnapshot(s=>{
+  C('qa_splits').onSnapshot(s=>{
     S.splits=[]; s.forEach(d=>S.splits.push({id:d.id,...d.data()}));
     lgTouch(); lgSplitAlertCheck();     // (v4.31) 미확인 사건이 있으면 접속 시 팝업
   },e=>console.warn('splits',e&&e.code));
   /* (v4.32) 유상 계열 사건. **포지션 계산에 직접 들어가지 않는다** — 이 목록은
    * "청약하셨다면 매수 기록을 쓰세요"라는 할 일이지, 환산 계수가 아니다.
    * 그래서 positions()도 splitFactor()도 S.rights를 읽지 않는다. */
-  db.collection('qa_rights').onSnapshot(s=>{
+  C('qa_rights').onSnapshot(s=>{
     S.rights=[]; s.forEach(d=>S.rights.push({id:d.id,...d.data()}));
     lgTouch();
   },e=>console.warn('rights',e&&e.code));
 }
 function loadCaches(ids){
-  return Promise.all(ids.map(id=>db.doc('qa_cache/'+id).get()
+  return Promise.all(ids.map(id=>D('qa_cache/'+id).get()
     .then(d=>{ if(d.exists){ const v=d.data(); S.cache[id]=v;
       /* (v4.13) 방금 읽어온 사본의 상태를 스로틀 기준으로 물려받는다. 이게 없으면
        * 페이지를 열 때마다 전 종목이 "처음 저장"으로 취급돼 57건이 한꺼번에 나간다. */
@@ -2071,17 +2091,17 @@ async function seed(){
   const batch=db.batch();
   SEED_US.forEach(a=>{
     const [tk,name,sec]=a;
-    batch.set(db.doc('qa_stocks/US_'+tk),{market:'US',symbol:tk,name,sector:sec,
+    batch.set(D('qa_stocks/US_'+tk),{market:'US',symbol:tk,name,sector:sec,
       manual:{},createdAt:Date.now()});
   });
   SEED_KR.forEach(a=>{
     const [code,name,sec]=a;
-    batch.set(db.doc('qa_stocks/KR_'+code),{market:'KR',symbol:code+'.KS',code,name,sector:sec,
+    batch.set(D('qa_stocks/KR_'+code),{market:'KR',symbol:code+'.KS',code,name,sector:sec,
       manual:{},createdAt:Date.now()});
   });
   SEED_ETF.forEach(a=>{
     const [code,name,idx,mkt]=a;
-    batch.set(db.doc('qa_stocks/'+mkt+'_'+code),{market:mkt,type:'etf',
+    batch.set(D('qa_stocks/'+mkt+'_'+code),{market:mkt,type:'etf',
       symbol:(mkt==='KR'?code+'.KS':code),code,name,sector:'ETF',index:idx,
       manual:{},createdAt:Date.now()});
   });
@@ -2227,7 +2247,7 @@ async function drainCacheSaves(){
     while(cacheSaveQ.length){
       const id=cacheSaveQ.shift(), c=S.cache[id];
       if(!c)continue;
-      try{ await db.doc('qa_cache/'+id).set(c); }
+      try{ await D('qa_cache/'+id).set(c); }
       catch(e){ console.warn('cache save',id,(e&&e.code)||e); }
       await sleep(400);   // 서버 ack 후 400ms — 스트림에 누적되지 않는다
     }
@@ -3493,8 +3513,8 @@ $('#list').addEventListener('click',e=>{
     if(act==='refresh'){enqueue(id,'full');fetchSummary(id,true);toast(S.stocks[id].name+' 갱신 중');}
     else if(act==='del'){
       if(confirm('['+S.stocks[id].name+'] 종목과 캐시를 삭제할까요?')){
-        db.doc('qa_stocks/'+id).delete();
-        db.doc('qa_cache/'+id).delete().catch(()=>{});
+        D('qa_stocks/'+id).delete();
+        D('qa_cache/'+id).delete().catch(()=>{});
         delete cacheSaveMeta[id];   // (v4.16) v4.13 스로틀 메타 정리 — 같은 ID 재등록 대비
         delete S.cache[id];delete S.calc[id];delete S.ui.open[id];
         toast('삭제되었습니다');
@@ -3505,12 +3525,12 @@ $('#list').addEventListener('click',e=>{
       const inp=row.querySelector('.liveinput');
       const v=parseFloat(String((inp&&inp.value)||'').replace(/,/g,''));
       if(!isFinite(v)||v<=0){toast('가격을 올바르게 입력하세요','err');return;}
-      db.doc('qa_stocks/'+id).set({manual:{...(S.stocks[id].manual||{}),livePrice:v,livePriceAt:Date.now()}},{merge:true})
+      D('qa_stocks/'+id).set({manual:{...(S.stocks[id].manual||{}),livePrice:v,livePriceAt:Date.now()}},{merge:true})
         .then(()=>toast('수동 현재가가 적용되었습니다'))
         .catch(e=>toast('저장 실패: '+e.message,'err'));
     }
     else if(act==='liveclear'){
-      db.doc('qa_stocks/'+id).set({manual:{...(S.stocks[id].manual||{}),livePrice:null,livePriceAt:null}},{merge:true})
+      D('qa_stocks/'+id).set({manual:{...(S.stocks[id].manual||{}),livePrice:null,livePriceAt:null}},{merge:true})
         .then(()=>toast('수동 현재가를 해제했습니다'));
     }
     else if(act==='save'){saveManual(row,id);}
@@ -3522,7 +3542,7 @@ $('#list').addEventListener('click',e=>{
         const memoInp=row.querySelector('.hazmemo');
         if(memoInp&&memoInp.value.trim())man.hazardMemo=memoInp.value.trim();
       }
-      db.doc('qa_stocks/'+id).set({manual:man,updatedAt:Date.now()},{merge:true})
+      D('qa_stocks/'+id).set({manual:man,updatedAt:Date.now()},{merge:true})
         .then(()=>toast(man.hazard?'악재 보류로 설정 — 등급 범위 밖으로 강등됩니다':'악재 보류 해제'))
         .catch(e=>toast('저장 실패: '+e.message,'err'));
     }
@@ -3554,7 +3574,7 @@ function saveManual(row,id){
     const num=parseFloat(v.replace(/,/g,''));
     man[key]=isFinite(num)?num:v;
   });
-  db.doc('qa_stocks/'+id).set({manual:man,updatedAt:Date.now()},{merge:true})
+  D('qa_stocks/'+id).set({manual:man,updatedAt:Date.now()},{merge:true})
     .then(()=>toast('수동값이 저장되었습니다'))
     .catch(e=>toast('저장 실패: '+e.message,'err'));
 }
@@ -3611,7 +3631,7 @@ $('#btnAddGo').addEventListener('click',async()=>{
      * 요약 조회도 t=etf 없이 나가 v4.22에서 고친 404가 되돌아온다.
      * 필드 모양은 SEED_ETF(L1652)와 맞춘다 — 시드분과 수동 추가분이 갈라지면 안 된다. */
     const isEtf=(kind==='etf');
-    await db.doc('qa_stocks/'+idKey).set(Object.assign({market:mkt},isEtf?{type:'etf'}:{},
+    await D('qa_stocks/'+idKey).set(Object.assign({market:mkt},isEtf?{type:'etf'}:{},
       {symbol,code,name,sector:sec||(isEtf?'ETF':null),manual:{},createdAt:Date.now()}));
     $('#maskAdd').classList.remove('on');
     toast('['+name+'] 추가 완료 — 데이터 수집 중');
@@ -3889,7 +3909,7 @@ async function lgScanSplits(opt){
       for(const c of found){
         /* (v4.32) 야후 events.splits는 '무상 계열'만 담는다 — 유상증자는 split 이벤트가 아니다.
          * type을 명시해 splitAdjustable()이 읽을 수 있게 한다. */
-        try{ await db.collection('qa_splits').add(Object.assign({},c,
+        try{ await C('qa_splits').add(Object.assign({},c,
           {type:c.ratio<1?'merge':'split',kind:c.ratio<1?'merge':'split',
            src:'auto',off:false,ack:false,createdAt:Date.now()})); }
         catch(e){ failed.push(c.name+' (저장 실패)'); }
@@ -3919,7 +3939,7 @@ async function lgIngestSplits(id,evs){
     const dk=[st.market,code,e.date,e.ratio].join('|');
     if(lgIngestSeen.has(dk))continue;            // 스냅샷이 돌아오기 전 재호출 방지
     lgIngestSeen.add(dk);
-    try{ await db.collection('qa_splits').add(Object.assign({},cand,
+    try{ await C('qa_splits').add(Object.assign({},cand,
       {type:e.ratio<1?'merge':'split',kind:e.ratio<1?'merge':'split',
        src:'auto',off:false,ack:false,createdAt:Date.now()})); }
     catch(x){ lgIngestSeen.delete(dk); console.warn('split add',x&&x.code); }
@@ -3985,14 +4005,14 @@ function lgSplitAlertCheck(){
 $('#splitAlertBody').addEventListener('click',async e=>{
   const a=e.target.closest('[data-spack]'), o=e.target.closest('[data-spoff]');
   const id=a?a.dataset.spack:(o?o.dataset.spoff:null); if(!id)return;
-  try{ await db.doc('qa_splits/'+id).update(o?{ack:true,off:true}:{ack:true,off:false});
+  try{ await D('qa_splits/'+id).update(o?{ack:true,off:true}:{ack:true,off:false});
     toast(o?'되돌렸습니다 — 이 사건은 환산에 쓰지 않습니다':'확인했습니다'); }
   catch(x){ toast('처리 실패','err'); }
 });
 $('#btnSplitLater').addEventListener('click',()=>{ splitAlertSnoozed=true; $('#maskSplit').classList.remove('on'); });
 $('#btnSplitAckAll').addEventListener('click',async()=>{
   const pend=(S.splits||[]).filter(x=>x.ack!==true);
-  for(const x of pend){ try{ await db.doc('qa_splits/'+x.id).update({ack:true}); }catch(e){} }
+  for(const x of pend){ try{ await D('qa_splits/'+x.id).update({ack:true}); }catch(e){} }
   $('#maskSplit').classList.remove('on');
   toast(pend.length+'건을 확인했습니다');
 });
@@ -4047,7 +4067,7 @@ function krxShrsURL(codes){
  * 결합 문제다(값을 쓰는 쪽과 수명이 다른 저장소에 두지 않는다). 문서는 하나뿐이고
  * 변동이 있을 때만 쓴다 — 평상시 쓰기 0건. */
 async function shrsBaseline(){
-  try{ const d=await db.doc(SHRS_DOC).get(); return (d.exists&&d.data().map)||{}; }
+  try{ const d=await D(SHRS_DOC).get(); return (d.exists&&d.data().map)||{}; }
   catch(e){ console.warn('shrs baseline',e&&e.code); return {}; }
 }
 /* 이 종목의 일봉에서 '종가가 1/r 배로 튄 날'을 찾는다. 없으면 null.
@@ -4115,7 +4135,7 @@ async function lgScanShares(){
     });
     await sleep(150);
   }
-  try{ await db.doc(SHRS_DOC).set({map:Object.assign({},base,next),updatedAt:Date.now()},{merge:true}); }
+  try{ await D(SHRS_DOC).set({map:Object.assign({},base,next),updatedAt:Date.now()},{merge:true}); }
   catch(e){ console.warn('shrs save',e&&e.code); }
   S.lg.shrs={at:Date.now(),checked:items.length,changed,first,basDd,
     /* (v4.32) 워커가 시장 하나만 조회한 경우를 **반드시 드러낸다.** 코스닥이 막혀 있으면
@@ -4501,7 +4521,7 @@ async function lgSaveForm(){
   if(!v.date||!v.name||!(v.price>0)||!(v.qty>0)){ toast('일자·종목명·단가·수량을 확인하세요','err'); return; }
   try{
     if(o.mode==='edit'&&o.id){
-      await db.doc('qa_trades/'+o.id).update(v);
+      await D('qa_trades/'+o.id).update(v);
       toast('수정했습니다');
     }else{
       if(v.side==='buy')v.snap=lgSnap(v.market,v.code,v.name);
@@ -4510,11 +4530,11 @@ async function lgSaveForm(){
        * 이동평균에도 성과 통계에도 다른 매수와 똑같이 들어간다. 특별 취급하면 그 순간부터
        * 평균단가 계산이 두 갈래가 되고, 한쪽만 고쳐지는 날이 온다. */
       if(o.mode==='rights'){ v.via='rights'; v.rightsId=o.id||null; }
-      await db.collection('qa_trades').add(v);
+      await C('qa_trades').add(v);
       /* 청약 기록이 남았으니 그 사건은 처리된 것이다 — 저장 실패해도 거래는 이미 들어갔다.
        * 표시 갱신 실패로 거래 저장을 되돌리지 않는다(둘의 중요도가 다르다). */
       if(o.mode==='rights'&&o.id){
-        try{ await db.doc('qa_rights/'+o.id).update({done:true,skip:false}); }
+        try{ await D('qa_rights/'+o.id).update({done:true,skip:false}); }
         catch(x){ console.warn('rights done',x&&x.code); }
       }
       toast(o.mode==='rights'?'유상증자 청약분을 매수로 기록했습니다'
@@ -4894,7 +4914,7 @@ async function lgImport(){
   if(!confirm(add.length+'건을 추가합니다. 계속할까요?'))return;
   try{ /* 배치는 500건 한도라 나눠 커밋한다 */
     for(let i=0;i<add.length;i+=400){ const b=db.batch();
-      add.slice(i,i+400).forEach(t=>b.set(db.collection('qa_trades').doc(),t)); await b.commit(); }
+      add.slice(i,i+400).forEach(t=>b.set(C('qa_trades').doc(),t)); await b.commit(); }
     msg.innerHTML='<span style="color:var(--up)">'+add.length+'건 추가 · 건너뜀 '+skip.length+'건</span>'
       +(skip.length?'<div style="color:var(--muted);margin-top:4px">'+esc(skip.slice(0,10).join(' / '))+'</div>':'');
   }catch(e){ msg.innerHTML='<span style="color:var(--down)">실패: '+esc(e.message)+'</span>'; }
@@ -4932,7 +4952,7 @@ $('#lgBody').addEventListener('click',async e=>{
   else if(act==='del'||act==='delone'){
     const tid=id||(S.lg.open&&S.lg.open.id); if(!tid)return;
     if(!confirm('이 거래 기록을 삭제할까요? 되돌릴 수 없습니다.'))return;
-    try{ await db.doc('qa_trades/'+tid).delete(); toast('삭제했습니다'); if(act==='delone')lgCloseForm(); }
+    try{ await D('qa_trades/'+tid).delete(); toast('삭제했습니다'); if(act==='delone')lgCloseForm(); }
     catch(x){ toast('삭제 실패','err'); }
   }
   else if(act==='reg'){ const p=lgPosByKey(k); if(p)lgRegisterStock(p); }
@@ -4941,13 +4961,13 @@ $('#lgBody').addEventListener('click',async e=>{
     const xf=S.lg.xf||{};
     const v={date:String(xf.date||'').slice(0,10),krw:+xf.krw,usd:+xf.usd,createdAt:Date.now()};
     if(!v.date||!(v.krw>0)||!(v.usd>0)){ toast('일자·원화·달러를 확인하세요','err'); return; }
-    try{ await db.collection('qa_fx').add(v);
+    try{ await C('qa_fx').add(v);
       S.lg.xf={date:lgToday(),krw:'',usd:''};
       toast('환전 기록 추가 ('+Math.round(v.krw/v.usd).toLocaleString()+' 원/$)'); renderLedger(); }
     catch(x){ toast('추가 실패: '+x.message,'err'); }
   }
   else if(act==='fxdel'){ if(!confirm('이 환전 기록을 삭제할까요?'))return;
-    try{ await db.doc('qa_fx/'+id).delete(); toast('삭제했습니다'); }catch(x){ toast('삭제 실패','err'); } }
+    try{ await D('qa_fx/'+id).delete(); toast('삭제했습니다'); }catch(x){ toast('삭제 실패','err'); } }
   else if(act==='scan'){
     b.disabled=true; b.textContent='점검 중…';
     const r=await lgScanSplits().catch(()=>null);
@@ -4972,10 +4992,10 @@ $('#lgBody').addEventListener('click',async e=>{
   }
   else if(act==='rtskip'){
     const x=(S.rights||[]).find(y=>y.id===id); if(!x)return;
-    try{ await db.doc('qa_rights/'+id).update({skip:!x.skip}); }catch(e2){ toast('변경 실패','err'); }
+    try{ await D('qa_rights/'+id).update({skip:!x.skip}); }catch(e2){ toast('변경 실패','err'); }
   }
   else if(act==='rtdel'){ if(!confirm('이 유상증자 기록을 삭제할까요?\n이미 만든 매수 기록은 그대로 남습니다.'))return;
-    try{ await db.doc('qa_rights/'+id).delete(); toast('삭제했습니다'); }catch(e2){ toast('삭제 실패','err'); } }
+    try{ await D('qa_rights/'+id).delete(); toast('삭제했습니다'); }catch(e2){ toast('삭제 실패','err'); } }
   else if(act==='shrsadopt')lgAdoptShrs(id);
   else if(act==='shrsdrop'){
     if(!S.lg.shrs)return;
@@ -4984,10 +5004,10 @@ $('#lgBody').addEventListener('click',async e=>{
   }
   else if(act==='sptoggle'){
     const x=(S.splits||[]).find(y=>y.id===id); if(!x)return;
-    try{ await db.doc('qa_splits/'+id).update({off:!x.off}); }catch(e2){ toast('변경 실패','err'); }
+    try{ await D('qa_splits/'+id).update({off:!x.off}); }catch(e2){ toast('변경 실패','err'); }
   }
   else if(act==='spdel'){ if(!confirm('이 분할·병합 기록을 삭제할까요?'))return;
-    try{ await db.doc('qa_splits/'+id).delete(); toast('삭제했습니다'); }catch(e2){ toast('삭제 실패','err'); } }
+    try{ await D('qa_splits/'+id).delete(); toast('삭제했습니다'); }catch(e2){ toast('삭제 실패','err'); } }
   else if(act==='expjson')lgDownload('qa_trades_'+lgToday()+'.json',
     JSON.stringify({trades:S.trades,fx:S.fxlog,splits:S.splits,rights:S.rights},null,1),'application/json');
   else if(act==='expcsv')lgExportCSV();
@@ -5044,7 +5064,7 @@ async function lgSaveSplit(){
     /* 직접 등록한 것은 이미 알고 있는 사건이다 — 알림 대상이 아니다.
      * (v4.32) type을 함께 쓴다. kind는 v4.30이 쓰던 'split'|'merge' 표시값이라
      * 그대로 두고, 환산 가부 판정은 type으로만 한다(하위호환: type 없으면 환산 대상). */
-    await db.collection('qa_splits').add({market:f.market||'KR',code,name,date,
+    await C('qa_splits').add({market:f.market||'KR',code,name,date,
       ratio:+ratio.toFixed(8),type:kind,kind:(ratio<1?'merge':'split'),
       src:'manual',off:false,ack:true,createdAt:Date.now()});
     S.lg.sf={market:f.market||'KR',code:'',name:'',kind,n:'',date:''};
@@ -5063,7 +5083,7 @@ async function lgSaveRights(){
   if(!(price>0)){ toast('발행가를 확인하세요','err'); return; }
   if(alloc!=null&&!(alloc>0)){ toast('배정비율을 확인하세요','err'); return; }
   try{
-    await db.collection('qa_rights').add({market:r.market||'KR',code,name,date,
+    await C('qa_rights').add({market:r.market||'KR',code,name,date,
       price,alloc,src:'manual',done:false,skip:false,createdAt:Date.now()});
     S.lg.rf={market:r.market||'KR',code:'',name:'',date:'',price:'',alloc:''};
     toast('등록했습니다 — [청약 기록]으로 받으신 수량을 넣으시면 원장에 반영됩니다');
@@ -5138,7 +5158,7 @@ $('#btnManualWipe').addEventListener('click',async()=>{
      * 빈 객체를 넣어도 기존 키가 남는다 — 여기서 set을 쓰면 아무 일도 일어나지 않는다. */
     for(let i=0;i<ids.length;i+=400){
       const b=db.batch();
-      ids.slice(i,i+400).forEach(id=>b.update(db.doc('qa_stocks/'+id),{manual:{},updatedAt:Date.now()}));
+      ids.slice(i,i+400).forEach(id=>b.update(D('qa_stocks/'+id),{manual:{},updatedAt:Date.now()}));
       await b.commit();
     }
     toast(docs+'개 종목의 수동값을 지웠습니다 — 이제 전부 자동값 기준입니다');
@@ -5164,7 +5184,7 @@ $('#btnSeedMissing').addEventListener('click',async()=>{
   if(!add.length){ toast('추가할 종목이 없습니다 — 시드가 모두 등록되어 있습니다'); return; }
   if(!confirm(add.length+'개 종목을 추가합니다.\n\n'+add.map(x=>x[1].name).join(' · ')+'\n\n계속할까요?'))return;
   try{ const b=db.batch();
-    add.forEach(([id,v])=>b.set(db.doc('qa_stocks/'+id),v));
+    add.forEach(([id,v])=>b.set(D('qa_stocks/'+id),v));
     await b.commit();
     toast(add.length+'개 종목을 추가했습니다 — ⟳ 전체 갱신을 눌러 데이터를 받아오세요');
   }catch(e){ toast('추가 실패: '+e.message,'err'); }
@@ -5186,7 +5206,7 @@ $('#btnSetSave').addEventListener('click',async()=>{
   S.settings.refreshMin=clamp(parseInt($('#setRefresh').value)||10,1,120);
   S.settings.quoteSec=clamp(parseInt($('#setQuote').value)||30,10,600);
   S.settings.proxy=$('#setProxy').value.trim();
-  try{await db.doc('qa_settings/global').set({qw,aw,fvw:f,refreshMin:S.settings.refreshMin,quoteSec:S.settings.quoteSec,proxy:S.settings.proxy});}
+  try{await D('qa_settings/global').set({qw,aw,fvw:f,refreshMin:S.settings.refreshMin,quoteSec:S.settings.quoteSec,proxy:S.settings.proxy});}
   catch(e){toast('설정 저장 실패(로컬만 적용): '+e.message,'err');}
   recalcAll();render();
   startInterval();startQuoteLoop();
