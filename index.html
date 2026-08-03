@@ -4050,7 +4050,10 @@ async function lgScanShares(){
   } finally { clearTimeout(to); }
 
   const basDd=ymdDash(j.basDd);
-  const items=(j.items||[]).filter(x=>x&&x.code&&x.shrs>0);
+  const items=(j.items||[]).filter(x=>x&&x.code&&x.shrs>0&&x.ok!==false);
+  /* (v4.32) 워커가 MKTCAP 항등식(LIST_SHRS × 종가 = 시가총액)으로 걸러낸 종목은 배율을
+   * 믿을 수 없다. 조용히 빼면 '변동 없음'으로 읽히므로 목록에 남겨 알린다. */
+  const badV=(j.items||[]).filter(x=>x&&x.ok===false).map(x=>(x.name||x.code)+' — '+(x.warn||'검증 실패'));
   const base=await shrsBaseline();
   const next={}, changed=[];
   let first=0;
@@ -4079,7 +4082,7 @@ async function lgScanShares(){
      * 코스닥 종목은 애초에 응답에 없고, 그러면 '변동 없음'과 구별이 안 된다 —
      * 점검하지 않은 것과 점검해서 이상 없는 것은 완전히 다른 상태다(§22-⑪). */
     warn:j.경고||null, next:(j.부분성공&&j.다음행동)?j.다음행동:null,
-    mkts:j.시장별||null,
+    mkts:j.시장별||null, badV:badV.length?badV:null,
     missing:codes.filter(c=>!items.some(x=>x.code===c))};
   return S.lg.shrs;
 }
@@ -4106,6 +4109,7 @@ function lgShrsScanHTML(sc){
   if(sc.first)g+=' · <b>첫 관측 '+sc.first+'종목</b>(기준값만 기록 — 다음 점검부터 변동을 감지합니다)';
   if(sc.note)g+='<br>'+esc(sc.note);
   if(sc.missing&&sc.missing.length)g+='<br>KRX 응답에 없는 코드: '+esc(sc.missing.join(' · '))+' (상장폐지·ETF·코넥스일 수 있습니다)';
+  if(sc.badV&&sc.badV.length)g+='<br>⚠ 상장주식수 검증 실패(배율을 쓰지 않았습니다): '+esc(sc.badV.join(' · '));
   g+='</div>';
   /* 부분 성공은 성공이 아니다 — 못 본 시장이 있다는 사실을 결과와 같은 크기로 보여준다 */
   if(sc.warn)g+='<div class="lgalert">⚠ <b>'+esc(sc.warn)+'</b>'
