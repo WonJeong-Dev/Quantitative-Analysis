@@ -339,6 +339,7 @@
   .toast{background:#252d43;color:#fff;padding:10px 18px;border-radius:10px;font-size:13.5px;font-weight:600;
          box-shadow:0 6px 24px rgba(20,30,60,.3);animation:tin .25s}
   .toast.err{background:#a63540}
+  .toast.warn{background:#8a5a12}
   @keyframes tin{from{opacity:0;transform:translateY(8px)}}
 
   footer{margin-top:26px;font-size:11.5px;color:var(--sub);text-align:center;line-height:1.7}
@@ -497,7 +498,12 @@
       <input type="number" id="setRefresh" min="1" max="120" step="1"></div>
     <div class="mrow"><label>커스텀 CORS 프록시 (선택, {url} 자리에 대상 URL 삽입)</label>
       <input type="text" id="setProxy" placeholder="예: https://my-worker.example.workers.dev/?u={url}"></div>
-    <div class="foot"><button class="btn" id="btnLogout" style="margin-right:auto">로그아웃</button><button class="btn danger" id="btnManualWipe" title="Firestore에 저장된 수동 입력값(초기 엑셀 시드 포함)을 전 종목에서 지웁니다. 지운 뒤에는 모든 칸이 자동조회값 기준으로 동작합니다. 종목·캐시·거래기록은 건드리지 않습니다">수동값 전체 초기화</button><button class="btn" id="btnSeedMissing" title="시드 목록에 있는데 아직 등록되지 않은 종목을 한 번에 추가합니다. 이미 있는 종목은 건드리지 않습니다">누락 종목 추가</button><button class="btn" id="btnSetReset" title="가중치와 갱신 주기를 처음 값으로 되돌립니다. 커스텀 프록시는 그대로 둡니다 — 지우면 시세·재무 조회가 끊깁니다. 저장을 눌러야 실제로 적용됩니다">기본값</button><button class="btn" data-close>닫기</button><button class="btn primary" id="btnSetSave">저장</button></div>
+    <div class="mrow"><label>시세 조회 경로 — 공개 프록시는 응답을 갈아끼울 수 있는 자리입니다</label>
+      <select id="setProxyMode"></select>
+      <small style="display:block;margin-top:4px;color:var(--muted);font-size:11.5px">
+        어느 경로로 받든 <b>요청한 심볼의 응답이 맞는지</b>는 항상 검증합니다.
+        '워커 전용'은 내 워커가 죽으면 시세가 멈추는 대신, 남이 만진 값을 받을 자리가 없습니다.</small></div>
+    <div class="foot"><button class="btn" id="btnLogout" style="margin-right:auto">로그아웃</button><button class="btn danger" id="btnManualWipe" title="Firestore에 저장된 수동 입력값(초기 엑셀 시드 포함)을 전 종목에서 지웁니다. 지운 뒤에는 모든 칸이 자동조회값 기준으로 동작합니다. 종목·캐시·거래기록은 건드리지 않습니다">수동값 전체 초기화</button><button class="btn" id="btnSetReset" title="가중치와 갱신 주기를 처음 값으로 되돌립니다. 커스텀 프록시는 그대로 둡니다 — 지우면 시세·재무 조회가 끊깁니다. 저장을 눌러야 실제로 적용됩니다">기본값</button><button class="btn" data-close>닫기</button><button class="btn primary" id="btnSetSave">저장</button></div>
   </div>
 </div>
 
@@ -655,7 +661,7 @@ const S = {
     aw:{...AW_DEF},   // 가격매력도 가중치
     fvw:{...FVW_DEF},
     refreshMin:SET_DEF.refreshMin, quoteSec:SET_DEF.quoteSec,
-    etfQuoteMin:SET_DEF.etfQuoteMin, proxy:''
+    etfQuoteMin:SET_DEF.etfQuoteMin, proxy:'', proxyMode:'auto'
   },
   ui:{sort:'grade', search:'', open:{}, sim:{}, prog:null, seeded:false},
   trades:[],            // (v4.24) 거래 기록 — qa_trades
@@ -711,7 +717,8 @@ const inTab=id=>{ const s=S.stocks[id];
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
 function toast(msg,type){
-  const d=document.createElement('div'); d.className='toast'+(type==='err'?' err':'');
+  const d=document.createElement('div');
+  d.className='toast'+(type==='err'?' err':(type==='warn'?' warn':''));
   d.textContent=msg; $('#toasts').appendChild(d); setTimeout(()=>d.remove(),3600);
 }
 
@@ -741,12 +748,52 @@ const PROXIES=[
   u=>'https://corsproxy.io/?url='+encodeURIComponent(u),
   u=>'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(u)
 ];
-let proxyIdx = +(localStorage.getItem('qa_proxy_idx')||0);
+/* (v4.33 fix) localStorage는 **접근만으로 throw할 수 있다** — 사파리 프라이빗,
+ * 쿠키 차단, iframe 샌드박스, 용량 초과가 전부 여기서 터진다. v4.32까지 이 줄은
+ * 최상위 문이라 예외가 나면 그 아래 스크립트 전체가 실행되지 않았다(화면이 통째로 죽음).
+ * 읽기·쓰기를 한 문으로 모아 어떤 경우에도 예외가 밖으로 새지 않게 한다. */
+const LS={
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,String(v)); return true; }catch(e){ return false; } }
+};
+/* 저장값이 깨져 있으면(NaN·범위 밖) 0으로 되돌린다. NaN이 들어가면 아래 slice·%가
+ * 조용히 이상한 순서를 만든다. */
+let proxyIdx=(()=>{ const n=parseInt(LS.get('qa_proxy_idx')||'0',10);
+  return (isFinite(n)&&n>=0&&n<PROXIES.length)?n:0; })();
 
-async function fetchJSON(url){
-  const custom=S.settings.proxy&&S.settings.proxy.includes('{url}')
+/* ============ (v4.33) 프록시 신뢰 ============
+ * 공개 CORS 프록시(allorigins·corsproxy.io·codetabs)는 **응답을 갈아끼울 수 있는 자리**다.
+ * 보내는 것은 야후 URL뿐이라 유출 위험은 없지만, 받은 숫자가 진짜라는 보장은 없다.
+ * 두 겹으로 막는다.
+ *   ① 경로 선택 — 사용자가 워커를 갖고 있으면 공개 프록시를 아예 안 타게 할 수 있다.
+ *   ② 응답 검증 — 어느 경로로 왔든 '요청한 심볼의 응답이 맞는가'를 확인하고,
+ *      아니면 그 프록시를 실패로 처리하고 다음 경로로 넘어간다.
+ * ②가 더 중요하다. ①은 사용자가 워커를 가진 경우에만 쓸 수 있지만 ②는 항상 돈다. */
+const PROXY_MODES={
+  auto:      '자동 — 워커 우선, 실패 시 공개 프록시 (권장)',
+  workerOnly:'워커 전용 — 공개 프록시를 쓰지 않음 (워커가 죽으면 조회 중단)',
+  publicOnly:'공개 프록시만 — 워커 미사용'
+};
+/* 야후 차트 응답이 **요청한 심볼의 것인지** 확인한다. 프록시가 캐시를 잘못 물려
+ * 다른 종목을 돌려주면 값은 멀쩡해 보이는데 종목만 다르다 — 가장 잡기 어려운 오염이다.
+ * meta.symbol이 없는 응답은 검증하지 못하므로 통과시킨다(없는 근거로 기각하지 않는다). */
+function chartSymbolOK(j,sym){
+  const m=j&&j.chart&&j.chart.result&&j.chart.result[0]&&j.chart.result[0].meta;
+  if(!m)return false;
+  const got=String(m.symbol||'').toUpperCase();
+  return !got||got===String(sym||'').toUpperCase();
+}
+async function fetchJSON(url,opt){
+  opt=opt||{};
+  const mode=(S.settings.proxyMode&&PROXY_MODES[S.settings.proxyMode])?S.settings.proxyMode:'auto';
+  const hasWorker=!!(S.settings.proxy&&S.settings.proxy.includes('{url}'));
+  const custom=hasWorker&&mode!=='publicOnly'
     ? [u=>S.settings.proxy.replace('{url}',encodeURIComponent(u))] : [];
-  const chain=[...custom,...PROXIES.slice(proxyIdx),...PROXIES.slice(0,proxyIdx)];
+  /* 워커 전용인데 워커가 없으면 아무 데도 못 간다 — 그때는 자동과 같게 둔다.
+   * 설정 저장 시 막지만, 예전에 저장된 값으로 들어오는 경우가 있다. */
+  const pub=(mode==='workerOnly'&&custom.length)?[]
+    :[...PROXIES.slice(proxyIdx),...PROXIES.slice(0,proxyIdx)];
+  const chain=[...custom,...pub];
   let lastErr;
   for(let i=0;i<chain.length;i++){
     const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),9000);
@@ -755,14 +802,25 @@ async function fetchJSON(url){
       clearTimeout(to);
       if(!res.ok) throw new Error('HTTP '+res.status);
       const j=await res.json();
+      /* 검증 실패는 '이 프록시의 실패'다 — 다음 경로로 넘어간다. 예외를 밖으로 던지면
+       * 멀쩡한 다른 경로를 안 써 보고 포기하게 된다. */
+      if(opt.check&&!opt.check(j)) throw new Error('응답 검증 실패(다른 종목·형식 불일치)');
       if(!custom.length){ // 성공 프록시 기억
         const abs=(proxyIdx+i)%PROXIES.length;
-        if(i>0){proxyIdx=abs;localStorage.setItem('qa_proxy_idx',String(abs));}
+        /* (v4.33 fix) 이 setItem은 try 블록 안이었다 — 저장이 막힌 브라우저에서
+         * **응답을 이미 받아 놓고도** catch로 떨어져 다음 프록시로 넘어갔다.
+         * LS.set은 실패해도 예외를 내지 않는다(기억만 못 할 뿐 조회는 성공). */
+        if(i>0){proxyIdx=abs;LS.set('qa_proxy_idx',abs);}
       }
       return j;
     }catch(e){ clearTimeout(to); lastErr=e; }
   }
   throw lastErr||new Error('네트워크 실패');
+}
+/* 야후 캔들 조회의 유일한 통로. 심볼 검증을 여기 한 번만 걸어 두면 호출부가 늘어도
+ * 검증이 빠지지 않는다 — v4.32는 fetchJSON을 여섯 곳에서 직접 불렀다. */
+async function fetchChart(sym,range){
+  return parseChart(await fetchJSON(yahooChartURL(sym,range),{check:j=>chartSymbolOK(j,sym)}));
 }
 
 /* ============== (v4.28) 통화 정합 · 미국 세션 판정 ==============
@@ -777,7 +835,7 @@ async function fetchJSON(url){
  *     '데이마켓'(주간거래)은 미국 ATS 오버나이트(ET 20:00~04:00)라 야후에 아예 없다.
  *     없는 값을 지어내지 않되, '장 마감'이라고 잘못 말하지도 않는다 — 라벨만 정직하게. */
 const FX_TTL=12*3600e3;
-try{ const _fx=localStorage.getItem('qa_fx_rates'); if(_fx)S.fx=JSON.parse(_fx)||{}; }catch(e){}
+try{ const _fx=LS.get('qa_fx_rates'); if(_fx)S.fx=JSON.parse(_fx)||{}; }catch(e){}
 /* 동기 조회 — compute()에서 쓴다. 모르면 null을 준다(1로 가정하지 않는다). */
 function fxOf(from,to){
   if(!from||!to)return null;
@@ -791,7 +849,7 @@ function fxPut(from,to,v,src){
   if(!from||!to||from===to)return false;
   if(v==null||!isFinite(v)||v<=0)return false;
   S.fx[from+to]={v:+v,ts:Date.now(),src:src||'net'};
-  try{ localStorage.setItem('qa_fx_rates',JSON.stringify(S.fx)); }catch(e){}
+  LS.set('qa_fx_rates',JSON.stringify(S.fx));
   return true;
 }
 /* (v4.29) 진행 중인 요청을 **공유**한다. v4.28은 이미 요청 중이면 대기자에게 즉시
@@ -808,7 +866,7 @@ async function ensureFX(from,to){
     try{
       const px=async sym=>{
         const j=await fetchJSON('https://query1.finance.yahoo.com/v8/finance/chart/'
-          +encodeURIComponent(sym)+'?range=5d&interval=1d');
+          +encodeURIComponent(sym)+'?range=5d&interval=1d',{check:x=>chartSymbolOK(x,sym)});
         const m=j&&j.chart&&j.chart.result&&j.chart.result[0]&&j.chart.result[0].meta;
         const v=m&&m.regularMarketPrice;
         return (v!=null&&isFinite(v)&&v>0)?+v:null;
@@ -1873,7 +1931,19 @@ function splitFactor(t){
  * 키는 (시장, 자산유형, 종목명, 계좌) 넷이다. 같은 종목이라도 계좌가 다르면 별개 포지션이며,
  * 계좌 간 이동은 불가하므로 합산해서는 안 된다.
  * (v4.30) 수량·단가는 splitFactor로 **신주 기준으로 환산해서** 누적한다. */
-function positions(){
+/* ============ (v4.33) positions()를 두 겹으로 나눈다 ============
+ * 한 번의 render에서 positions()는 4~5회 불린다(updTabCounts·holdMap·lgSummary·lgAudit).
+ * 그런데 그 안에서 하는 일은 성격이 완전히 다른 둘이다.
+ *   ⓐ 원장 누적 — S.trades와 S.splits에만 의존한다. 스냅샷이 오기 전에는 안 바뀐다.
+ *   ⓑ 시세 부착 — S.calc에 의존한다. **30초마다 바뀐다.**
+ * ⓐ만 캐시하고 ⓑ는 매번 다시 한다. 통째로 캐시하면 시세가 얼어붙는데, 그건 느린 것보다
+ * 훨씬 나쁘다 — 화면은 멀쩡해 보이면서 값만 낡는다.
+ * 무효화는 '만료 시간'이 아니라 **바뀐 자리에서 세는 것**으로 한다(bumpPos).
+ * 시간 기반은 언젠가 어긋나지만, 바뀌는 자리는 셋뿐이고 전부 눈에 보인다. */
+let posRev=0, posMemo={rev:-1,raw:null};
+const bumpPos=()=>{ posRev++; };
+function positionsRaw(){
+  if(posMemo.rev===posRev&&posMemo.raw)return posMemo.raw;
   const byKey={};
   const ts=(S.trades||[]).slice().sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:
     ((a.side==='buy'?0:1)-(b.side==='buy'?0:1))));
@@ -1899,7 +1969,11 @@ function positions(){
       if(p.qty<1e-9){ p.qty=0; p.cost=0; }
     }
   }
-  return Object.values(byKey).map(p=>{
+  posMemo={rev:posRev,raw:Object.values(byKey)};
+  return posMemo.raw;
+}
+function positions(){
+  return positionsRaw().map(p=>{
     p.avg=p.qty>0?p.cost/p.qty:null;
     // 대시보드에 같은 종목이 있으면 현재가를 붙여 평가손익을 낸다
     const id=findStockId(p);
@@ -1927,12 +2001,16 @@ function findStockId(p){
 /* (v4.24) 달러 원가 — 환전 이동평균.
  * 달러를 보유한 채 주식을 사고파는 것은 환차익과 무관하다. 원화 기준 손익은
  * '그 달러를 만들 때 쓴 원화'로만 정해지므로, 환전 이력의 이동평균 환율을 쓴다. */
-function fxAvgRate(){
+/* (v4.33) 평균만 돌려주면 '얼마나' 환전했는지가 사라진다. 환차 참고값은 평균이 아니라
+ * **총액**에 걸리는 양이므로 둘을 같은 곳에서 함께 낸다 — 두 번 세지 않는다. */
+function fxTotals(){
   let usd=0,krw=0;
   for(const f of (S.fxlog||[])){ const u=+f.usd||0, w=+f.krw||0;
     if(u>0&&w>0){ usd+=u; krw+=w; } }
-  return usd>0?krw/usd:null;
+  return {usd,krw,rate:usd>0?krw/usd:null};
 }
+/* (v4.33) fxAvgRate()는 fxTotals().rate로 대체했다. 평균만 따로 부르는 자리가 하나도
+ * 남지 않았는데 함수를 두면, 나중에 누군가 총액이 필요할 때 이걸 먼저 찾아 쓴다. */
 /* (v4.30) 보드 행에 붙일 보유 요약. 계좌별로 갈라 둔 포지션을 **표시용으로만** 합친다 —
  * positions()의 계좌 분리는 그대로 두고(계좌 간 이동 불가), 배지에서만 접는다. */
 function holdMap(){
@@ -2007,13 +2085,19 @@ async function doGoogleLogin(){
   }
 }
 $('#btnGoogleLogin').addEventListener('click',doGoogleLogin);
-$('#btnLogout').addEventListener('click',()=>{ auth.signOut().then(()=>location.reload()); });
+$('#btnLogout').addEventListener('click',()=>{ auth.signOut().then(()=>location.reload())
+  .catch(e=>toast('로그아웃 실패: '+((e&&e.message)||e),'err')); });
 function subscribe(){
   C('qa_stocks').onSnapshot(snap=>{
     S.stocks={}; snap.forEach(d=>S.stocks[d.id]={id:d.id,...d.data()});
     S.connected=true; updConnChip('ok','연결됨');
+    /* (v4.33 fix) v4.32는 '비어 있으면 무조건 return'이었다. 시드가 실패했거나
+     * 사용자가 종목을 전부 지운 뒤 새로고침하면 스냅샷이 계속 비어 있고, 그러면
+     * initDone이 영영 false → postInit()이 안 돌고 → watchTrades()도 안 붙는다.
+     * 대시보드가 비었다는 것과 **거래기록까지 죽는다**는 것은 전혀 다른 일이다.
+     * 시드는 한 번만 시도하고, 그 뒤에는 비어 있어도 초기화를 끝까지 진행한다. */
     if(!initDone){
-      if(snap.empty){ if(!S.ui.seeded){S.ui.seeded=true; seed();} return; }
+      if(snap.empty&&!S.ui.seeded){ S.ui.seeded=true; seed(); return; }
       initDone=true; postInit(); return;
     }
     const missing=Object.keys(S.stocks).filter(id=>!S.cache[id]&&!Q.items.find(x=>x.id===id));
@@ -2055,6 +2139,7 @@ function lgTouch(){
 function watchTrades(){
   C('qa_trades').onSnapshot(s=>{
     S.trades=[]; s.forEach(d=>S.trades.push({id:d.id,...d.data()}));
+    bumpPos();                 // (v4.33) 원장이 바뀌었다 — positionsRaw 캐시를 버린다
     updTabCounts(); lgTouch();
     lgAutoScanOnce();          // (v4.30) 세션 1회 — 분할·병합 자동 점검
   },e=>console.warn('trades',e&&e.code));
@@ -2064,6 +2149,7 @@ function watchTrades(){
   },e=>console.warn('fx',e&&e.code));
   C('qa_splits').onSnapshot(s=>{
     S.splits=[]; s.forEach(d=>S.splits.push({id:d.id,...d.data()}));
+    bumpPos();                 // (v4.33) 환산 계수가 바뀌면 모든 포지션이 바뀐다
     lgTouch(); lgSplitAlertCheck();     // (v4.31) 미확인 사건이 있으면 접속 시 팝업
   },e=>console.warn('splits',e&&e.code));
   /* (v4.32) 유상 계열 사건. **포지션 계산에 직접 들어가지 않는다** — 이 목록은
@@ -2131,7 +2217,11 @@ async function pump(){
 async function runFetch(it){
   const st=S.stocks[it.id]; if(!st)return;
   try{
-    const data=parseChart(await fetchJSON(yahooChartURL(st.symbol,it.mode==='full'?'2y':'7d')));
+    const data=await fetchChart(st.symbol,it.mode==='full'?'2y':'7d');
+    /* (v4.33) 국내 종목이 원화가 아니면 심볼이 섞였거나 응답이 오염된 것이다.
+     * 통화가 틀린 값을 캐시에 넣으면 평가액·환산이 통째로 어긋난다 — 여기서 끊는다. */
+    if(st.market==='KR'&&data.currency&&data.currency!=='KRW')
+      throw new Error('통화 불일치: '+data.currency+' (국내 종목인데 원화가 아닙니다)');
     if(it.mode==='full'||!S.cache[it.id]||!S.cache[it.id].c){
       /* (v4.11 · §19.9 근본 수정) trimCache는 캔들 필드만 담은 **새 객체**를 만든다.
        * v4.10까지는 여기서 ana 하나만 옮겨 담아 fund(재무·EPS)가 매 'full' 갱신마다
@@ -2273,7 +2363,7 @@ async function fetchIndices(){
   const defs=[['^KS11','KOSPI'],['^KQ11','KOSDAQ'],['^GSPC','S&P 500'],['^IXIC','NASDAQ'],['KRW=X','USD/KRW']];
   for(const [sym,name] of defs){
     try{
-      const d=parseChart(await fetchJSON(yahooChartURL(sym,'5d')));
+      const d=await fetchChart(sym,'5d');
       const chg=d.prevClose?(d.price-d.prevClose)/d.prevClose*100:null;
       S.idx[sym]={name,price:d.price,chg};
       renderMarketbar();
@@ -2407,7 +2497,10 @@ function stripHTML(k){
   out+=tick(k.s50,'s50','SMA50');
   out+=tick(k.s200,'s200','SMA200');
   const pc=k.chg>0?'var(--up)':(k.chg<0?'var(--down)':'#7a8499');
-  out+='<div class="pricedot" style="left:'+P(k.price).toFixed(2)+'%;background:'+pc+'" title="현재가 '+fmtP(k.price,k.currency)+'"></div>';
+  /* (v4.33 fix) price가 null이면 P(null)이 0을 만들어 **현재가 점이 맨 왼쪽에 찍혔다** —
+   * 52주 최저가에 붙어 있는 것처럼 보인다. 모르는 값은 그리지 않는다(§22-⑯). */
+  if(k.price!=null&&isFinite(k.price))
+    out+='<div class="pricedot" style="left:'+P(k.price).toFixed(2)+'%;background:'+pc+'" title="현재가 '+fmtP(k.price,k.currency)+'"></div>';
   return out+'</div>';
 }
 function render(){
@@ -3175,7 +3268,7 @@ async function fetchQuote(id){
         }
       }catch(e){}
     }
-    const j=await fetchJSON(yahooQuoteURL(st.symbol));
+    const j=await fetchJSON(yahooQuoteURL(st.symbol),{check:x=>chartSymbolOK(x,st.symbol)});
     const r=j&&j.chart&&j.chart.result&&j.chart.result[0]; if(!r)return;
     const meta=r.meta||{}, T=r.timestamp||[], q=(r.indicators&&r.indicators.quote&&r.indicators.quote[0])||{};
     let lp=null,lt=0;
@@ -3257,9 +3350,13 @@ function newsInnerHTML(id,st){
   if(nd.noProxy)return '<div class="newshint">자동 뉴스는 커스텀 워커 프록시 연결 후 표시됩니다. 지금은 아래 링크로 확인하세요.</div>'+links;
   if(nd.err)return '<div class="newshint">뉴스 조회 실패 — 워커가 /news 지원 최신 버전인지 확인하세요. 아래 링크로 확인 가능합니다.</div>'+links;
   if(!nd.items||!nd.items.length)return '<div class="newshint">최근 헤드라인을 찾지 못했습니다.</div>'+links;
+  /* (v4.33 fix) 링크는 **바깥에서 온 문자열**이다. esc()는 따옴표만 막을 뿐 스킴은 못 막는다 —
+   * javascript:·data: URL이 그대로 통과했다. http(s)가 아니면 링크로 만들지 않는다. */
+  const safeURL=u=>{ const v=String(u||'').trim();
+    return /^https?:\/\//i.test(v)?v:null; };
   const rows=nd.items.slice(0,6).map(it=>{
     const t=esc(it.t||''); const src=esc(it.s||''); const when=it.ts?ago(it.ts*1000):'';
-    return '<a class="newsitem" href="'+esc(it.u||'#')+'" target="_blank" rel="noopener">'
+    return '<a class="newsitem" href="'+esc(safeURL(it.u)||'#')+'" target="_blank" rel="noopener noreferrer">'
       +'<span class="nt">'+t+'</span>'
       +'<span class="nm">'+(src?src:'')+(when?(src?' · ':'')+when:'')+'</span></a>';
   }).join('');
@@ -3495,6 +3592,9 @@ document.addEventListener('keydown',e=>{
   if(e.ctrlKey||e.metaKey||e.altKey)return;
   const t=e.target, tag=(t&&t.tagName)||'';
   if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable))return;
+  /* (v4.33 fix) 모달(종목 추가·설정·분할 알림·로그인)이 떠 있을 때는 뒤에서 탭이 바뀌어
+   * 있었다. 닫고 나면 다른 탭에 와 있는 셈이라 무슨 일이 있었는지 알 수 없다. */
+  if(document.querySelector('.mask.on'))return;
   const map={'1':'KR_stock','2':'KR_etf','3':'US_stock','4':'US_etf','5':'ledger'};
   if(map[e.key]){ e.preventDefault(); selectTab(map[e.key]); }
 });
@@ -3513,7 +3613,7 @@ $('#list').addEventListener('click',e=>{
     if(act==='refresh'){enqueue(id,'full');fetchSummary(id,true);toast(S.stocks[id].name+' 갱신 중');}
     else if(act==='del'){
       if(confirm('['+S.stocks[id].name+'] 종목과 캐시를 삭제할까요?')){
-        D('qa_stocks/'+id).delete();
+        D('qa_stocks/'+id).delete().catch(e=>toast('삭제 실패: '+(e.message||e),'err'));
         D('qa_cache/'+id).delete().catch(()=>{});
         delete cacheSaveMeta[id];   // (v4.16) v4.13 스로틀 메타 정리 — 같은 ID 재등록 대비
         delete S.cache[id];delete S.calc[id];delete S.ui.open[id];
@@ -3531,7 +3631,8 @@ $('#list').addEventListener('click',e=>{
     }
     else if(act==='liveclear'){
       D('qa_stocks/'+id).set({manual:{...(S.stocks[id].manual||{}),livePrice:null,livePriceAt:null}},{merge:true})
-        .then(()=>toast('수동 현재가를 해제했습니다'));
+        .then(()=>toast('수동 현재가를 해제했습니다'))
+        .catch(e=>toast('해제 실패: '+(e.message||e),'err'));
     }
     else if(act==='save'){saveManual(row,id);}
     else if(act==='hztoggle'){
@@ -3613,7 +3714,7 @@ $('#btnAddGo').addEventListener('click',async()=>{
       if(code.length!==6)throw new Error('6자리 숫자 코드를 입력하세요');
       let ok=null;
       for(const suf of['.KS','.KQ']){
-        try{const d=parseChart(await fetchJSON(yahooChartURL(code+suf,'5d')));
+        try{const d=await fetchChart(code+suf,'5d');
           if(d.c.length){ok=code+suf;break;}}catch(e){}
       }
       if(!ok)throw new Error('야후에서 '+code+' 데이터를 찾지 못했습니다');
@@ -3621,7 +3722,7 @@ $('#btnAddGo').addEventListener('click',async()=>{
     }else{
       symbol=raw.toUpperCase().replace(/[^A-Z0-9.^=\-]/g,'');
       if(!symbol)throw new Error('올바른 티커를 입력하세요');
-      const d=parseChart(await fetchJSON(yahooChartURL(symbol,'5d')));
+      const d=await fetchChart(symbol,'5d');
       if(!d.c.length)throw new Error('데이터가 비어 있습니다');
       idKey='US_'+symbol.replace(/[\/]/g,'_');
     }
@@ -3775,6 +3876,13 @@ function lgQty(v){ if(v==null)return '—'; const n=+v;
   return Math.abs(n-Math.round(n))<1e-6?Math.round(n).toLocaleString()
     :(+n.toFixed(6)).toLocaleString(undefined,{maximumFractionDigits:6}); }
 /* 로컬 날짜. toISOString()은 UTC라 한국에서 오전 9시 이전이면 '어제'가 찍힌다. */
+/* (v4.33) 일자 검증은 두 곳(수동 저장·가져오기)에서 쓴다 — 한 벌만 둔다.
+ * Date.parse만으로는 '2026-02-30'이 3월 2일로 굴러가며 통과한다. 왕복시켜 같은
+ * 문자열이 나오는지까지 봐야 존재하지 않는 날짜를 거른다. */
+const isYMD=d=>{ const v=String(d||'');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;
+  const t=Date.parse(v+'T00:00:00Z');
+  return isFinite(t)&&new Date(t).toISOString().slice(0,10)===v; };
 function lgToday(){ const d=new Date();
   return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
 function lgFxNow(){ const i=S.idx&&S.idx['KRW=X']; return (i&&i.price>0)?i.price:null; }
@@ -3796,21 +3904,33 @@ function lgSummary(){
       else b.noPrice++;
     } else if(p.sells>0) b.closed.push(p);
   }
-  const fxNow=lgFxNow(), fxAvg=fxAvgRate();
+  const fxT=fxTotals();
+  const fxNow=lgFxNow(), fxAvg=fxT.rate;
   const usdRate=fxNow||fxAvg;              // 평가액 환산용
   const costRate=fxAvg||fxNow;             // 원가 환산용 — 달러 원가는 '환전할 때 쓴 원화'다
-  let krwMval=0,krwCost=0,krwReal=0,usdMval=0,usdCost=0;
+  let krwMval=0,krwCost=0,krwReal=0,usdMval=0,usdCost=0,usdCostAll=0,usdNoPrice=0;
   for(const k in byCls){ const b=byCls[k];
     if(b.mk==='KR'){ krwMval+=b.mval; krwCost+=b.costKnown; krwReal+=b.real; }
-    else { usdMval+=b.mval; usdCost+=b.costKnown; }
+    /* (v4.33) usdCost(=costKnown)는 **평가액과 짝을 이루는 원가**라 현재가를 아는 것만
+     * 센다 — totalMval/totalCost의 비교 대상이 어긋나면 안 되기 때문이다.
+     * 하지만 '내가 달러를 얼마나 들고 있나'는 현재가를 아는지와 아무 상관이 없다.
+     * 두 질문에 같은 수를 쓰던 것이 결함이었다(§22-⑫). 답이 다르므로 수도 나눈다. */
+    else { usdMval+=b.mval; usdCost+=b.costKnown; usdCostAll+=b.cost; usdNoPrice+=b.noPrice; }
   }
   const usdReal=byCls.US_stock.real+byCls.US_etf.real;
+  /* ★ 환차가 걸리는 대상은 '주식에 들어간 달러'가 아니라 **환전해서 만든 달러 전체**다.
+   * 주식을 팔아도 대금은 달러로 남으므로 환노출은 그대로다(원화로 되환전해야 확정된다).
+   * 그래서 기준을 총 환전 달러로 둔다 — 카드 문구 '지금 전액 환전한다면'과도 같은 뜻이다.
+   * 환전 이력이 없으면 근사로 보유 달러 원가를 쓰되, 무엇을 썼는지 화면에 밝힌다. */
+  const fxBase=fxT.usd>0?fxT.usd:usdCostAll;
+  const fxBaseSrc=fxT.usd>0?'환전':'원가';
   return {P,byCls,fxNow,fxAvg,
-    krwMval,krwCost,krwReal,usdMval,usdCost,usdReal,
+    krwMval,krwCost,krwReal,usdMval,usdCost,usdCostAll,usdNoPrice,usdReal,
+    fxBoughtUsd:fxT.usd,fxBoughtKrw:fxT.krw,fxBase,fxBaseSrc,
     totalMval:(usdRate!=null)?krwMval+usdMval*usdRate:null,
     totalCost:(costRate!=null)?krwCost+usdCost*costRate:null,
     /* 환차 '참고' — 환전하기 전까지는 확정되지 않는다(§v4.24 환율 모델) */
-    fxGap:(fxNow!=null&&fxAvg!=null)?usdCost*(fxNow-fxAvg):null,
+    fxGap:(fxNow!=null&&fxAvg!=null&&fxBase>0)?fxBase*(fxNow-fxAvg):null,
     usdRate,costRate};
 }
 
@@ -3835,7 +3955,7 @@ function lgSplitURL(sym){
  * 날짜는 **거래소 현지 날짜**로 환산한다. epoch를 그대로 UTC로 자르면 KST 00:00 이벤트가
  * 전날로 밀리고, ET 09:30 이벤트는 한국 로컬로 자르면 다음날로 밀린다(§22-⑫). */
 async function lgFetchSplits(sym){
-  const j=await fetchJSON(lgSplitURL(sym));
+  const j=await fetchJSON(lgSplitURL(sym),{check:x=>chartSymbolOK(x,sym)});
   const r=j&&j.chart&&j.chart.result&&j.chart.result[0];
   if(!r)return [];
   const off=+((r.meta&&r.meta.gmtoffset)||0);
@@ -3864,7 +3984,7 @@ async function lgSymbolOf(p){
   const code=raw.replace(/\D/g,'').padStart(6,'0');
   if(code.length!==6)return null;
   for(const suf of ['.KS','.KQ']){
-    try{ const d=parseChart(await fetchJSON(yahooChartURL(code+suf,'5d')));
+    try{ const d=await fetchChart(code+suf,'5d');
       if(d.c.length)return code+suf; }catch(e){}
   }
   return null;
@@ -3916,7 +4036,7 @@ async function lgScanSplits(opt){
       }
     }
     S.lg.scan={at:Date.now(),found,failed,checked:seen.size};
-    try{ localStorage.setItem('qa_splitscan',String(Date.now())); }catch(e){}
+    LS.set('qa_splitscan',Date.now());
   } finally { lgScanRunning=false; }
   return S.lg.scan;
 }
@@ -3952,11 +4072,13 @@ function lgPreviewSplit(sp){
   const rel=p=>splitMatch(Object.assign({},sp,{off:false}),{market:p.market,code:p.code,name:p.name});
   let before=[],after=[];
   try{
-    S.splits=keep.filter(x=>x.id!==sp.id);
+    /* (v4.33) 여기는 S.splits를 **임시로 갈아끼우는** 유일한 자리다. 셋 다 세어 주지 않으면
+     * 미리보기가 캐시된 옛 원장을 보거나, 더 나쁘게는 미리보기용 가짜 계수가 캐시에 남는다. */
+    S.splits=keep.filter(x=>x.id!==sp.id); bumpPos();
     before=positions().filter(rel);
-    S.splits=keep.filter(x=>x.id!==sp.id).concat([Object.assign({},sp,{off:false,id:'__pv'})]);
+    S.splits=keep.filter(x=>x.id!==sp.id).concat([Object.assign({},sp,{off:false,id:'__pv'})]); bumpPos();
     after=positions().filter(rel);
-  } finally { S.splits=keep; }
+  } finally { S.splits=keep; bumpPos(); }
   const m={};
   for(const p of before)m[p.key]={name:p.name,account:p.account,market:p.market,
     b:p.qty,a:0,bR:p.realized,aR:0};
@@ -4028,7 +4150,7 @@ $('#maskSplit').addEventListener('click',e=>{ if(e.target.id==='maskSplit')split
 function lgAutoScanOnce(){
   if(lgScanDone)return; if(!(S.trades||[]).length)return;
   lgScanDone=true;
-  let last=0; try{ last=+(localStorage.getItem('qa_splitscan')||0); }catch(e){}
+  let last=+(LS.get('qa_splitscan')||0); if(!isFinite(last))last=0;
   if(Date.now()-last < 864e5)return;
   setTimeout(()=>{ lgScanSplits({unregisteredOnly:true}).then(r=>{ if(r&&r.found.length)lgTouch(); })
     .catch(()=>{}); }, 8000);
@@ -4075,7 +4197,7 @@ async function shrsBaseline(){
 async function shrsFindGap(code,r,fromDate,toDate){
   const sym=await lgSymbolOf({market:'KR',code,name:''});
   if(!sym)return {sym:null,hit:null};
-  let d; try{ d=parseChart(await fetchJSON(yahooChartURL(sym,'2y'))); }catch(e){ return {sym,hit:null}; }
+  let d; try{ d=await fetchChart(sym,'2y'); }catch(e){ return {sym,hit:null}; }
   const t=d.t||[], c=d.c||[];
   let best=null;
   for(let i=1;i<t.length;i++){
@@ -4155,10 +4277,14 @@ function lgAdoptShrs(key){
     toast('아래 유상증자 폼에 채웠습니다 — 발행가와 신주 상장일을 거래내역서에서 확인해 넣으세요');
   }else{
     const r=c.r;
+    /* 상장주식수만으로는 액면분할인지 무상증자인지 가릴 수 없다 — 배율만 확실하다.
+     * (v4.33) 유형을 바꾸면 N이 배율을 지킨 채 자동 환산되므로, 사용자는 '이름'만
+     * 고르면 된다. 그래서 안내도 배율을 못 박아 말한다. */
     const kind=r>1?'bonus':'merge';
     const n=r>1?+(r-1).toFixed(6):+(1/r).toFixed(6);
     S.lg.sf={market:'KR',code:c.code,name:c.name,kind,n:String(n),date:c.date||''};
-    toast('위 폼에 채웠습니다 — 유형(무상증자/액면분할)이 맞는지 확인하고 등록하세요');
+    toast('위 폼에 채웠습니다 — 배율 ×'+(+r.toFixed(4))+'는 고정입니다. '
+      +'유형(무상증자/액면분할 등)만 실제 공시에 맞게 고르시면 수량은 따라서 바뀝니다');
   }
   renderLedger();
 }
@@ -4242,6 +4368,14 @@ document.addEventListener('focusout',()=>{ if(lgPending){ lgPending=false; setTi
 function lgViewHold(){
   const M=lgSummary(), A=lgAudit();
   let g='';
+
+  /* (v4.33 fix) [+ 거래 직접 입력](mode:'new')의 **그리는 자리**.
+   * lgFormHTML 호출부는 v4.32까지 셋뿐이었고 셋 다 '열려 있는 행'에 딸린 것이었다
+   *   ─ 보유표: S.lg.open.key===p.key / 거래내역: open.id===t.id / 유상증자: open.id===x.id.
+   * new 모드는 key도 id도 null이라 어느 조건에도 걸리지 않는다 → 상태는 바뀌는데
+   * 화면에는 아무것도 안 나온다(버튼이 죽은 것처럼 보이던 원인. 콘솔 에러도 안 난다).
+   * 폼은 딸릴 행이 없으니 표 위에 단독으로 낸다 — 버튼 바로 아래라 눈에 걸린다. */
+  if(S.lg.open&&S.lg.open.mode==='new')g+=lgFormHTML(null);
 
   /* 총계 카드 */
   const tot=M.totalMval, cost=M.totalCost;
@@ -4378,21 +4512,26 @@ function lgViewHold(){
  * 사건 이름은 달라도 원장에 미치는 효과는 이 한 수로 완전히 같다.
  * nLabel/nHelp는 입력 단위가 사건마다 다르기 때문에 필요하다. 무상증자는 '1주당 받는
  * 신주 수'이고 액면병합은 '몇 주가 1주가 되는가'다 — 같은 칸에 다른 뜻을 담으면 틀린다. */
+/* ★ (v4.33) inv = ratio의 역함수. 유형을 바꿀 때 **배율(ratio)을 고정한 채** N을 다시
+ * 계산하기 위한 것이다. 같은 사건을 '무상증자 N=1'로 적든 '액면분할 N=2'로 적든 원장
+ * 효과는 ×2로 같은데, v4.32까지는 유형 셀렉트만 바꾸면 N이 그대로 남아 ×2가 ×1로
+ * 조용히 바뀌었다(무상증자 N=1 → 액면분할 N=1 = ×1 = 아무 일도 안 일어남).
+ * ratio↔N 변환을 두 방향 다 여기 두면, 그 규칙이 흩어질 자리가 없다. */
 const SPLIT_KINDS={
   merge: {label:'액면병합 (구주 N주 → 신주 1주)', nLabel:'N — 구주 몇 주가 신주 1주가 되나',
-          ph:'10', ratio:n=>1/n, ok:n=>n>1,
+          ph:'10', ratio:n=>1/n, inv:r=>1/r, ok:n=>n>1,
           txt:(r,n)=>'액면병합 '+n+'주 → 1주'},
   split: {label:'액면분할 (구주 1주 → 신주 N주)', nLabel:'N — 구주 1주가 신주 몇 주가 되나',
-          ph:'5', ratio:n=>n, ok:n=>n>1,
+          ph:'5', ratio:n=>n, inv:r=>r, ok:n=>n>1,
           txt:(r,n)=>'액면분할 1주 → '+n+'주'},
   bonus: {label:'무상증자 (1주당 신주 N주 무상 배정)', nLabel:'N — 보유 1주당 받는 신주 수',
-          ph:'1', ratio:n=>1+n, ok:n=>n>0,
+          ph:'1', ratio:n=>1+n, inv:r=>r-1, ok:n=>n>0,
           txt:(r,n)=>'무상증자 1주당 +'+n+'주 (×'+(+(1+n).toFixed(6))+')'},
   divid: {label:'주식배당 (1주당 신주 N주)', nLabel:'N — 보유 1주당 받는 신주 수',
-          ph:'0.05', ratio:n=>1+n, ok:n=>n>0,
+          ph:'0.05', ratio:n=>1+n, inv:r=>r-1, ok:n=>n>0,
           txt:(r,n)=>'주식배당 1주당 +'+n+'주 (×'+(+(1+n).toFixed(6))+')'},
   reduce:{label:'무상감자 (구주 N주 → 신주 1주)', nLabel:'N — 구주 몇 주가 신주 1주가 되나',
-          ph:'10', ratio:n=>1/n, ok:n=>n>1,
+          ph:'10', ratio:n=>1/n, inv:r=>1/r, ok:n=>n>1,
           txt:(r,n)=>'무상감자 '+n+'주 → 1주'}
 };
 /* ratio 하나만으로도 방향은 읽히지만, **무상증자 ×2와 액면분할 1→2는 원장 효과가 같아도
@@ -4519,6 +4658,10 @@ async function lgSaveForm(){
     account:f.account,name:String(f.name||'').trim(),code:String(f.code||'').trim(),
     price:+f.price,qty:+f.qty};
   if(!v.date||!v.name||!(v.price>0)||!(v.qty>0)){ toast('일자·종목명·단가·수량을 확인하세요','err'); return; }
+  /* (v4.33 fix) <input type="date">를 지원하지 않는 브라우저는 이 칸이 그냥 text다.
+   * 그때 들어온 '2026/6/1'은 splitFactor의 문자열 비교를 통과하지 못해 분할 환산이
+   * 조용히 빠진다 — 저장 전에 막는 편이 싸다. */
+  if(!isYMD(v.date)){ toast('일자를 확인하세요 — YYYY-MM-DD 형식의 실제 날짜여야 합니다','err'); return; }
   try{
     if(o.mode==='edit'&&o.id){
       await D('qa_trades/'+o.id).update(v);
@@ -4736,11 +4879,24 @@ function lgViewFx(){
     +'<div class="lgtot"><div class="lb">환전 이동평균</div><div class="vl" style="font-size:16px">'
       +(M.fxAvg!=null?Math.round(M.fxAvg).toLocaleString()+' 원/$':'기록 없음')+'</div>'
       +'<div class="sb">현재 '+(M.fxNow!=null?Math.round(M.fxNow).toLocaleString()+' 원/$':'—')+'</div></div>'
+    +'<div class="lgtot"><div class="lb">환전한 달러 (누적)</div><div class="vl" style="font-size:16px">$'
+      +Math.round(M.fxBoughtUsd).toLocaleString()+'</div><div class="sb">'
+      +(M.fxBoughtKrw>0?lgWon(M.fxBoughtKrw)+' 투입':'환전 기록 없음')+'</div></div>'
     +'<div class="lgtot"><div class="lb">달러 보유분 원가</div><div class="vl" style="font-size:16px">$'
-      +Math.round(M.usdCost).toLocaleString()+'</div><div class="sb">'
-      +(M.costRate!=null?lgWon(M.usdCost*M.costRate)+' 상당':'환율 미확인')+'</div></div>'
+      +Math.round(M.usdCostAll).toLocaleString()+'</div><div class="sb">'
+      +(M.costRate!=null?lgWon(M.usdCostAll*M.costRate)+' 상당':'환율 미확인')
+      +(M.usdNoPrice?' · 현재가 미확인 '+M.usdNoPrice+'종목 포함':'')+'</div></div>'
     +'<div class="lgtot"><div class="lb">환차 참고 (미확정)</div><div class="vl '+lgSign(M.fxGap)+'" style="font-size:16px">'
-      +lgWon(M.fxGap)+'</div><div class="sb">지금 전액 환전한다면</div></div>'
+      +lgWon(M.fxGap)+'</div><div class="sb">지금 전액 환전한다면 · $'
+      +Math.round(M.fxBase).toLocaleString()+' 기준('+M.fxBaseSrc+')</div></div>'
+    +'</div>';
+  /* (v4.33) 무엇에 곱했는지 밝힌다. v4.32는 '주식에 들어간 달러 원가 중 현재가를 아는 것'에
+   * 곱하고 있었다 — 카드 문구('전액 환전한다면')와 실제 계산이 서로 다른 말을 했다. */
+  g+='<div class="lgnote" style="margin-top:8px">환차 참고 = <b>'+M.fxBaseSrc+' 기준 달러 $'
+    +Math.round(M.fxBase).toLocaleString()+'</b> × (현재 환율 − 환전 이동평균). '
+    +(M.fxBaseSrc==='환전'
+      ?'주식을 팔아도 대금은 달러로 남으므로, 환노출은 <b>원화로 되환전할 때</b> 확정됩니다. 이 앱은 원화→달러만 기록하므로 되환전분이 있으면 실제보다 크게 나옵니다.'
+      :'환전 기록이 없어 <b>미국 보유분 원가</b>로 근사했습니다. [환전 기록 추가]로 실제 환전 이력을 넣으면 정확해집니다.')
     +'</div>';
   /* 값을 DOM에만 두면 30초 시세 갱신이 지운다 — 폼과 같은 방식으로 상태에 둔다 */
   const x=S.lg.xf||(S.lg.xf={date:lgToday(),krw:'',usd:''});
@@ -4751,8 +4907,13 @@ function lgViewFx(){
     +'<div><label>받은 달러</label><input type="text" inputmode="decimal" data-lgxf="usd" value="'+esc(x.usd||'')+'"></div>'
     +'</div>'
     +(rt!=null?'<div class="lgpv">적용 환율 <b>'+Math.round(rt).toLocaleString()+' 원/$</b>'
-      +(M.fxAvg!=null?' · 등록하면 이동평균 '+Math.round(M.fxAvg).toLocaleString()+' → '
-        +Math.round((M.usdCost*M.fxAvg+ +x.krw)/(M.usdCost+ +x.usd)).toLocaleString():'')+'</div>':'')
+      /* (v4.33 fix) 이 미리보기는 M.usdCost(미국 주식 원가)를 기존 잔액으로 잡고 있었다 —
+       * 환전 이동평균은 **환전 이력**의 가중평균이므로 분모·분자가 전부 다른 수였다.
+       * 환전 기록이 하나도 없으면 새 환율이 곧 평균이 된다. */
+      +(M.fxBoughtUsd>0
+        ?' · 등록하면 이동평균 '+Math.round(M.fxAvg).toLocaleString()+' → '
+          +Math.round((M.fxBoughtKrw+ +x.krw)/(M.fxBoughtUsd+ +x.usd)).toLocaleString()
+        :' · 첫 환전 기록이라 이 환율이 그대로 이동평균이 됩니다')+'</div>':'')
     +'<div style="margin-top:9px"><button class="btn sm primary" data-lgact="fxsave">추가</button></div></div>';
   const fl=(S.fxlog||[]).slice().sort((a,b)=>a.date<b.date?1:-1);
   if(fl.length){
@@ -4878,7 +5039,15 @@ function lgDownload(name,text,mime){
     toast(name+' 저장');
   }catch(e){ toast('내보내기 실패','err'); }
 }
-const csvCell=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+/* (v4.33 fix) CSV 수식 주입. 종목명이 '=cmd|...' 로 시작하면 엑셀·구글시트가 그것을
+ * **수식으로 해석**한다. 종목명은 사용자가 넣는 값이고 가져오기(JSON)로도 들어오므로,
+ * 내보낸 파일을 다른 사람이 열 수 있다는 것만으로 위험하다. 셀 앞에 작은따옴표를 붙여
+ * 텍스트로 못 박는다 — 화면에는 그대로 보이고 계산만 안 된다. */
+/* ★ 순수한 수(음수 포함)는 손대지 않는다. -1,234 같은 실현손익까지 텍스트로 만들면
+ * 스프레드시트에서 합계가 안 나온다 — 방어가 데이터를 망치면 안 된다. */
+const csvCell=v=>{ let s=String(v==null?'':v);
+  if(/^[=+\-@\t\r]/.test(s)&&!/^[+-]?\d+(\.\d+)?$/.test(s))s="'"+s;
+  return '"'+s.replace(/"/g,'""')+'"'; };
 function lgExportCSV(){
   const rows=[['일자','구분','시장','유형','계좌','종목명','코드','단가','수량','금액','분할환산계수']];
   for(const t of lgFilterTrades())rows.push([t.date,t.side==='buy'?'매수':'매도',t.market,t.type||'stock',
@@ -4906,6 +5075,12 @@ async function lgImport(){
       market:(r.시장||r.market)==='KR'?'KR':'US', type:(r.유형||r.type)==='etf'?'etf':'stock',
       account:r.계좌||r.account||'general', name:String(r.종목명||r.name||'').trim(),
       code:String(r.코드||r.code||'').trim(), price:+(r.단가||r.price), qty:+(r.수량||r.qty)};
+    /* (v4.33 fix) 일자는 **문자열 비교**로 분할 환산·정렬·기간 필터에 전부 쓰인다
+     * ('2026/06/15' > '2026-12-01'이 참이 된다). 형식이 아니면 아예 받지 않는다 —
+     * 여기서 통과시키면 원장 전체가 조용히 어긋난다(§22-⑫).
+     * 계좌도 마찬가지로 모르는 값이면 경고 규칙(ACCOUNTS)이 걸리지 않으므로 되돌린다. */
+    if(!isYMD(t.date)){ skip.push((t.name||'?')+' (일자 — YYYY-MM-DD 형식의 실제 날짜여야 합니다)'); continue; }
+    if(!ACCOUNTS[t.account]){ skip.push((t.name||'?')+' (알 수 없는 계좌: '+t.account+')'); continue; }
     if(!t.date||!t.name||!(t.price>0)||!(t.qty>0)){ skip.push(t.name+' (필드 누락)'); continue; }
     if(have.has(key(t))){ skip.push(t.name+' '+t.date+' (중복)'); continue; }
     have.add(key(t)); t.createdAt=Date.now(); add.push(t);
@@ -4924,18 +5099,25 @@ async function lgImport(){
 $$('#lgTabs .lgt').forEach(b=>b.addEventListener('click',()=>{
   S.lg.sub=b.dataset.lg; S.lg.open=null; S.lg.form=null; renderLedger();
 }));
-$('#lgNew').addEventListener('click',()=>{ S.lg.sub='hold'; lgOpenForm('new',null,null);
+$('#lgNew').addEventListener('click',()=>{
+  /* 이미 열려 있는데 또 누르면 접는다. 안 그러면 두 번째 클릭이 '아무 반응 없음'으로 보인다
+   * ─ 다른 진입점(매도·추가매수)도 같은 규칙이다(§: 같은 동작은 같은 규칙으로). */
+  if(S.lg.open&&S.lg.open.mode==='new'&&S.lg.sub==='hold'){ lgCloseForm(); return; }
+  S.lg.sub='hold'; lgOpenForm('new',null,null);
   const h=$('#lgBody'); if(h){ const el=h.querySelector('.lgform'); if(el)el.scrollIntoView({block:'nearest'}); } });
 
 $('#lgBody').addEventListener('click',async e=>{
+  /* (v4.33 fix) 칩은 폼 안에만 있지만, 스냅샷이 폼을 닫은 직후의 클릭이 아직 살아 있는
+   * DOM에 닿을 수 있다. S.lg.form이 null인 순간에 대입하면 TypeError로 **이 위임
+   * 핸들러 전체가 그 클릭에서 죽는다** — 저장·취소까지 같이 먹통이 된다. */
   const qb=e.target.closest('[data-lgqty]');
   if(qb){ const p=lgPosByKey(S.lg.open&&S.lg.open.key);
-    if(p){ const r=+qb.dataset.lgqty;
+    if(p&&S.lg.form){ const r=+qb.dataset.lgqty;
       let q=r>=1?p.qty:p.qty*r;
       if(p.market==='KR')q=Math.floor(q+1e-9);
       S.lg.form.qty=String(+(+q).toFixed(6)); renderLedger(); } return; }
   const pb=e.target.closest('[data-lgprice]');
-  if(pb){ S.lg.form.price=String(+pb.dataset.lgprice); renderLedger(); return; }
+  if(pb){ if(S.lg.form){ S.lg.form.price=String(+pb.dataset.lgprice); renderLedger(); } return; }
   const b=e.target.closest('[data-lgact]'); if(!b)return;
   const act=b.dataset.lgact, id=b.dataset.lgid, k=b.dataset.lgk;
   if(act==='sell'||act==='buy'){
@@ -5021,7 +5203,26 @@ function lgStash(t){
   if(!t||!t.dataset)return false;
   if(t.dataset.lgf!=null){ S.lg.form=S.lg.form||{}; S.lg.form[t.dataset.lgf]=t.value; return true; }
   if(t.dataset.lgflt!=null){ S.lg.f[t.dataset.lgflt]=t.value; return true; }
-  if(t.dataset.lgsf!=null){ S.lg.sf=S.lg.sf||{market:'KR',kind:'merge'}; S.lg.sf[t.dataset.lgsf]=t.value; return true; }
+  if(t.dataset.lgsf!=null){
+    S.lg.sf=S.lg.sf||{market:'KR',kind:'merge'};
+    const f=S.lg.sf;
+    /* (v4.33) 유형이 바뀌면 N의 **뜻**이 바뀐다(무상증자 N=1은 ×2, 액면분할 N=1은 ×1).
+     * 값을 그대로 두면 사용자가 고른 사건은 같은데 배율만 조용히 달라진다.
+     * 배율을 고정하고 N을 새 유형의 단위로 환산한다 — 표현할 수 없는 배율이면
+     * (예: ×2를 액면병합으로) 비워서 다시 넣게 한다. 틀린 값을 남기는 것보다 낫다. */
+    if(t.dataset.lgsf==='kind'){
+      const oldK=SPLIT_KINDS[f.kind], newK=SPLIT_KINDS[t.value];
+      const n0=+f.n;
+      f.kind=t.value;
+      if(oldK&&newK&&n0>0&&oldK.ok(n0)){
+        const r=oldK.ratio(n0), n1=newK.inv(r);
+        f.n=(n1!=null&&isFinite(n1)&&newK.ok(+n1.toFixed(6)))?String(+n1.toFixed(6)):'';
+        if(!f.n)toast('배율 ×'+(+r.toFixed(4))+'는 '+newK.label.split(' ')[0]+'로 표현할 수 없습니다 — 수량을 다시 넣으세요','warn');
+      }
+      return true;
+    }
+    f[t.dataset.lgsf]=t.value; return true;
+  }
   if(t.dataset.lgrf!=null){ S.lg.rf=S.lg.rf||{market:'KR'}; S.lg.rf[t.dataset.lgrf]=t.value; return true; }
   if(t.dataset.lgxf!=null){ S.lg.xf=S.lg.xf||{}; S.lg.xf[t.dataset.lgxf]=t.value; return true; }
   return false;
@@ -5094,6 +5295,9 @@ function lgRegisterStock(p){
   const m=$('#maskAdd'); if(!m){ toast('종목 추가 화면을 열 수 없습니다','err'); return; }
   $('#addMarket').value=p.market; $('#addKind').value=p.type;
   $('#addSym').value=p.code||''; $('#addName').value=p.name; $('#addSector').value='';
+  /* (v4.33 fix) 라벨·플레이스홀더는 시장에 딸린 값이다. 여기서만 빼먹으면 국내 종목을
+   * 등록하는데 '티커 (예: NVDA)'가 떠 있다 — 값과 설명이 어긋나는 화면이 된다. */
+  syncAddLabel();
   m.classList.add('on');
 }
 let diagLast=null;
@@ -5110,6 +5314,9 @@ $('#btnSettings').addEventListener('click',()=>{
   $('#setRefresh').value=S.settings.refreshMin;
   $('#setQuote').value=S.settings.quoteSec;
   $('#setProxy').value=S.settings.proxy||'';
+  const pm=S.settings.proxyMode||'auto';
+  $('#setProxyMode').innerHTML=Object.keys(PROXY_MODES)
+    .map(k=>'<option value="'+k+'"'+(pm===k?' selected':'')+'>'+esc(PROXY_MODES[k])+'</option>').join('');
   $('#maskSet').classList.add('on');
 });
 $('#maskSet').addEventListener('input',e=>{
@@ -5165,30 +5372,6 @@ $('#btnManualWipe').addEventListener('click',async()=>{
   }catch(e){ toast('초기화 실패: '+((e&&e.message)||e),'err'); }
   finally{ btn.disabled=false; btn.textContent=lbl; }
 });
-/* (v4.21) 누락 시드 일괄 등록.
- * §14대로 시드는 Firestore가 비어 있을 때만 1회 돈다. 그래서 v4.20에서 추가한
- * ETF 10종목·카카오·풍산이 기존 사용자에게는 등록되지 않는다.
- * 이미 있는 종목은 건너뛰므로 여러 번 눌러도 안전하다(기존 수동 입력값 보존). */
-$('#btnSeedMissing').addEventListener('click',async()=>{
-  const add=[];
-  /* (v4.29) 여기도 manual을 비워 심는다 — seed()와 같은 이유(§자동값 기준 유지). */
-  SEED_KR.forEach(a=>{ const [code,name,sec]=a; const id='KR_'+code;
-    if(!S.stocks[id])add.push([id,{market:'KR',symbol:code+'.KS',code,name,sector:sec,
-      manual:{},createdAt:Date.now()}]); });
-  SEED_US.forEach(a=>{ const [tk,name,sec]=a; const id='US_'+tk;
-    if(!S.stocks[id])add.push([id,{market:'US',symbol:tk,code:tk,name,sector:sec,
-      manual:{},createdAt:Date.now()}]); });
-  SEED_ETF.forEach(a=>{ const [code,name,idx,mkt]=a; const id=mkt+'_'+code;
-    if(!S.stocks[id])add.push([id,{market:mkt,type:'etf',symbol:(mkt==='KR'?code+'.KS':code),
-      code,name,sector:'ETF',index:idx,manual:{},createdAt:Date.now()}]); });
-  if(!add.length){ toast('추가할 종목이 없습니다 — 시드가 모두 등록되어 있습니다'); return; }
-  if(!confirm(add.length+'개 종목을 추가합니다.\n\n'+add.map(x=>x[1].name).join(' · ')+'\n\n계속할까요?'))return;
-  try{ const b=db.batch();
-    add.forEach(([id,v])=>b.set(D('qa_stocks/'+id),v));
-    await b.commit();
-    toast(add.length+'개 종목을 추가했습니다 — ⟳ 전체 갱신을 눌러 데이터를 받아오세요');
-  }catch(e){ toast('추가 실패: '+e.message,'err'); }
-});
 $('#btnSetReset').addEventListener('click',()=>{
   $('#wQ').innerHTML=Object.keys(QW_LABELS).map(k=>wrow('q',k,QW_LABELS[k],QW_DEF[k])).join('');
   $('#wA').innerHTML=Object.keys(AW_LABELS).map(k=>wrow('a',k,AW_LABELS[k],AW_DEF[k])).join('');
@@ -5206,7 +5389,16 @@ $('#btnSetSave').addEventListener('click',async()=>{
   S.settings.refreshMin=clamp(parseInt($('#setRefresh').value)||10,1,120);
   S.settings.quoteSec=clamp(parseInt($('#setQuote').value)||30,10,600);
   S.settings.proxy=$('#setProxy').value.trim();
-  try{await D('qa_settings/global').set({qw,aw,fvw:f,refreshMin:S.settings.refreshMin,quoteSec:S.settings.quoteSec,proxy:S.settings.proxy});}
+  /* (v4.33) '워커 전용'인데 워커가 없으면 조회할 경로가 하나도 없다 — 저장을 막고
+   * 이유를 말한다. 조용히 자동으로 되돌리면 왜 공개 프록시를 타는지 알 수 없게 된다. */
+  let pmNew=$('#setProxyMode').value;
+  if(pmNew==='workerOnly'&&!(S.settings.proxy&&S.settings.proxy.includes('{url}'))){
+    toast('워커 전용을 쓰려면 위 칸에 {url}이 든 워커 주소가 있어야 합니다 — 자동으로 되돌립니다','err');
+    pmNew='auto';
+  }
+  S.settings.proxyMode=PROXY_MODES[pmNew]?pmNew:'auto';
+  try{await D('qa_settings/global').set({qw,aw,fvw:f,refreshMin:S.settings.refreshMin,
+    quoteSec:S.settings.quoteSec,proxy:S.settings.proxy,proxyMode:S.settings.proxyMode});}
   catch(e){toast('설정 저장 실패(로컬만 적용): '+e.message,'err');}
   recalcAll();render();
   startInterval();startQuoteLoop();
