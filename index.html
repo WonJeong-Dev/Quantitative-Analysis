@@ -4075,6 +4075,11 @@ async function lgScanShares(){
   try{ await db.doc(SHRS_DOC).set({map:Object.assign({},base,next),updatedAt:Date.now()},{merge:true}); }
   catch(e){ console.warn('shrs save',e&&e.code); }
   S.lg.shrs={at:Date.now(),checked:items.length,changed,first,basDd,
+    /* (v4.32) 워커가 시장 하나만 조회한 경우를 **반드시 드러낸다.** 코스닥이 막혀 있으면
+     * 코스닥 종목은 애초에 응답에 없고, 그러면 '변동 없음'과 구별이 안 된다 —
+     * 점검하지 않은 것과 점검해서 이상 없는 것은 완전히 다른 상태다(§22-⑪). */
+    warn:j.경고||null, next:(j.부분성공&&j.다음행동)?j.다음행동:null,
+    mkts:j.시장별||null,
     missing:codes.filter(c=>!items.some(x=>x.code===c))};
   return S.lg.shrs;
 }
@@ -4102,6 +4107,9 @@ function lgShrsScanHTML(sc){
   if(sc.note)g+='<br>'+esc(sc.note);
   if(sc.missing&&sc.missing.length)g+='<br>KRX 응답에 없는 코드: '+esc(sc.missing.join(' · '))+' (상장폐지·ETF·코넥스일 수 있습니다)';
   g+='</div>';
+  /* 부분 성공은 성공이 아니다 — 못 본 시장이 있다는 사실을 결과와 같은 크기로 보여준다 */
+  if(sc.warn)g+='<div class="lgalert">⚠ <b>'+esc(sc.warn)+'</b>'
+    +(sc.next?'<br>'+esc(sc.next.join(' · ')):'')+'</div>';
   if(!sc.changed||!sc.changed.length)return g;
   g+='<div class="lgscroll" style="margin-bottom:12px"><table class="lgtbl">'
     +'<tr><th class="nmc">종목</th><th>구간</th><th style="text-align:right">상장주식수</th>'
