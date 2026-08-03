@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QA Stock Board — 데이터 이관</title>
+<style>
+  :root{
+    --bg:#f4f6fa; --card:#ffffff; --line:#e3e8f0; --text:#1c2333; --sub:#6b7690;
+    --accent:#3b5bdb; --accent-soft:#e7ecfd;
+    --up:#d94550; --up-soft:#fdeaec;
+    --amber:#b7791f; --amber-soft:#fdf3e0;
+    --green:#2f9e63; --green-soft:#e3f5ec;
+    --gray-soft:#eef1f6;
+    --radius:12px;
+    --shadow:0 1px 3px rgba(20,30,60,.08), 0 4px 14px rgba(20,30,60,.05);
+    --mono:"SF Mono","Roboto Mono","Consolas",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Pretendard","Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;
+       background:var(--bg);color:var(--text);font-size:14.5px;line-height:1.5}
+  button{font-family:inherit;cursor:pointer}
+  .wrap{max-width:840px;margin:0 auto;padding:24px 14px 80px}
+  .num{font-variant-numeric:tabular-nums}
+  .mono{font-family:var(--mono);font-size:.92em;letter-spacing:-.2px}
+
+  header{margin-bottom:16px}
+  .logo{font-size:20px;font-weight:800;letter-spacing:-.4px}
+  .logo small{display:block;font-size:11.5px;font-weight:500;color:var(--sub);margin-top:2px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+        box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
+  .card h2{font-size:14px;font-weight:700;letter-spacing:-.2px;margin-bottom:8px}
+  .card p{font-size:13px;color:var(--sub)}
+  .card p+p{margin-top:6px}
+
+  .note{border-left:3px solid var(--amber);background:var(--amber-soft);border-radius:8px;
+        padding:10px 12px;font-size:13px;margin-bottom:12px}
+  .note b{font-weight:700}
+
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:10px;
+       padding:8px 13px;font-size:13.5px;font-weight:600;transition:.15s;box-shadow:var(--shadow)}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{filter:brightness(1.08);color:#fff}
+  .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+  .statuschip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 12px;
+              font-size:12px;font-weight:600;color:var(--sub);box-shadow:var(--shadow);
+              display:inline-flex;gap:7px;align-items:center;white-space:nowrap}
+  .dot{width:7px;height:7px;border-radius:50%;background:#c4ccd9;flex:0 0 auto}
+  .dot.ok{background:var(--green)} .dot.err{background:var(--up)}
+  .dot.busy{background:var(--amber);animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){ .dot.busy{animation:none} }
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  th{font-size:11.5px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.3px}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:last-child td{border-bottom:none}
+  .cellname{font-family:var(--mono);font-weight:600}
+  .st{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:12px;color:var(--sub)}
+  .warn{color:var(--amber)}
+
+  #log{background:#1c2333;color:#d6dcea;border-radius:10px;padding:12px;font-family:var(--mono);
+       font-size:12px;line-height:1.65;max-height:280px;overflow:auto;white-space:pre-wrap;
+       word-break:break-all}
+  #log:empty{display:none}
+  #log .e{color:#ff9ba3} #log .g{color:#7ee2a8} #log .d{color:#8a94ad}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="logo">데이터 이관<small>QA Stock Board — 전역 경로 → users/{uid} 1회 복사</small></div>
+</header>
+
+<div class="note">
+  <b>순서를 지켜주세요.</b> 이 도구는 기존(느슨한) 보안 규칙 아래에서만 동작합니다.
+  UID 기반 규칙을 먼저 배포하면 루트 데이터를 읽지 못합니다.
+  <span class="mono">이관 → 새 HTML 배포 → 새 규칙 배포</span> 순서로 진행하세요.
+</div>
+
+<div class="card">
+  <h2>1. 로그인</h2>
+  <p>원본 데이터를 <b>넘겨받을 계정</b>으로 로그인하세요. 지금까지 보드를 써 온 본인 계정입니다.</p>
+  <div class="row" style="margin-top:10px">
+    <button class="btn primary" id="btnLogin">Google 계정으로 로그인</button>
+    <button class="btn" id="btnLogout" hidden>로그아웃</button>
+    <span class="statuschip" id="chip"><span class="dot" id="dot"></span><span id="chipTxt">로그인 필요</span></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>2. 점검</h2>
+  <p>루트에 무엇이 몇 건 있고, 내 계정 아래에 이미 무엇이 있는지 읽기만 합니다. 아무것도 쓰지 않습니다.</p>
+  <div class="row" style="margin-top:10px">
+    <button class="btn" id="btnScan" disabled>점검 실행</button>
+  </div>
+  <div id="tblWrap" hidden style="margin-top:12px">
+    <table>
+      <thead><tr><th>컬렉션</th><th class="n">루트</th><th class="n">내 계정</th><th>상태</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>3. 복사</h2>
+  <p>문서 ID를 그대로 유지한 채 <span class="mono">users/{uid}/</span> 아래로 복사합니다.
+     루트 데이터는 지우지 않으므로, 잘못돼도 되돌릴 수 있습니다.</p>
+  <p id="ovWarn" class="warn" hidden></p>
+  <div class="row" style="margin-top:10px">
+    <button class="btn primary" id="btnCopy" disabled>복사 실행</button>
+  </div>
+</div>
+
+<div id="log"></div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script>
+const FIREBASE_CONFIG={
+  apiKey:"AIzaSyAAKbkNAXnpiogXEA_6dpRQUqbcZ2qYau8",
+  authDomain:"quantitative-analysis-ed463.firebaseapp.com",
+  projectId:"quantitative-analysis-ed463",
+  storageBucket:"quantitative-analysis-ed463.firebasestorage.app",
+  messagingSenderId:"90780497766",
+  appId:"1:90780497766:web:907d7fe3b3a7a4e90b7aa7"
+};
+
+/* 이관 대상. 청크 크기가 다른 이유: qa_cache는 시세 시계열이 통째로 들어 있어
+ * 문서 하나가 수십~수백 KB다. 배치는 500건까지 담을 수 있지만 요청 본문 크기가
+ * 먼저 막히므로 캐시만 잘게 끊는다. */
+const COLS=[
+  {name:'qa_stocks',  chunk:200, desc:'종목 마스터 · 수동값'},
+  {name:'qa_settings',chunk:200, desc:'가중치 설정'},
+  {name:'qa_trades',  chunk:200, desc:'매매 이력'},
+  {name:'qa_fx',      chunk:200, desc:'환전 이력'},
+  {name:'qa_splits',  chunk:200, desc:'분할 · 병합'},
+  {name:'qa_rights',  chunk:200, desc:'유상 계열'},
+  {name:'qa_shrs',    chunk:200, desc:'주식수 기준값'},
+  {name:'qa_cache',   chunk:20,  desc:'시세 · 재무 캐시'}
+];
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const db=firebase.firestore(), auth=firebase.auth();
+const $=s=>document.querySelector(s);
+let uid=null, scan=null;
+
+function chip(cls,txt){ $('#dot').className='dot'+(cls?' '+cls:''); $('#chipTxt').textContent=txt; }
+function log(msg,cls){
+  const el=$('#log'), t=new Date().toTimeString().slice(0,8);
+  const s=document.createElement('span');
+  s.className=cls||''; s.textContent='['+t+'] '+msg+'\n';
+  el.appendChild(s); el.scrollTop=el.scrollHeight;
+}
+
+auth.onAuthStateChanged(u=>{
+  if(u){
+    uid=u.uid;
+    chip('ok', u.email||'로그인됨');
+    $('#btnLogin').hidden=true; $('#btnLogout').hidden=false; $('#btnScan').disabled=false;
+    log('로그인: '+(u.email||'(이메일 없음)'),'g');
+    log('대상 경로: users/'+uid+'/','d');
+  }else{
+    uid=null; scan=null;
+    chip('','로그인 필요');
+    $('#btnLogin').hidden=false; $('#btnLogout').hidden=true;
+    $('#btnScan').disabled=true; $('#btnCopy').disabled=true;
+  }
+});
+
+$('#btnLogin').addEventListener('click',async()=>{
+  const p=new firebase.auth.GoogleAuthProvider();
+  p.setCustomParameters({prompt:'select_account'});
+  try{ await auth.signInWithPopup(p); }
+  catch(e){
+    const c=e&&e.code;
+    if(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment'){
+      try{ await auth.signInWithRedirect(p); }catch(e2){ log('로그인 실패: '+e2.message,'e'); }
+    }else if(c==='auth/unauthorized-domain'){
+      log('승인되지 않은 도메인입니다. Firebase Authentication > 설정 > 승인된 도메인에 현재 주소를 추가하세요.','e');
+    }else if(c!=='auth/cancelled-popup-request'&&c!=='auth/popup-closed-by-user'){
+      log('로그인 실패: '+e.message,'e');
+    }
+  }
+});
+$('#btnLogout').addEventListener('click',()=>auth.signOut());
+
+$('#btnScan').addEventListener('click',async()=>{
+  $('#btnScan').disabled=true; $('#btnCopy').disabled=true;
+  chip('busy','점검 중'); log('점검을 시작합니다.');
+  const rows=[]; let readErr=false;
+  for(const c of COLS){
+    let src=null, dst=null;
+    try{ src=await db.collection(c.name).get(); }
+    catch(e){
+      readErr=true;
+      log('루트 '+c.name+' 읽기 실패: '+(e.code||e.message),'e');
+      rows.push({...c,err:true}); continue;
+    }
+    try{ dst=await db.collection('users/'+uid+'/'+c.name).get(); }
+    catch(e){ log('대상 '+c.name+' 읽기 실패: '+(e.code||e.message),'e'); rows.push({...c,err:true}); continue; }
+    rows.push({...c,src,n:src.size,m:dst.size});
+    log(c.name+' — 루트 '+src.size+'건 / 내 계정 '+dst.size+'건','d');
+  }
+  scan=rows;
+  renderTable(rows);
+
+  if(readErr){
+    chip('err','점검 실패');
+    log('루트를 읽지 못했습니다. UID 기반 규칙이 이미 배포되었다면, 규칙을 잠시 되돌린 뒤 다시 시도하세요.','e');
+    $('#btnScan').disabled=false; return;
+  }
+  const total=rows.reduce((a,r)=>a+(r.n||0),0);
+  const over=rows.filter(r=>r.m>0);
+  if(over.length){
+    $('#ovWarn').hidden=false;
+    $('#ovWarn').textContent='내 계정에 이미 데이터가 있습니다 ('+over.map(r=>r.name+' '+r.m+'건').join(', ')+
+      '). 같은 문서 ID는 덮어쓰고, 없던 문서는 추가됩니다. 대상에만 있는 문서는 지우지 않습니다.';
+  }else{ $('#ovWarn').hidden=true; }
+  chip('ok','점검 완료');
+  log('점검 완료 — 복사 대상 '+total+'건','g');
+  $('#btnScan').disabled=false;
+  $('#btnCopy').disabled=(total===0);
+  if(total===0)log('루트에 복사할 데이터가 없습니다.','d');
+});
+
+function renderTable(rows){
+  $('#tblWrap').hidden=false;
+  $('#tbody').innerHTML=rows.map(r=>{
+    let st,cls;
+    if(r.err){ st='읽기 실패'; cls='err'; }
+    else if(!r.n){ st='원본 없음'; cls=''; }
+    else if(r.m){ st='덮어씀'; cls='busy'; }
+    else{ st='복사 예정'; cls='ok'; }
+    return '<tr><td><span class="cellname">'+r.name+'</span><br>'+
+      '<span style="font-size:11.5px;color:var(--sub)">'+r.desc+'</span></td>'+
+      '<td class="n">'+(r.err?'—':r.n)+'</td>'+
+      '<td class="n">'+(r.err?'—':r.m)+'</td>'+
+      '<td><span class="st"><span class="dot '+cls+'"></span>'+st+'</span></td></tr>';
+  }).join('');
+}
+
+$('#btnCopy').addEventListener('click',async()=>{
+  if(!scan){ log('먼저 점검을 실행하세요.','e'); return; }
+  $('#btnCopy').disabled=true; $('#btnScan').disabled=true;
+  chip('busy','복사 중'); log('복사를 시작합니다. 창을 닫지 마세요.');
+  let done=0, fail=0;
+  for(const r of scan){
+    if(r.err||!r.n)continue;
+    const docs=[]; r.src.forEach(d=>docs.push(d));
+    log(r.name+' — '+docs.length+'건 복사 중…');
+    for(let i=0;i<docs.length;i+=r.chunk){
+      const part=docs.slice(i,i+r.chunk);
+      const b=db.batch();
+      part.forEach(d=>b.set(db.doc('users/'+uid+'/'+r.name+'/'+d.id), d.data()));
+      try{ await b.commit(); done+=part.length; }
+      catch(e){
+        fail+=part.length;
+        log(r.name+' '+(i+1)+'~'+(i+part.length)+'번째 실패: '+(e.code||e.message),'e');
+      }
+    }
+    log(r.name+' 완료','g');
+  }
+  if(fail){
+    chip('err','일부 실패');
+    log('복사 '+done+'건 성공 · '+fail+'건 실패. 루트 데이터는 그대로 남아 있으니 다시 실행해도 안전합니다.','e');
+  }else{
+    chip('ok','복사 완료');
+    log('복사 '+done+'건 완료. 이제 새 HTML을 배포하고, 그다음 UID 기반 규칙을 배포하세요.','g');
+  }
+  $('#btnScan').disabled=false; $('#btnCopy').disabled=false;
+});
+</script>
+</body>
+</html>
