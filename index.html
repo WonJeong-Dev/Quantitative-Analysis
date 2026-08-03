@@ -76,6 +76,9 @@
   .b-t2{background:#e2702e;color:#fff}
   .b-t3{background:#fff;border:1.5px solid #c98a1e;color:#a06a10;padding:2px 9px}
   .b-none{background:transparent;color:#a6afc2;border:1px dashed #d3d9e5;font-weight:600}
+  /* (v4.33) '해당 없음'은 '범위 밖·대기'(=최하위 판정)와 다른 상태다.
+   * b-none의 점선·회색은 탈락의 시각언어라 중립 상태에 쓰면 오독된다. 실선으로 분리한다. */
+  .b-na{background:transparent;color:var(--sub);border:1px solid var(--line);font-weight:600}
   .live{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;padding:1px 7px;border-radius:99px;vertical-align:1px}
   .live .ld{width:6px;height:6px;border-radius:50%}
   .lv-live{background:#e5f6ec;color:#1d7a45}.lv-live .ld{background:#26a85e;animation:qpulse 1.4s infinite}
@@ -106,6 +109,11 @@
   /* list */
   .listhead,.row .main{display:grid;grid-template-columns:32px minmax(150px,1.35fr) 106px 150px 150px 108px 58px minmax(150px,1.15fr) 26px;
     gap:9px;align-items:center}
+  /* (v4.33) ETF 탭은 '적정목표가 · 여력'과 '매수등급'이 구조적으로 산출되지 않는다(v4.21·v4.26).
+   * 빈 칸으로 남기면 고정 헤더와 값이 어긋나 렌더링 결함으로 오인된다 — 컬럼째 뺀다.
+   * 남은 폭은 포지션(52주 범위) 바로 돌려준다. */
+  #boardView.etfcols .listhead,
+  #boardView.etfcols .row .main{grid-template-columns:32px minmax(150px,1.35fr) 106px 150px 58px minmax(210px,1.7fr) 26px}
   .listhead{padding:4px 16px 8px;font-size:11px;color:var(--sub);font-weight:700}
   .row{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
        margin-bottom:8px;overflow:hidden;transition:border-color .15s}
@@ -339,6 +347,10 @@
     .listhead{display:none}
     .row .main{grid-template-columns:26px 1fr 108px 30px;
       grid-template-areas:"rk nm pr ch" "rk sc gr ch" "rk fv rs ch" "rk st st ch";row-gap:8px}
+    /* (v4.33) #boardView.etfcols 는 ID 선택자라 미디어쿼리 안에서도 데스크톱 규칙을 이긴다.
+     * 모바일 열 정의를 여기서 다시 덮어쓰지 않으면 좁은 화면이 7열로 깨진다. */
+    #boardView.etfcols .row .main{grid-template-columns:26px 1fr 108px 30px;
+      grid-template-areas:"rk nm pr ch" "rk sc rs ch" "rk st st ch"}
     .g-rk{grid-area:rk}.g-nm{grid-area:nm}.g-pr{grid-area:pr;text-align:right}.g-sc{grid-area:sc}
     .g-gr{grid-area:gr;justify-content:flex-end}
     .g-fv{grid-area:fv}.g-rs{grid-area:rs;text-align:right}.g-st{grid-area:st}.g-ch{grid-area:ch}
@@ -674,6 +686,20 @@ const SORT_NA_ETF=['grade','quality','upside'];
  * 주식 탭으로 돌아가면 원래 고른 기준이 그대로 살아난다. */
 const effSort=()=>{ const s=S.ui&&S.ui.sort||'grade';
   return (tabType()==='etf'&&SORT_NA_ETF.includes(s))?'score':s; };
+/* (v4.33) 탭마다 존재하는 컬럼이 다르다. .listhead는 v4.32까지 정적 HTML이어서
+ * ETF 탭에서도 '종합 · 가격매력 / 적정목표가 · 여력 / 매수등급' 세 헤더가 그대로 남았고,
+ * 정작 값은 각각 매력만 · 빈칸 · '가격 위치' 배지였다. 헤더와 그리드는 반드시 함께 바꾼다 —
+ * 한쪽만 바꾸면 칸이 밀린다. */
+const LISTHEAD={
+  stock:[['#'],['종목'],['현재가'],['종합 · 가격매력'],['적정목표가 · 여력'],['매수등급','c'],['RSI','c'],['포지션 (52주 범위)'],['']],
+  etf  :[['#'],['종목'],['현재가'],['가격매력'],['RSI','c'],['포지션 (52주 범위)'],['']]
+};
+function syncBoardCols(){
+  const etf=(tabType()==='etf'), bv=$('#boardView'), hd=$('.listhead'); if(!bv||!hd)return;
+  bv.classList.toggle('etfcols',etf);
+  hd.innerHTML=LISTHEAD[etf?'etf':'stock']
+    .map(c=>'<div'+(c[1]==='c'?' style="text-align:center"':'')+'>'+(c[0]||'')+'</div>').join('');
+}
 function syncSortSel(){
   const etf=(tabType()==='etf'), sel=$('#sortSel'); if(!sel)return;
   $$('#sortSel option').forEach(o=>{ o.disabled=etf&&SORT_NA_ETF.includes(o.value); });
@@ -2408,6 +2434,7 @@ function render(){
     if(k){
       const fi=freshInfo(k);
       const qv=k.quality, av=k.attract;
+      const isETF=(k.assetType==='etf');   /* (v4.33) 없는 컬럼은 빈 칸이 아니라 통째로 뺀다 */
       const warn=[];
       if(k.dataStale)warn.push('<span class="warnpill hz" title="캔들·시세가 '+(k.barAgeDays!=null?Math.round(k.barAgeDays)+'일':'기간 불명')+' 낡음 — 등급 보류">⚠ 데이터지연</span>');
       if(k.priceAnomaly)warn.push('<span class="warnpill hz" title="현재가 정합 이상 — '+esc((k.dataAnoms||[]).join(' · '))+'">⚠ 가격이상</span>');
@@ -2433,18 +2460,24 @@ function render(){
            * v4.21 이후 ETF 판정에 쓰이지도 않는데 화면에서만 크게 보였다. 뺀다. */
           +(((k&&k.assetType)==='etf')?'':'<div class="ts-row"><span class="ts-lab">종합</span><div class="ts-bar"><i style="width:'+(qv!=null?qv.toFixed(0):0)+'%;background:'+qColor(qv)+'"></i></div><span class="ts-val" style="color:'+qColor(qv)+'">'+(qv!=null?qv.toFixed(0):'—')+'</span></div>')
           +'<div class="ts-row"><span class="ts-lab">매력</span><div class="ts-bar"><i style="width:'+(av!=null?av.toFixed(0):0)+'%;background:'+gaugeColor(av||0)+'"></i></div><span class="ts-val" style="color:'+gaugeColor(av||0)+'">'+(av!=null?av.toFixed(0):'—')+'</span></div>'
+          /* (v4.33) ★ 경고 필(데이터지연·가격이상·급락·실적)은 v4.32까지 등급 셀 안에 살았다.
+           * 컬럼만 지우고 이걸 옮기지 않으면 ETF에서 경고가 통째로 사라진다 — 점수 칸으로 내린다. */
+          +((isETF&&warn.length)?'<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:5px">'+warn.join('')+'</div>':'')
         +'</div>'
-        +'<div class="fv g-fv num"><div class="v">'+(k.fv!=null?curSym(k.currency)+fmtP(k.fv,k.currency):'—')+'</div>'
-        +'<div class="u '+chgCls(k.upside)+'">'+(k.upside!=null?'여력 '+fmtPct(k.upside):'')+'</div></div>'
-        +'<div class="gradecell g-gr"><div style="display:flex;flex-direction:column;gap:4px;align-items:center">'+(((k&&k.assetType)==='etf')?'<span class="badge b-none" title="ETF는 적정가·품질이 없어 매수등급을 산출하지 않습니다 — 가격 위치만 봅니다">가격 위치</span>':catBadge(k.tier,!!(k.grd&&k.grd.nearBoundary),false))
-          +(warn.length?'<div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">'+warn.join('')+'</div>':'')+'</div></div>'
+        +(isETF?''
+          :'<div class="fv g-fv num"><div class="v">'+(k.fv!=null?curSym(k.currency)+fmtP(k.fv,k.currency):'—')+'</div>'
+           +'<div class="u '+chgCls(k.upside)+'">'+(k.upside!=null?'여력 '+fmtPct(k.upside):'')+'</div></div>'
+           +'<div class="gradecell g-gr"><div style="display:flex;flex-direction:column;gap:4px;align-items:center">'+catBadge(k.tier,!!(k.grd&&k.grd.nearBoundary),false)
+           +(warn.length?'<div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">'+warn.join('')+'</div>':'')+'</div></div>')
         +'<div class="rsi g-rs num" style="color:'+(k.rsi!=null?(k.rsi<30?'var(--up)':(k.rsi>70?'var(--down)':'inherit')):'inherit')+'">'+(k.rsi!=null?k.rsi.toFixed(1):'—')
         +'<small>'+(k.rsi==null?'':(k.rsi<30?'과매도':(k.rsi>70?'과매수':'중립')))+'</small></div>'
         +'<div class="g-st">'+stripHTML(k)+'</div>';
     }else{
       main+='<div class="price g-pr"><div class="p" style="color:var(--sub)">'+(err?'조회 실패':'로딩…')+'</div>'
         +(err?'<div class="stale" title="'+esc(err)+'">'+esc(err.slice(0,26))+'</div>':'')+'</div>'
-        +'<div class="g-sc muted" style="font-size:12px">데이터 수신 대기</div><div class="g-fv"></div><div class="g-gr"></div><div class="g-rs"></div><div class="g-st"><div class="strip"></div></div>';
+        +'<div class="g-sc muted" style="font-size:12px">데이터 수신 대기</div>'
+        +(assetType(st)==='etf'?'':'<div class="g-fv"></div><div class="g-gr"></div>')   /* (v4.33) 로딩 행도 열 수를 맞춘다 */
+        +'<div class="g-rs"></div><div class="g-st"><div class="strip"></div></div>';
     }
     main+='<div class="chev g-ch">▼</div></div>';
     return divider+'<div class="row'+(open?' open':'')+'" data-id="'+esc(id)+'">'+main+(open?detailHTML(id):'')+'</div>';
@@ -3050,11 +3083,16 @@ function tierBoxHTML(k){
   const d=k.grd||classifyDetail(k);
   const mk=x=>'<span class="flag '+(x[1]?'b':'h')+'">'+(x[1]?'✓ ':'✕ ')+esc(x[0])+'</span>';
   const mkc=x=>'<span class="flag '+(x[1]?'b':'h')+'">'+(x[1]?'✓ ':'— ')+esc(x[0])+'</span>';
-  return '<div class="dsec">매수 등급 <small>손실 최소화 우선 — 하드 게이트 전부 통과 + 저평가 확증 충족 시에만 추천</small></div>'
-    +'<div style="margin:2px 0 7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+(d.isETF?'<span class="badge b-none" title="ETF는 매수등급을 산출하지 않습니다">가격 위치</span>':catBadge(d.tier,!!d.nearBoundary,false))
-    +'<span class="qa-chip qa-q" title="기업 자체 품질(가격 무관)">종합 '+(k.quality!=null?k.quality.toFixed(0):'—')+'</span>'
+  /* (v4.33) 목록에서 등급 컬럼이 빠졌으므로 여기가 '왜 없는지'를 알리는 유일한 자리다.
+   * title 툴팁은 터치 기기에서 발화하지 않아 본문으로 올린다. 종합·여력 칩도 ETF에서는 뺀다 —
+   * 종합은 85%가 잔여 앵커(v4.26)이고 여력은 적정가가 없어 항상 null(v4.21)이다. */
+  return '<div class="dsec">'+(d.isETF
+      ?'가격 위치 <small>ETF는 재무제표·애널 목표가가 없어 적정가를 산출할 수 없습니다 — 매수등급 대신 가격·추세 기반 지표만 봅니다</small>'
+      :'매수 등급 <small>손실 최소화 우선 — 하드 게이트 전부 통과 + 저평가 확증 충족 시에만 추천</small>')+'</div>'
+    +'<div style="margin:2px 0 7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+(d.isETF?'<span class="badge b-na">등급 산출 안 함</span>':catBadge(d.tier,!!d.nearBoundary,false))
+    +(d.isETF?'':'<span class="qa-chip qa-q" title="기업 자체 품질(가격 무관)">종합 '+(k.quality!=null?k.quality.toFixed(0):'—')+'</span>')
     +'<span class="qa-chip qa-a" title="현재 가격의 매력도">가격매력 '+(k.attract!=null?k.attract.toFixed(0):'—')+'</span>'
-    +'<span class="qa-chip qa-u" title="기대적정가 대비 상승여력">여력 '+fmtPct(k.upside)+'</span>'
+    +(d.isETF?'':'<span class="qa-chip qa-u" title="기대적정가 대비 상승여력">여력 '+fmtPct(k.upside)+'</span>')
     +(d.blocked?'<span class="qa-chip qa-x" title="이 관문에서 탈락">✕ '+esc(d.blocked)+'</span>':'')+'</div>'
     +'<div class="gate-lbl">하드 게이트 <b>'+d.gates.filter(x=>x[1]).length+'/'+d.gates.length+'</b> · 전부 통과해야 후보</div>'
     +'<div class="flags">'+d.gates.map(mk).join('')+'</div>'
@@ -3424,6 +3462,7 @@ function selectTab(t){
   S.view=led?'ledger':'board';
   if(!led)S.tab=t;
   syncSortSel();                 // (v4.27) 탭마다 고를 수 있는 기준이 다르다
+  syncBoardCols();               // (v4.33) 탭마다 존재하는 컬럼이 다르다
   $$('nav.tabs .tab').forEach(x=>x.classList.toggle('on',
     x.dataset.tab===(led?'ledger':S.tab)));
   const bv=$('#boardView'), lv=$('#ledgerView');
@@ -3441,6 +3480,7 @@ document.addEventListener('keydown',e=>{
 });
 $('#sortSel').addEventListener('change',e=>{S.ui.sort=e.target.value;render();});
 syncSortSel();   /* (v4.27) 초기 1회 — 탭별 가능 기준이 다르다 */
+syncBoardCols(); /* (v4.33) 초기 1회 — 헤더가 첫 화면부터 탭과 맞아야 한다 */
 $('#searchIn').addEventListener('input',e=>{S.ui.search=e.target.value;renderSoon();});
 $('#btnRefresh').addEventListener('click',()=>{refreshAll();toast('전체 데이터 갱신을 시작합니다');});
 
