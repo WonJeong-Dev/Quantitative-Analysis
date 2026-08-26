@@ -430,6 +430,7 @@
         <button class="lgt" data-lg="split">주식수 변동</button>
         <button class="lgt" data-lg="fx">환전</button>
         <button class="lgt" data-lg="perf">성과</button>
+        <button class="lgt" data-lg="verify">검증</button>
         <button class="lgt" data-lg="tool">도구</button>
       </div>
       <div class="spacer"></div>
@@ -680,6 +681,12 @@ const S = {
    * splits는 "이 계수로 환산하라"는 지시이고, rights는 "이 조건으로 매수 기록을 쓰라"는
    * 할 일이다. 한 배열에 섞으면 언젠가 누군가 `for(sp of S.splits) f*=sp.ratio`를 쓴다. */
   rights:[],
+  /* (v4.34) 판정 로그 — 'YYYY-MM-DD' -> 문서(qa_gradelog). 매수 여부와 무관한 전수 패널이다.
+   * qa_trades[].snap과 역할이 다르다: 저쪽은 '내가 산 것'의 기록이고 이쪽은 '시스템이
+   * 무엇을 어떻게 판정했는가'의 기록이다. 둘을 한 통에 담으면 선택편향이 지워지지 않는다. */
+  glog:{},
+  bench:{},             // (v4.34) 지수 캔들 — 'US'|'KR' -> {sym,t,c} (qa_bench). 초과수익의 분모
+  glSaved:null,         // (v4.34) 이 세션에서 오늘치를 이미 저장했는가 (§22-⑬ 쓰기 가드)
   view:'board',         // (v4.30) 'board' | 'ledger' — S.tab(4분류)은 그대로 보존한다
   lg:{sub:'hold', open:null, f:{q:'',acc:'',cls:'',side:'',from:'',to:''}, scan:null}
 };
@@ -1035,6 +1042,65 @@ function rsiLast(a,n=14){ if(a.length<n+1)return null;
     g=(g*(n-1)+(d>0?d:0))/n; ls=(ls*(n-1)+(d<0?-d:0))/n;}
   if(ls===0)return 100;
   return 100-100/(1+g/ls); }
+/* ---------- (v4.34) ADX / DMI — Wilder 원 정의 · 표시·로그 전용 ----------
+ * [도입 상태: **판정 미반영**. classifyDetail은 이 값을 읽지 않는다.]
+ *
+ * 이 시스템의 추세 축은 두 가지뿐이었다 — 이격 z(추세 대비 '위치')와 slope50/200('방향').
+ * 재지 않던 것이 하나 있다: **강도**(방향성 움직임이 노이즈 대비 얼마나 지배적인가).
+ * ADX가 그 빈칸에 맞는다. 다만 표준 임계 20/25는 Wilder(1978)가 상품선물에서 제시한
+ * 어림값이고 §20의 네 범주(외부 사실·통계 관례·기존 상수 재사용·구조적 필연) 어디에도
+ * 귀속되지 않는다. 그대로 판정에 넣으면 **폐기된 DT_GAP=0.85와 같은 성질의 부채**가
+ * 하나 더 생긴다. 그래서 v4.34는 계산해서 보여주고 기록만 한다 —
+ * v4.8·v4.9가 경계 근접도에서 쓴 절차 그대로다(표시 전용 → 관측 → 판정 편입).
+ *
+ * ★ 종가 기준으로만 계산한다(장중가 미반영). 평활을 두 번 통과해 실효 지연이 20~30봉인
+ *   지표에 오늘의 장중 변동을 섞으면 정밀도가 아니라 착시가 는다. 또한 h/l 배열에는
+ *   라이브 가격이 반영되지 않으므로 c에만 대입하면 TR이 종류가 다른 양의 조합이 된다(§22-⑫).
+ *
+ * TR   = max(H−L, |H−C_prev|, |L−C_prev|)
+ * +DM  = (H−H_prev > L_prev−L && H−H_prev > 0) ? H−H_prev : 0
+ * −DM  = (L_prev−L > H−H_prev && L_prev−L > 0) ? L_prev−L : 0
+ * Wilder 평활은 두 형태가 있고 **섞으면 안 된다**(v4.34 스모크에서 실제로 섞였다):
+ *   ㄱ) 누적 합  — TR·±DM에 쓴다.  X_t = X_(t−1) − X_(t−1)/p + x_t   (초기값 = p개 합)
+ *   ㄴ) 평균     — ADX에 쓴다.      A_t = (A_(t−1)×(p−1) + dx_t)/p    (초기값 = 첫 p개 DX의 평균)
+ * ㄴ 자리에 ㄱ을 쓰면 dx=100이 이어질 때 고정점이 100×p가 된다(단조 추세에서 ADX 1400 관측).
+ * ±DI = 100×±DM_s/TR_s · DX = 100×|+DI−(−DI)|/(+DI+(−DI)) · ADX = 평균평활(DX) ∈ [0,100]
+ * 반환값의 series는 ADX 시계열이며, 자기교정 z(절대 임계 대신)의 입력이다. */
+const ADX_P=14;
+function adxWilder(h,l,c,p){
+  p=p||ADX_P;
+  const n=Math.min(h?h.length:0,l?l.length:0,c?c.length:0);
+  if(n<p*3)return null;                       // DX가 p개 모여야 ADX 첫 값이 나온다
+  let tr=0,dmP=0,dmM=0;
+  for(let i=1;i<=p;i++){
+    const hh=h[i],ll=l[i],cp=c[i-1],hp=h[i-1],lp=l[i-1];
+    if(!(isFinite(hh)&&isFinite(ll)&&isFinite(cp)&&isFinite(hp)&&isFinite(lp)))return null;
+    tr+=Math.max(hh-ll,Math.abs(hh-cp),Math.abs(ll-cp));
+    const up=hh-hp, dn=lp-ll;
+    dmP+=(up>dn&&up>0)?up:0; dmM+=(dn>up&&dn>0)?dn:0;
+  }
+  const dxs=[], series=[];
+  let adx=null, diP=null, diM=null, dxSum=0;
+  for(let i=p+1;i<n;i++){
+    const hh=h[i],ll=l[i],cp=c[i-1],hp=h[i-1],lp=l[i-1];
+    if(!(isFinite(hh)&&isFinite(ll)&&isFinite(cp)&&isFinite(hp)&&isFinite(lp)))continue;
+    const t=Math.max(hh-ll,Math.abs(hh-cp),Math.abs(ll-cp));
+    const up=hh-hp, dn=lp-ll;
+    tr = tr - tr/p + t;
+    dmP= dmP- dmP/p + ((up>dn&&up>0)?up:0);
+    dmM= dmM- dmM/p + ((dn>up&&dn>0)?dn:0);
+    if(!(tr>0))continue;
+    diP=100*dmP/tr; diM=100*dmM/tr;
+    const sm=diP+diM;
+    const dx=sm>0?100*Math.abs(diP-diM)/sm:0;
+    dxs.push(dx);
+    if(dxs.length<p){ dxSum+=dx; }
+    else if(dxs.length===p){ dxSum+=dx; adx=dxSum/p; series.push(adx); }
+    else { adx=(adx*(p-1)+dx)/p; series.push(adx); }   // ★ 평균 평활 — 합 평활을 쓰면 100×p로 발산
+  }
+  if(adx==null||!isFinite(adx))return null;
+  return {adx,diP,diM,series,n:series.length};
+}
 function volumeProfile(h,l,v,bars,bins=24){
   const n=h.length; if(n<10)return null;
   const s=Math.max(0,n-bars);
@@ -1707,7 +1773,7 @@ function compute(id,simPrice){
   /* (v4.7) 이격도(현재가/SMA200) 분포 통계 — 하락추세 판정을 종목별 자기교정 기준으로 옮기는 입력.
    * 중위수·MAD로 로버스트 z를 만든다. 표준편차를 쓰면 급등 국면의 이격 극단치가 분모를 부풀려
    * 판정이 무력화되므로 MAD를 쓴다(1.4826은 정규분포에서 σ와 일치시키는 표준 보정계수). */
-  let ratioZ=null, ratioN=0, ratioMed=null, ratioSc=null;
+  let ratioZ=null, ratioN=0, ratioMed=null, ratioSc=null, ratioQ25=null;
   if(n>=200){
     const rs=[]; let rsum=0;
     for(let x=0;x<n;x++){
@@ -1719,13 +1785,44 @@ function compute(id,simPrice){
       const qOf=(arr,p)=>{ const s=arr.slice().sort((a,b)=>a-b), ix=(s.length-1)*p,
         lo=Math.floor(ix), hi=Math.ceil(ix); return lo===hi?s[lo]:s[lo]+(s[hi]-s[lo])*(ix-lo); };
       ratioMed=qOf(rs,0.5);
+      /* (v4.34) 후보 하한 관측용 — **판정에 쓰지 않는다.**
+       * §19.8은 MA_DEV_MIN=0.94(고정 %)가 통계 경로 판정의 52%를 단독으로 좌우한다는
+       * 부채를 "검토 방향 결론 없음"으로 남겼다. 방향 1(r_now < median)은 실측 반례
+       * (삼성전기 이격 1.374 · 중위이격 1.577 → 참)가 이미 나와 단독 채택이 불가하다.
+       * 여기서는 **어떤 후보도 지금 채택하지 않는다.** 후보 규칙을 코드에 박으면 그
+       * 순간 상수가 늘고 §20 분류가 필요해진다 — 대신 후보를 사후에 재구성할 수 있는
+       * 원재료(중위·1사분위·척도·관측수)만 로그에 남긴다(§22-⑤: 스냅샷에 맞춰 고르지 않는다). */
+      ratioQ25=qOf(rs,0.25);
       ratioSc=1.4826*qOf(rs.map(v=>Math.abs(v-ratioMed)),0.5);
       const rNow=(s200!=null&&s200>0)?price/s200:null;
       if(ratioSc>=RATIO_SC_MIN&&rNow!=null) ratioZ=(rNow-ratioMed)/ratioSc;
     }
   }
-  k.ratioZ=ratioZ; k.ratioN=ratioN; k.ratioMed=ratioMed; k.ratioSc=ratioSc;
+  k.ratioZ=ratioZ; k.ratioN=ratioN; k.ratioMed=ratioMed; k.ratioSc=ratioSc; k.ratioQ25=ratioQ25;
   k.ratioNow=(s200!=null&&s200>0)?price/s200:null;
+
+  /* (v4.34) ADX/DMI — **표시·로그 전용**. classifyDetail 미반영.
+   * 절대 임계(20/25)를 쓰지 않고 종목별 자기 분포 z를 함께 낸다. 이유는 DT_Z가
+   * DT_GAP을 대체한 것과 같다 — 연변동성 15% 유틸리티의 ADX 25와 90% 성장주의 ADX 25는
+   * 전혀 다른 사건이고, 고정 임계는 자산 간 비교가 불가능하다.
+   * 관측 수 하한(RATIO_MIN_N)과 척도 하한(RATIO_SC_MIN)은 **기존 상수를 재사용**한다 —
+   * 구조적 역할이 같다(표본 하한 · 0으로 나누기 방어). 새 상수를 만들지 않는다(§20). */
+  let adxV=null,adxZ=null,adxMed=null,adxSc=null,adxN=0,diPlus=null,diMinus=null;
+  { const A=adxWilder(h,l,ch.c,ADX_P);
+    if(A){ adxV=A.adx; diPlus=A.diP; diMinus=A.diM; adxN=A.n;
+      if(adxN>=RATIO_MIN_N){
+        const so=A.series.slice().sort((a,b)=>a-b);
+        const qA=(arr,pp)=>{ const ix=(arr.length-1)*pp, lo=Math.floor(ix), hi=Math.ceil(ix);
+          return lo===hi?arr[lo]:arr[lo]+(arr[hi]-arr[lo])*(ix-lo); };
+        adxMed=qA(so,0.5);
+        adxSc=1.4826*qA(A.series.map(v=>Math.abs(v-adxMed)).sort((a,b)=>a-b),0.5);
+        if(adxSc>=RATIO_SC_MIN)adxZ=(adxV-adxMed)/adxSc;
+      } } }
+  k.adx=adxV; k.adxZ=adxZ; k.adxMed=adxMed; k.adxSc=adxSc; k.adxN=adxN;
+  k.diPlus=diPlus; k.diMinus=diMinus;
+  /* +DI/−DI의 우열 = 방향. ADX는 방향 무관(강도)이므로 이 값이 반드시 짝으로 있어야
+   * '하락이 강한가'를 물을 수 있다. 1=상승 우세 · −1=하락 우세 · 0=동률. */
+  k.diDir=(diPlus!=null&&diMinus!=null)?(diPlus>diMinus?1:(diPlus<diMinus?-1:0)):null;
 
   /* ===== 데이터 신선도 (v4.3 신규) — 낡은 캔들·시세로 등급이 산출되는 것을 차단 =====
    * 직전 세션에 실제 발생한 사고: 국장 캔들·현재가가 수개월 낡은 값이었는데 아무 경고 없이
@@ -1957,13 +2054,19 @@ function positionsRaw(){
     const p=byKey[key]||(byKey[key]={key,market:t.market,type:t.type||'stock',name:t.name,
       code:t.code||'',account:t.account||'general',qty:0,cost:0,realized:0,buys:0,sells:0,
       buyQty:0,sellQty:0,sellAmt:0,adj:false,over:false,
-      first:t.date,last:t.date,firstBuy:null,lastSell:null,snap:null,ids:[]});
+      first:t.date,last:t.date,firstBuy:null,lastSell:null,snap:null,snaps:[],ids:[]});
     p.last=t.date; if(t.code&&!p.code)p.code=t.code; p.ids.push(t.id);
     const f=splitFactor(t); if(f!==1)p.adj=true;
     const q=(+t.qty||0)*f, pr=(+t.price||0)/f;
     if(t.side==='buy'){ p.qty+=q; p.cost+=q*pr; p.buys++; p.buyQty+=q;
       if(!p.firstBuy)p.firstBuy=t.date;
-      if(t.snap&&!p.snap)p.snap=t.snap; }
+      /* (v4.34) v4.33까지 `if(t.snap&&!p.snap)` — **첫 매수 스냅샷만** 살아남았다.
+       * 평단은 여러 시점에 걸쳐 형성되는데 성과는 첫 시점의 등급에 통째로 귀속됐다.
+       * 범위밖에서 물타기한 손실이 '상 등급의 성과'로 기록될 수 있다는 뜻이다.
+       * 이제 매수마다 (날짜·수량·단가·스냅샷)을 모두 남긴다. p.snap(첫 스냅샷)은
+       * 하위호환으로 그대로 둔다 — 기존 화면·CSV의 참조가 깨지지 않는다(§8.7과 같은 원칙). */
+      if(t.snap){ if(!p.snap)p.snap=t.snap;
+        p.snaps.push({d:t.date,q:q,px:pr,s:t.snap}); } }
     else{
       const avg=p.qty>0?p.cost/p.qty:0;
       p.realized+=q*(pr-avg); p.cost-=q*avg; p.qty-=q; p.sells++;
@@ -1991,6 +2094,17 @@ function positions(){
     /* 청산 완료분의 실현수익률 — 매도대금 대비가 아니라 '들어간 원가' 대비로 낸다 */
     const cin=p.sellAmt-p.realized;
     p.realRate=(p.sells>0&&cin>0)?(p.realized/cin*100):null;
+    /* (v4.34) 매수금액 가중 등급 — 첫 스냅샷 하나로 종목을 대표시키지 않는다.
+     * snapPure=true(매수 전부가 같은 등급)인 종목만이 '그 등급의 성과'라고 부를 수 있다.
+     * 섞인 종목을 첫 등급으로 집계하면 물타기가 등급의 성과로 둔갑한다. */
+    if(p.snaps&&p.snaps.length){
+      const w={}; let tw=0;
+      for(const sn of p.snaps){ const amt=(+sn.q||0)*(+sn.px||0);
+        const tt=(sn.s&&sn.s.tier)||'범위밖'; if(amt>0){ w[tt]=(w[tt]||0)+amt; tw+=amt; } }
+      const mix=tw>0?Object.keys(w).map(tt=>[tt,w[tt]/tw]).sort((a,b)=>b[1]-a[1]):null;
+      p.snapMix=mix; p.snapMain=mix&&mix.length?mix[0][0]:null;
+      p.snapPure=!!(mix&&mix.length===1);
+    } else { p.snapMix=null; p.snapMain=null; p.snapPure=false; }
     return p;
   });
 }
@@ -2133,6 +2247,9 @@ async function postInit(){
    * 그 결합이 v4.28에서 ASML·TSM PSR이 비어 있던 직접 원인이었다. */
   syncFX();
   refreshAll(); startInterval(); startQuoteLoop(); fetchIndices(); setTimeout(refreshQuotes,2500); setTimeout(refreshSummaries,7000);
+  /* (v4.34) 판정 로그 — 읽기 → 지수 캔들 → 전방수익률 백필 → (지연) 오늘치 기록.
+   * 캔들이 이미 로드된 뒤여야 백필이 돌 수 있으므로 이 자리다. */
+  setTimeout(glBoot,9000);
 }
 /* (v4.24) 거래·환전 이력 로드. 실시간 반영이 필요하므로 onSnapshot을 쓴다.
  * (v4.30) 분할·병합(qa_splits)도 같은 방식으로 구독한다. 셋 중 무엇이 바뀌어도
@@ -2375,6 +2492,190 @@ async function fetchIndices(){
     }catch(e){}
     await sleep(200);
   }
+}
+
+/* ================= (v4.34) 판정 로그 · 전방수익률 — qa_gradelog / qa_bench =================
+ *
+ * ★ 왜 새 컬렉션인가. v4.33까지 판정 결과가 남는 곳은 두 군데뿐이었다.
+ *   ① S.gradeLog(v4.17) — 세션 메모리. 새로고침하면 사라진다.
+ *   ② qa_trades[].snap(v4.24) — **사용자가 실제로 매수한 종목에만** 남는다.
+ * ②가 문제다. 등급이 상이었는데 사지 않은 종목, 범위밖이었는데 급등한 종목은 기록 자체가
+ * 없다. 그 표본으로 "상이 범위밖보다 좋았다"를 재면 등급의 판별력이 아니라 **사용자 선택의
+ * 판별력**을 재게 된다(처치에 조건부인 표본). §19.3이 "관측 경로 확보, 종결 아님"으로 남긴
+ * 자리가 정확히 여기다 — 매수 여부와 무관한 **전수 패널**을 하루 한 줄씩 쌓는다.
+ *
+ * ★ 결과변수로 실현수익률을 쓰지 않는다. 그건 사용자의 매도 타이밍에 좌우되는 양이라
+ *   메커니즘 성능과 사용자 행동이 섞인다(§22-⑫: 종류가 다른 양). 대신 캔들에서 직접
+ *   계산되는 **고정 지평 전방수익률**과 **지수 대비 초과수익**을 쓴다.
+ *   §19.7이 기록한 국면(57종목 전부 52주 고점 대비 −25~−74%)에서는 절대수익률이 전 종목
+ *   같은 방향으로 움직여 등급 간 차이가 베타에 파묻힌다. 초과수익이 아니면 측정이 무의미하다.
+ *
+ * ★ 비용. 종목당 22값 · 반올림 → 57종목 기준 약 5KB/일. 쓰기는 접속 세션당 최대 1건.
+ *   무료 한도(쓰기 20,000/일 · 저장 1GB) 대비 무시 가능하다. 다만 §22-⑬의 교훈대로
+ *   **조건 없이 부르지 않는다** — 세션 가드 + 요약 패스 완료 대기 + 부분 상태 차단.
+ *
+ * ★ Firestore 규칙 변경 불필요. 규칙이 `match /users/{uid}/{document=**}` 하나이므로
+ *   새 컬렉션도 자동으로 같은 소유 조건 아래 들어온다(§3). */
+const GL_HORIZ=[20,60,120];   // 전방수익률 지평(거래일). 20≈1개월 · 60≈1분기 · 120≈반기
+/* 행은 배열로 저장한다 — 키 이름이 57종목마다 반복되면 문서가 3배로 부푼다.
+ * 순서가 곧 스키마이므로 **가운데에 끼워 넣지 않는다.** 새 항목은 항상 끝에 붙이고,
+ * 문서마다 cols를 함께 저장해 과거 문서를 자기 스키마로 읽는다(§22-⑫). */
+const GL_COLS=['tier','tierNoCap','A','Q','upside','downside','n','gate',
+  'ratioNow','ratioZ','ratioMed','ratioQ25','rsi','pB','price',
+  'qMissW','aMissW','near','adx','adxZ','diDir','cap'];
+function glRow(k){
+  if(!k)return null;
+  const d=k.grd||{};
+  const r1=x=>(x==null||!isFinite(x))?null:+x.toFixed(1);
+  const r2=x=>(x==null||!isFinite(x))?null:+x.toFixed(2);
+  const r4=x=>(x==null||!isFinite(x))?null:+x.toFixed(4);
+  return [k.tier||null, d.tierNoCap||null, r1(k.attract), r1(k.quality), r1(k.upside), r1(k.downside),
+    (d.n!=null?d.n:null), (d.blockedCode||null),
+    r4(k.ratioNow), r2(k.ratioZ), r4(k.ratioMed), r4(k.ratioQ25), r1(k.rsi), r2(k.pB), r4(k.price),
+    (k.qMissW||0), (k.aMissW||0), (d.nearBoundary?1:0), r1(k.adx), r2(k.adxZ),
+    (k.diDir!=null?k.diDir:null), (d.downtrend?1:0)];
+}
+/* 문서 자신의 cols로 읽는다 — 스키마가 늘어도 과거 문서가 조용히 밀리지 않는다. */
+function glGet(doc,row,name){
+  const cs=(doc&&doc.cols)||GL_COLS, i=cs.indexOf(name);
+  return (i<0||!row||i>=row.length)?null:row[i];
+}
+async function glMaybeSave(force){
+  if(!S.uid)return false;
+  const day=lgToday();
+  if(!force&&S.glSaved===day)return false;                 // 세션 가드
+  const ids=Object.keys(S.stocks).filter(id=>S.calc[id]);
+  if(ids.length<3)return false;                            // 부팅 직후 부분 상태를 남기지 않는다
+  /* ★ 산출이 덜 된 상태를 기록하면 §19.9의 성분 결측이 로그에 **영구히** 박힌다.
+   * 요약 패스가 도는 중이면 남기지 않는다 — glBoot의 지연 재시도가 다시 부른다. */
+  if(!force&&S.sumProg&&S.sumProg.total&&S.sumProg.done<S.sumProg.total)return false;
+  const rows={};
+  for(const id of ids){ const r=glRow(S.calc[id]); if(r)rows[id]=r; }
+  if(!Object.keys(rows).length)return false;
+  const doc={d:day,at:Date.now(),rv:RULE_VER,cols:GL_COLS,rows,
+    idx:Object.keys(S.idx||{}).reduce((a,sy)=>(a[sy]=(S.idx[sy]&&S.idx[sy].price!=null)?+S.idx[sy].price:null,a),{})};
+  try{
+    /* 같은 날 여러 번 열면 **마지막 산출**을 남긴다 — 장 마감에 가까운 값이 그날의 결론에
+     * 가장 가깝기 때문이다. 이미 더 늦은 시각의 문서가 있으면 덮어쓰지 않는다. */
+    const ref=D('qa_gradelog/'+day), prev=await ref.get();
+    if(prev.exists){ const pv=prev.data(); if(pv&&pv.at&&pv.at>=doc.at){ S.glSaved=day; return false; }
+      if(pv&&pv.fwd)doc.fwd=pv.fwd; }
+    await ref.set(doc);
+    S.glSaved=day; S.glog[day]=doc;
+    return true;
+  }catch(e){ console.warn('gradelog save',e&&e.code); return false; }
+}
+/* 부팅에는 백필 창(=가장 긴 지평 + 여유)만 읽고, 전 구간은 검증 탭을 열 때 한 번 읽는다.
+ * merge=true면 이미 들고 있는 문서를 지우지 않고 덮어쓴다 — 전 구간 로드 뒤 부팅 로드가
+ * 다시 돌아 과거가 사라지는 일이 없게 한다. */
+const GL_BOOT_DAYS=Math.max.apply(null,GL_HORIZ)+40;   // 160 — 새 상수가 아니라 지평에서 유도된 값
+let glFullLoaded=false;
+async function glLoad(lim,merge){
+  if(!S.uid)return 0;
+  try{
+    const q=await C('qa_gradelog').orderBy('d','desc').limit(lim||GL_BOOT_DAYS).get();
+    if(!merge)S.glog={};
+    q.forEach(d=>{ S.glog[d.id]=d.data(); });
+    return Object.keys(S.glog).length;
+  }catch(e){ console.warn('gradelog load',e&&e.code); return 0; }
+}
+/* 검증 탭 최초 진입에서만 전 구간을 읽는다. 두 번째부터는 읽지 않는다 —
+ * 탭을 오갈 때마다 수백 건을 읽으면 화면 전환이 곧 비용이 된다. */
+async function glLoadFull(){
+  if(glFullLoaded)return 0;
+  const n=await glLoad(1000,true);
+  glFullLoaded=true;
+  if(S.view==='ledger'&&S.lg&&S.lg.sub==='verify')renderLedger();
+  return n;
+}
+/* ---- 지수 캔들 (초과수익의 분모) ----
+ * qa_cache와 섞지 않는다: qa_cache는 S.stocks의 id를 전제로 여러 경로가 돈다
+ * (loadCaches·trimCache·saveCache·정합 점검·종목 수 카운트). 지수는 종목이 아니다.
+ * 같은 통에 넣으면 언젠가 지수가 '종목 수'에 섞여 센다(§22-⑰). */
+const BENCH={US:'^GSPC', KR:'^KS11'};
+async function benchLoad(){
+  for(const key of Object.keys(BENCH)){
+    try{ const d=await D('qa_bench/'+key).get(); if(d.exists)S.bench[key]=d.data(); }catch(e){}
+  }
+}
+async function benchRefresh(){
+  for(const key of Object.keys(BENCH)){
+    const b=S.bench[key];
+    /* 하루 한 번이면 충분하다 — 지수는 전방수익률의 분모일 뿐 화면에 쓰이지 않는다
+     * (마켓바 칩은 fetchIndices가 따로 받는다). 조건 없이 쓰면 §22-⑬가 된다. */
+    if(b&&b.updatedAt&&(Date.now()-b.updatedAt)<20*3600e3)continue;
+    try{
+      const ch=await fetchChart(BENCH[key],'2y');
+      if(!ch||!ch.t||ch.t.length<200)continue;
+      const nb={sym:BENCH[key],t:ch.t.slice(-520),
+        c:ch.c.slice(-520).map(v=>(v!=null&&isFinite(v))?+(+v).toFixed(2):null),
+        updatedAt:Date.now()};
+      S.bench[key]=nb;
+      await D('qa_bench/'+key).set(nb);
+    }catch(e){ console.warn('bench',key,e&&e.message); }
+    await sleep(200);
+  }
+}
+/* ---- 전방수익률 백필 ----
+ * 오늘 시점에서 **과거 로그**를 되돌아보며 채운다. 지평은 거래일 기준이며, 그 날짜 이하의
+ * 마지막 봉을 기점으로 k번째 뒤 봉을 쓴다. 판정의 기준이 된 봉과 같은 봉에서 출발해야
+ * 수익률이 판정 시점과 어긋나지 않는다. */
+function glBarIdx(tArr,ymd){
+  if(!tArr||!tArr.length)return -1;
+  const lim=Date.parse(ymd+'T23:59:59Z')/1000;
+  if(!isFinite(lim))return -1;
+  let lo=0,hi=tArr.length-1,res=-1;
+  while(lo<=hi){ const m=(lo+hi)>>1; if(tArr[m]<=lim){res=m;lo=m+1;} else hi=m-1; }
+  return res;
+}
+function glFwd(tArr,cArr,ymd,kk){
+  const i=glBarIdx(tArr,ymd);
+  if(i<0||i+kk>=cArr.length)return null;
+  const a=cArr[i], b=cArr[i+kk];
+  return (a>0&&b>0&&isFinite(a)&&isFinite(b))?(b/a-1)*100:null;
+}
+async function glBackfill(){
+  const days=Object.keys(S.glog).sort();
+  if(!days.length)return 0;
+  let wrote=0;
+  for(const day of days){
+    const doc=S.glog[day]; if(!doc||!doc.rows)continue;
+    const fwd=Object.assign({},doc.fwd||{}); let changed=false;
+    for(const id in doc.rows){
+      const ch=S.cache[id]; if(!ch||!ch.t||!ch.c)continue;
+      const mkt=(S.stocks[id]&&S.stocks[id].market)||(String(id).slice(0,2)==='KR'?'KR':'US');
+      const bn=S.bench[mkt];
+      const cur=Object.assign({},fwd[id]||{});
+      let touched=false;
+      for(const kk of GL_HORIZ){
+        if(cur['r'+kk]!=null)continue;               // 이미 채워진 지평은 다시 계산하지 않는다
+        const r=glFwd(ch.t,ch.c,day,kk); if(r==null)continue;
+        cur['r'+kk]=+r.toFixed(2); touched=true;
+        const rb=(bn&&bn.t&&bn.c)?glFwd(bn.t,bn.c,day,kk):null;
+        if(rb!=null)cur['x'+kk]=+(r-rb).toFixed(2);  // 초과수익 = 종목 − 같은 구간 지수
+      }
+      if(touched){ fwd[id]=cur; changed=true; }
+    }
+    if(changed){
+      try{ await D('qa_gradelog/'+day).set({fwd},{merge:true}); doc.fwd=fwd; wrote++; }
+      catch(e){ console.warn('backfill',day,e&&e.code); }
+    }
+  }
+  return wrote;
+}
+async function glBoot(){
+  try{
+    await benchLoad();
+    await glLoad(GL_BOOT_DAYS);
+    /* 순서가 중요하다 — 저장을 먼저 하면 오늘 문서가 백필 루프에 들어가 헛돈다.
+     * (오늘은 어떤 지평도 아직 성숙하지 않았다.) */
+    await benchRefresh();
+    await glBackfill();
+    /* 오늘치는 요약 패스가 끝난 뒤에 남긴다. 기다리지 않고 지연 재시도로 처리한다 —
+     * 패스가 실패해 영영 안 끝나는 경우에도 기록이 통째로 빠지지 않게 두 번 시도한다. */
+    setTimeout(()=>{glMaybeSave();},60000);
+    setTimeout(()=>{glMaybeSave();},300000);
+  }catch(e){ console.warn('glBoot',e&&e.message); }
 }
 
 /* ---------------- 렌더 ---------------- */
@@ -2635,6 +2936,16 @@ function detailHTML(id){
   if(k.vp6)g+=stat('매물대 POC (6M)',fmtP(k.vp6.poc,C),'VA '+fmtP(k.vp6.val,C)+'~'+fmtP(k.vp6.vah,C));
   if(k.vp1)g+=stat('매물대 POC (1Y)',fmtP(k.vp1.poc,C),'VA '+fmtP(k.vp1.val,C)+'~'+fmtP(k.vp1.vah,C));
   g+=stat('RVOL (20D)',k.rvol!=null?k.rvol.toFixed(2)+'×':'—',k.rvol==null?'':(k.rvol>2?'급증':(k.rvol<0.8?'감소':'보통')));
+  /* (v4.34) ADX/DMI — **표시 전용**이다. 매수 등급·하락추세 캡 어디에도 들어가지 않는다.
+   * 자기 분포 z를 절대값과 함께 보이는 이유: 표준 임계 20/25는 Wilder의 어림값이고
+   * 자산 간 비교가 불가능하다 — DT_GAP=0.85가 실패한 방식과 같다(§20).
+   * '등급 미반영'을 화면에 계속 적어 두는 것은 v4.33의 교훈이다 — 값이 보이는데 어디에
+   * 쓰이는지 안 적혀 있으면 사용자가 판정 근거로 오해한다(정보 설계 실패는 결함이다). */
+  if(k.adx!=null)g+=stat('ADX ('+ADX_P+') <span class="badge b-na" style="font-size:9px;padding:1px 5px">참고</span>',
+    k.adx.toFixed(1)+(k.adxZ!=null?' <span class="muted" style="font-size:11px">자기분포 z '+(k.adxZ>=0?'+':'−')+Math.abs(k.adxZ).toFixed(2)+'σ</span>':''),
+    (k.diPlus!=null?'+DI '+k.diPlus.toFixed(1)+' · −DI '+k.diMinus.toFixed(1)
+      +' · <b>'+(k.diDir>0?'상승 우세':(k.diDir<0?'하락 우세':'중립'))+'</b>':'')
+    +' · <span title="추세의 강도만 재는 지표입니다(방향 무관). 관측 단계이며 매수 등급 판정에는 들어가지 않습니다 — 표본이 쌓인 뒤 검증 탭에서 판별력을 확인한 다음 편입 여부를 정합니다">등급 미반영 · 종가 기준</span>');
   const tgw=(k.tgtW!=null?k.tgtW:1), tgwEx=(tgw===0&&m.target!=null&&+m.target>0);
   const amb=s=>'<span style="color:var(--amber);font-weight:700">'+s+'</span>';
   g+=stat('애널리스트 목표가',
@@ -3061,8 +3372,51 @@ const MA_DEV_MIN=0.94;
  * 통계 경로를 쓰지 않고 기울기 경로로 폴백한다(fail-safe: 캡을 덜 거는 쪽이 아니라
  * 기존 규칙으로 되돌아가는 쪽). 실제 종목의 척도 분포는 별도 실측으로 확인해야 한다. */
 const RATIO_SC_MIN=0.01;
+
+/* ================= (v4.34) 상수 발효일 대장 =================
+ * 왜 필요한가. 판정 로그(qa_gradelog)가 쌓이기 시작하면 과거 판정을 되돌아보게 된다.
+ * 그때 **지금의 상수로 과거를 재해석**하면 "현재 상수가 과거에도 좋았다"는 사후 정당화가
+ * 자동으로 만들어진다 — §19.0(오진 위에 세운 방어가 오진을 고착시킨다)의 정확한 반복이다.
+ * 워크포워드(변경 시점 **이후** 데이터로만 평가)를 강제하는 유일한 장치는
+ * "이 값이 언제부터 유효했는가"의 기록이다.
+ *
+ * 규약 — 임계값을 바꿀 때 기존 행을 고치지 않고 **새 행을 추가**한다(원장과 같은 원칙, §4).
+ *        분류(cls)만 바뀌어도 새 행이다(MA_DEV_MIN이 v4.8에서 그랬다).
+ *        cls는 §20의 분류를 그대로 옮긴다.
+ * from — 발효 날짜. 로그 시작(2026-08-26) 이전 변경은 날짜가 문서에 남아 있지 않아
+ *        null로 둔다. 전방수익률 평가에는 영향이 없다(로그 자체가 그 이후에 시작하므로).
+ *        **앞으로의 변경은 반드시 날짜를 채운다** — 그때부터가 이 장치의 실효 구간이다. */
+const CONST_LOG=[
+  {k:'MIN_MARGIN',   v:20,   from:null,         ver:'v3',    cls:'구조적 요구'},
+  {k:'MIN_BARS',     v:120,  from:null,         ver:'v3',    cls:'구조적 요구'},
+  {k:'STALE_MAX_D',  v:10,   from:null,         ver:'v4.3',  cls:'외부 사실'},
+  {k:'KRX_LIMIT',    v:31,   from:null,         ver:'v4.5',  cls:'외부 사실'},
+  {k:'FUND_CEIL_T',  v:4.0,  from:null,         ver:'v4.3',  cls:'스냅샷 영향(부채)'},
+  {k:'FUND_CEIL_N',  v:3.0,  from:null,         ver:'v4.3',  cls:'스냅샷 영향(부채)'},
+  {k:'MA_DEV_MIN',   v:0.94, from:null,         ver:'v4.2',  cls:'기존 코드 재사용'},
+  {k:'MA_DEV_MIN',   v:0.94, from:null,         ver:'v4.8',  cls:'스냅샷 영향(부채) — 값 불변, 분류만 이동(§19.8)'},
+  {k:'DT_GAP',       v:0.85, from:null,         ver:'v4.6',  cls:'스냅샷 영향(부채)'},
+  {k:'DT_GAP',       v:null, from:null,         ver:'v4.7',  cls:'폐기 — 당일 횡단면에 맞춘 값(재현성 없음)'},
+  {k:'DT_Z',         v:1.0,  from:null,         ver:'v4.7',  cls:'통계 관례'},
+  {k:'RATIO_MIN_N',  v:250,  from:null,         ver:'v4.7',  cls:'구조적 요구'},
+  {k:'RATIO_SC_MIN', v:0.01, from:null,         ver:'v4.7',  cls:'구조적 요구'},
+  {k:'SCORE_ANCHOR', v:50,   from:null,         ver:'v4.15', cls:'구조적 요구'},
+  {k:'ADX_P',        v:14,   from:'2026-08-26', ver:'v4.34', cls:'외부 관례(Wilder 1978) — **판정 미반영**'},
+  {k:'GL_MIN_N',     v:30,   from:'2026-08-26', ver:'v4.34', cls:'표시 전용 — 검증 리포트의 판정 보류 문턱'}
+];
+/* 같은 키의 마지막 행 = 현재 유효한 값. 자기점검·검증 리포트가 이걸 쓴다. */
+function constNow(){ const m={}; for(const r of CONST_LOG)m[r.k]=r; return m; }
+/* ★ 판정 로직 버전. 이 값이 바뀌면 그 이전 로그와 이후 로그를 **같은 평균에 넣으면 안 된다**.
+ * 판정에 영향을 주는 변경(임계값·게이트·등급식)이 있을 때만 올린다 — 표시 전용 변경은 그대로 둔다. */
+const RULE_VER='v4.34';
+
 function classifyDetail(k){
-  if(!k||k.attract==null)return{tier:null,gates:[],conf:[],n:0,blocked:null};
+  /* (v4.34) 조기 반환도 정규 반환과 **같은 키 집합**을 갖는다. 격자 검증에서
+   * attract==null 경로만 tierNoCap·blockedCode가 undefined로 나오는 것이 드러났다.
+   * 판정에는 영향이 없지만, 로그 스키마가 경로에 따라 갈라지면 나중에 그 문서를
+   * 읽는 쪽이 '값이 null인 것'과 '키가 없는 것'을 구분하지 못한다. */
+  if(!k||k.attract==null)return{tier:null,tierNoCap:null,gates:[],conf:[],n:0,blocked:null,blockedCode:null,
+    fallingKnife:false,downtrend:false,statDown:false,slopeDown:false,margins:[],nearBoundary:false};
   const RL=k.rsiLo==null?30:k.rsiLo, RH=k.rsiHi==null?70:k.rsiHi;
   const confLim=(RL+(RH-RL)*0.35);
   const deepDD=(k.ddFromHi!=null&&k.ddFromHi<=DD_DEEP), steep=(k.ret20!=null&&k.ret20<=DROP_STEEP);
@@ -3071,17 +3425,22 @@ function classifyDetail(k){
   //  성장주는 현재적정가 대비 프리미엄이 정상이므로 -25%까지 허용(그 이상은 거품 신호).
   const downsideOK = (k.downside!=null) ? (k.downside >= -25) : true;
 
+  /* (v4.34) 세 번째 원소 = 안정 코드. **라벨은 문구가 바뀌면 달라지지만 코드는 안 바뀐다.**
+   * 판정 로그에 "어느 관문에서 걸렸는가"를 남기려면 시간이 지나도 같은 것을 가리키는
+   * 식별자가 필요하다. 라벨을 그대로 저장하면 문구를 다듬는 순간 과거 로그와 갈라진다.
+   * 배열에 원소를 덧붙이는 방식을 택한 이유는, ETF 필터가 **인덱스**로 걸러내기 때문이다 —
+   * 코드 배열을 따로 두면 두 배열의 필터가 조용히 갈라질 수 있다(§19.10 '비대칭 검사'). */
   const gates=[
-    ['데이터 신선 — 캔들·시세 '+STALE_MAX_D+'일 이내', !k.dataStale],
-    ['가격 정합 — 현재가 이상 신호 없음', !k.priceAnomaly],
-    ['최소 안전마진 — 상승여력(적정목표가) ≥ +'+MIN_MARGIN+'%', k.upside!=null&&k.upside>=MIN_MARGIN],
-    ['하방 안전 — 현재 적정가 대비 −25% 이내 (거품 아님)', downsideOK],
-    ['과열 아님 — RSI < '+(RH-5)+' · %B < 0.90', !((k.rsi!=null&&k.rsi>=RH-5)||(k.pB!=null&&k.pB>=0.9))],
-    ['떨어지는 칼날 아님 — 급락 중 신저가 갱신 아님', !fallingKnife],
-    ['데이터 충분 — 상장 '+MIN_BARS+'봉(≈6개월) 이상', k.listedBars>=MIN_BARS],
-    ['최소 품질 — 종합점수 ≥ 45', k.quality!=null&&k.quality>=45],
-    ['실적 임박 아님 — 발표 ±2일 블랙아웃', !k.earnSoon],
-    ['악재 플래그 없음 — 수동 보류 미설정', !k.hasHardHazard]
+    ['데이터 신선 — 캔들·시세 '+STALE_MAX_D+'일 이내', !k.dataStale,'G1'],
+    ['가격 정합 — 현재가 이상 신호 없음', !k.priceAnomaly,'G2'],
+    ['최소 안전마진 — 상승여력(적정목표가) ≥ +'+MIN_MARGIN+'%', k.upside!=null&&k.upside>=MIN_MARGIN,'G3'],
+    ['하방 안전 — 현재 적정가 대비 −25% 이내 (거품 아님)', downsideOK,'G4'],
+    ['과열 아님 — RSI < '+(RH-5)+' · %B < 0.90', !((k.rsi!=null&&k.rsi>=RH-5)||(k.pB!=null&&k.pB>=0.9)),'G5'],
+    ['떨어지는 칼날 아님 — 급락 중 신저가 갱신 아님', !fallingKnife,'G6'],
+    ['데이터 충분 — 상장 '+MIN_BARS+'봉(≈6개월) 이상', k.listedBars>=MIN_BARS,'G7'],
+    ['최소 품질 — 종합점수 ≥ 45', k.quality!=null&&k.quality>=45,'G8'],
+    ['실적 임박 아님 — 발표 ±2일 블랙아웃', !k.earnSoon,'G9'],
+    ['악재 플래그 없음 — 수동 보류 미설정', !k.hasHardHazard,'G10']
   ];
   const conf=[
     ['현재도 저평가 — 현재 적정가 이하(하방 여유 +0%↑)', k.downside!=null&&k.downside>=0],
@@ -3101,8 +3460,8 @@ function classifyDetail(k){
   const gatesEff=isETF?gates.filter((_,i)=>i!==2&&i!==3&&i!==7):gates;
   const confEff =isETF?conf.filter((_,i)=>i!==0&&i!==4&&i!==5):conf;
   const g=gatesEff.every(x=>x[1]), n=confEff.filter(x=>x[1]).length;
-  let blocked=null;
-  if(!g){ const f=gatesEff.find(x=>!x[1]); blocked=f?f[0]:null; }
+  let blocked=null, blockedCode=null;
+  if(!g){ const f=gatesEff.find(x=>!x[1]); blocked=f?f[0]:null; blockedCode=f?(f[2]||null):null; }
 
   const A=k.attract, Q=k.quality!=null?k.quality:0, U=k.upside;
   /* (v4.9) 등급 임계를 표로 한 곳에 모은다. v4.8까지는 아래 if 사슬에 숫자가 인라인돼
@@ -3154,6 +3513,18 @@ function classifyDetail(k){
     if(capBlocks&&downtrend)continue;              // 캡은 상·중만 막는다 (v4.7 이후 불변)
     if(sp.every(c=>c[1]>=c[2])){tier=nm;break;}    // 위에서부터 첫 일치 = 기존 else-if 사슬
   }
+  /* (v4.34) 반사실 등급 — '하락추세 캡이 없었다면 받았을 등급'.
+   * §19.8 실측: 하드게이트를 전부 통과한 10종목 중 **6종목을 캡이 강등**시키고 있다.
+   * 즉 이 시스템의 판별력 질문은 사실상 "캡이 옳은가"로 환원된다. 그 질문에 답하려면
+   * 반사실 짝이 필요한데, v4.33까지는 자기점검이 k를 조작해 classifyDetail을 다시 부르는
+   * 임시 방식으로만 얻었다(ratioZ=null·slope 강제 양수). 그 방식은 캡 이외의 값까지
+   * 함께 바꾸므로 로그의 근거로 쓸 수 없다 — 같은 TIER_SPEC을 **capBlocks만 무시하고**
+   * 한 번 더 돌린다. 다른 입력은 전혀 건드리지 않는다.
+   * ★ tier 자체는 위 루프의 결과 그대로이며 **판정은 불변**이다. */
+  let tierNoCap=null;
+  if(g)for(const [nm,sp] of TIER_SPEC){
+    if(sp.every(c=>c[1]>=c[2])){tierNoCap=nm;break;}
+  }
   /* (v4.7) 경계 근접도 — 이 판정이 임계선에서 얼마나 떨어져 결정됐는지 노출한다.
    * 어떤 임계값을 쓰든 경계 종목은 생기고, '이 등급은 임계선 0.4% 안쪽에서 결정됐다'는 정보가
    * 등급 자체보다 유용하다. 임계값을 신뢰하게 만드는 대신 불확실성을 보이게 한다. */
@@ -3194,7 +3565,7 @@ function classifyDetail(k){
       for(const [lbl,v,th,u] of sp) addM(nm+' '+lbl,v,th,u,u==='%'?1:0);
   }
   const nearBoundary=margins.some(m=>m.near);
-  return {tier,gates:gatesEff,conf:confEff,isETF,n,blocked,fallingKnife,downtrend,statDown,slopeDown,downsideOK,margins,nearBoundary};
+  return {tier,tierNoCap,gates:gatesEff,conf:confEff,isETF,n,blocked,blockedCode,fallingKnife,downtrend,statDown,slopeDown,downsideOK,margins,nearBoundary};
 }
 function classify(k){ return classifyDetail(k).tier; }
 function tierBoxHTML(k){
@@ -3773,7 +4144,13 @@ function diagCollect(){
   const nn=rows.filter(r=>r.k.ratioNow!=null).map(r=>r.k.ratioN).filter(v=>v!=null).sort((a,b)=>a-b);
   const fundMiss=rows.filter(r=>fundMissing(r.id));
   return {
-    빌드:'v4.29 (DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v4.34 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    판정로그:(function(){ const ds=Object.keys(S.glog||{}).sort();
+      return ds.length?(ds.length+'일 · '+ds[0]+' ~ '+ds[ds.length-1]+(S.glSaved?' · 오늘 기록됨':' · 오늘 미기록')):'없음(수집 시작 전)'; })(),
+    상수부채:CONST_LOG.filter(r=>/부채/.test(String(r.cls||''))).map(r=>r.k+'='+r.v+' ['+r.ver+']'),
+    ADX관측:(function(){ const a=rows.map(r=>r.k.adx).filter(v=>v!=null).sort((x,y)=>x-y);
+      const z=rows.filter(r=>r.k.adxZ!=null).length;
+      return a.length?{n:a.length,min:+a[0].toFixed(1),max:+a[a.length-1].toFixed(1),'z산출':z}:null; })(),
     시각:new Date().toLocaleString('ko-KR'),
     종목수:ids.length,
     요약패스:S.sumProg?((S.sumProg.retry?'재시도 ':'재무조회 ')+S.sumProg.done+'/'+S.sumProg.total):'완료',
@@ -3787,8 +4164,11 @@ function diagCollect(){
     데이터배제:rows.filter(r=>r.k.autoScaleBad).map(r=>r.nm+'('+((r.k.dataAnoms||[]).join('·'))+')'),
     경계판정:rows.filter(r=>r.k.grd&&r.k.grd.nearBoundary).map(r=>r.nm),
     추세캡:rows.filter(r=>r.k.grd&&r.k.grd.downtrend).map(r=>r.nm),
+    /* (v4.34) k를 조작해 classifyDetail을 다시 부르던 임시 방식을 걷어냈다.
+     * 그 방식은 ratioZ·slope를 강제로 바꾸므로 '캡만 없앤 세계'가 아니었다.
+     * 이제 classifyDetail이 같은 TIER_SPEC을 capBlocks만 무시하고 한 번 더 돌려 낸다. */
     캡강등:graded.filter(r=>r.k.grd&&r.k.grd.downtrend).map(r=>{
-      let un=null; try{ un=classifyDetail(Object.assign({},r.k,{ratioZ:null,slope50:1,slope200:1})).tier; }catch(e){}
+      const un=r.k.grd.tierNoCap;
       return (un&&un!==r.k.tier)?(r.nm+': '+r.k.tier+' ← '+un):null; }).filter(Boolean),
     MAD척도:sc.length?{min:+sc[0].toFixed(4),max:+sc[sc.length-1].toFixed(4),'하한0.01미만':sc.filter(v=>v<RATIO_SC_MIN).length}:null,
     관측수min:nn.length?nn[0]:null,
@@ -4362,6 +4742,7 @@ function renderLedger(){
   else if(sub==='split')g=lgViewSplit();
   else if(sub==='fx')   g=lgViewFx();
   else if(sub==='perf') g=lgViewPerf();
+  else if(sub==='verify')g=lgViewVerify();
   else                  g=lgViewTool();
   host.innerHTML=g;
   if(rs){ const el=host.querySelector('['+rs.fk.a+'="'+rs.fk.k+'"]');
@@ -4695,10 +5076,26 @@ async function lgSaveForm(){
 function lgSnap(market,code,name){
   const id=findStockId({market,code,name}); if(!id)return null;
   const k=S.calc[id]; if(!k)return null;
+  const d=k.grd||{};
+  /* (v4.34) v4.33까지 8필드였고, 그중 어느 것도 "이 판정이 믿을 만한 상태에서 나왔는가"를
+   * 말해 주지 않았다. 사후에 왜 맞았고 왜 틀렸는지 분해하려면 최소한 아래가 있어야 한다.
+   *  · tierNoCap      캡이 없었으면 받았을 등급 — 캡의 대가를 재는 반사실 짝(§19.8)
+   *  · gate           탈락 관문 코드 — 어디서 걸렸는가
+   *  · qMissW/aMissW  성분 결측률. §19.9의 오염 스냅샷을 사후에 **분리**하려면 필수다.
+   *                   섞어서 평균 내면 v4.10이 발견한 그 오염이 결론에 그대로 실린다.
+   *  · ratioZ/ratioNow/downside/adxZ/diDir  캡·이탈하한·추세강도 축의 원재료
+   *  · rv             판정 로직 버전. 다른 버전의 판정을 같은 평균에 넣지 않기 위한 표식 */
   return {tier:k.tier||null,fvTarget:k.fvTarget!=null?+k.fvTarget.toFixed(2):null,
     upside:k.upside!=null?+k.upside.toFixed(1):null,
     A:k.attract!=null?Math.round(k.attract):null,Q:k.quality!=null?Math.round(k.quality):null,
-    n:(k.grd||{}).n,cap:!!(k.grd||{}).downtrend,at:Date.now()};
+    n:d.n,cap:!!d.downtrend,at:Date.now(),
+    tierNoCap:d.tierNoCap||null, gate:d.blockedCode||null,
+    qMissW:k.qMissW||0, aMissW:k.aMissW||0,
+    downside:k.downside!=null?+k.downside.toFixed(1):null,
+    ratioNow:k.ratioNow!=null?+k.ratioNow.toFixed(4):null,
+    ratioZ:k.ratioZ!=null?+k.ratioZ.toFixed(2):null,
+    adx:k.adx!=null?+k.adx.toFixed(1):null, adxZ:k.adxZ!=null?+k.adxZ.toFixed(2):null,
+    diDir:(k.diDir!=null?k.diDir:null), rv:RULE_VER};
 }
 
 /* ---------------- 거래내역 ---------------- */
@@ -4958,8 +5355,12 @@ function lgViewPerf(){
   const rows=[];
   for(const t of TIERS.concat(['(스냅샷 없음)'])){
     const key=t==='(스냅샷 없음)'?null:t;
-    const cs=closed.filter(p=>((p.snap&&p.snap.tier)||null)===key);
-    const hs=held.filter(p=>((p.snap&&p.snap.tier)||null)===key);
+    /* (v4.34) 매수가 여러 등급에 걸친 종목은 등급별 집계에서 뺀다.
+     * v4.33까지 첫 매수 등급으로 통째로 귀속시켰는데, 그러면 범위밖에서 물타기한 손실이
+     * '상 등급의 성과'로 기록된다. 섞인 종목은 아래 별도 줄로 센다 — 지우지 않는다. */
+    const pure=p=>!(p.snapMix&&p.snapMix.length>1);
+    const cs=closed.filter(p=>pure(p)&&((p.snap&&p.snap.tier)||null)===key);
+    const hs=held.filter(p=>pure(p)&&((p.snap&&p.snap.tier)||null)===key);
     if(!cs.length&&!hs.length)continue;
     const rr=cs.map(p=>p.realRate).filter(x=>x!=null);
     const ur=hs.map(p=>p.rate).filter(x=>x!=null);
@@ -4978,7 +5379,21 @@ function lgViewPerf(){
         +'<td style="text-align:right" class="'+lgSign(r.cavg)+'">'+lgPct(r.cavg)+'</td>'
         +'<td style="text-align:right">'+r.hn+'</td>'
         +'<td style="text-align:right" class="'+lgSign(r.havg)+'">'+lgPct(r.havg)+'</td></tr>';
+    const mixC=closed.filter(p=>p.snapMix&&p.snapMix.length>1), mixH=held.filter(p=>p.snapMix&&p.snapMix.length>1);
+    if(mixC.length||mixH.length){
+      const rr=mixC.map(p=>p.realRate).filter(x=>x!=null), ur=mixH.map(p=>p.rate).filter(x=>x!=null);
+      const av=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+      g+='<tr style="opacity:.85"><td><b>(등급 혼합 매수)</b></td><td style="text-align:right">'+mixC.length+'</td>'
+        +'<td style="text-align:right">'+(mixC.length?mixC.filter(p=>p.realized>0).length+' ('+Math.round(mixC.filter(p=>p.realized>0).length/mixC.length*100)+'%)':'—')+'</td>'
+        +'<td style="text-align:right" class="'+lgSign(av(rr))+'">'+lgPct(av(rr))+'</td>'
+        +'<td style="text-align:right">'+mixH.length+'</td>'
+        +'<td style="text-align:right" class="'+lgSign(av(ur))+'">'+lgPct(av(ur))+'</td></tr>';
+    }
     g+='</table></div>';
+    g+='<div class="lgnote" style="margin-top:6px">여러 등급에 걸쳐 나눠 산 종목은 등급별 줄에서 빼고 <b>(등급 혼합 매수)</b>로 따로 셉니다 — '
+      +'첫 매수 등급에 통째로 귀속시키면 물타기 손익이 그 등급의 성과로 둔갑합니다(v4.34).<br>'
+      +'이 표의 결과변수는 <b>실현수익률</b>이라 <b>매도 시점을 언제로 잡았는지</b>에 좌우됩니다. '
+      +'메커니즘 자체의 판별력은 <b>검증</b> 탭(전방 초과수익)에서 보세요.</div>';
   }
 
   if(closed.length){
@@ -5003,6 +5418,244 @@ function lgViewPerf(){
 }
 
 /* ---------------- 도구 ---------------- */
+/* ================= (v4.34) 검증 — 사전등록 가설 =================
+ *
+ * ★ 이 화면은 **판정이 아니라 진단**이다. 어떤 상수도 여기 수치를 보고 바꾸지 않는다(§22-⑤).
+ *   "이 값이면 현재 N종목만 바뀐다"는 근거에 재현성이 없다는 사실은 DT_GAP=0.85가
+ *   이미 증명했다. 자동 조정은 그 실패를 기계화하는 것이므로 도입하지 않는다.
+ *   여기서 하는 일은 하나다 — **사전에 등록한 가설이 깨지면 사람에게 알린다.**
+ *
+ * ★ 가설은 데이터를 보기 전에 확정한다. 데이터를 본 뒤 가설을 만들면 §19.0의 반복이다.
+ *   아래 HYPO 배열은 2026-08-26에 고정됐다. 추가·수정할 때는 날짜를 함께 남긴다.
+ *
+ * ★ 유의성 판정(p값)을 하지 않는다. 상 등급 산출률이 5% 수준(§19.8 실측: 55종목 중 1)인
+ *   시스템에서 셀당 표본은 한 자릿수~수십이고, 그 크기의 p값은 오해만 만든다.
+ *   대신 **효과크기(중앙값 차이)와 표본 수**만 보여주고, 판정은 표본이 국면 2개를 넘길
+ *   때까지 미룬다(§19.3의 조건을 그대로 승계한다).
+ *
+ * ★ 평균이 아니라 중앙값·사분위를 쓴다. 주식 수익률은 꼬리가 지배하며 이 표본 크기에서
+ *   평균은 한 종목이 결정한다. 하락추세 캡이 σ 대신 MAD를 택한 것과 같은 이유다.
+ *
+ * ★ 종목-일은 서로 독립이 아니다(같은 종목의 연속된 날은 사실상 한 건이다).
+ *   그래서 관측 수와 **고유 종목 수**를 항상 나란히 적는다. 고유 종목 수가 작으면
+ *   관측 수가 아무리 커도 그것은 표본이 큰 것이 아니다. */
+const GL_MIN_N=30;                 // [표시 전용] 이 미만이면 수치를 내되 '판정 보류'로 적는다
+const GL_MIN_DAYS=250;             // [표시 전용] 국면 1개분(≈1년)의 거래일. 이하면 판정하지 않는다
+const STIER=['상','중','하','범위밖'];
+const TIER_RANK={'상':3,'중':2,'하':1,'범위밖':0};
+const HYPO=[
+  {id:'H1',t:'등급 단조성',       d:'상 ≥ 중 ≥ 하 ≥ 범위밖 (초과수익 중앙값)'},
+  {id:'H2',t:'서열 상관',        d:'Spearman ρ(등급서열, 초과수익) > 0'},
+  {id:'H3',t:'하락추세 캡의 정당성', d:'캡 강등군 < 비강등 상·중군'},
+  {id:'H4',t:'저평가 확증 단조성',  d:'확증 개수가 많을수록 초과수익 중앙값 증가'},
+  {id:'H5',t:'하드게이트 판별력',   d:'게이트 탈락군 < 게이트 통과군'},
+  {id:'H6',t:'경계 판정의 실재',   d:'경계 종목의 초과수익 산포(IQR) > 비경계'},
+  {id:'H7',t:'이탈 하한의 대가',   d:'MA_DEV_MIN이 캡을 면제한 군 ≥ 캡이 걸린 군'}
+];
+function glMed(a){ if(!a||!a.length)return null; const x=a.slice().sort((p,q)=>p-q);
+  const m=(x.length-1)/2; return x.length%2?x[m]:(x[Math.floor(m)]+x[Math.ceil(m)])/2; }
+function glQt(a,p){ if(!a||!a.length)return null; const x=a.slice().sort((u,v)=>u-v);
+  const ix=(x.length-1)*p, lo=Math.floor(ix), hi=Math.ceil(ix);
+  return lo===hi?x[lo]:x[lo]+(x[hi]-x[lo])*(ix-lo); }
+function glGrp(list,pick){ const v=list.map(pick).filter(x=>x!=null&&isFinite(x));
+  const ids={}; for(const o of list)ids[o.id]=1;
+  return {n:v.length, uniq:Object.keys(ids).length, med:glMed(v),
+          q1:glQt(v,0.25), q3:glQt(v,0.75),
+          iqr:(glQt(v,0.75)!=null&&glQt(v,0.25)!=null)?(glQt(v,0.75)-glQt(v,0.25)):null}; }
+/* 동점 평균순위 Spearman. 등급은 4단계뿐이라 동점이 대량으로 생긴다 — 단순 순위로는 틀린다. */
+function glRank(a){ const ix=a.map((v,i)=>[v,i]).sort((p,q)=>p[0]-q[0]); const r=new Array(a.length);
+  let i=0; while(i<ix.length){ let j=i; while(j+1<ix.length&&ix[j+1][0]===ix[i][0])j++;
+    const rr=(i+j)/2+1; for(let t=i;t<=j;t++)r[ix[t][1]]=rr; i=j+1; } return r; }
+function glSpear(xs,ys){
+  if(!xs.length||xs.length!==ys.length)return null;
+  const rx=glRank(xs), ry=glRank(ys), n=xs.length;
+  let mx=0,my=0; for(let i=0;i<n;i++){mx+=rx[i];my+=ry[i];} mx/=n; my/=n;
+  let sn=0,dx=0,dy=0;
+  for(let i=0;i<n;i++){ const a=rx[i]-mx,b=ry[i]-my; sn+=a*b; dx+=a*a; dy+=b*b; }
+  return (dx>0&&dy>0)?sn/Math.sqrt(dx*dy):null;
+}
+/* 관측 목록. 규칙 버전이 다른 문서는 **섞지 않는다** — 다른 규칙의 판정을 같은 평균에
+ * 넣으면 무엇을 측정한 것인지 알 수 없게 된다(CONST_LOG·RULE_VER이 존재하는 이유). */
+function glObs(hz){
+  const out=[], skip={rv:0,dirty:0};
+  for(const day of Object.keys(S.glog||{}).sort()){
+    const doc=S.glog[day]; if(!doc||!doc.rows)continue;
+    if(doc.rv&&doc.rv!==RULE_VER){ skip.rv++; continue; }
+    const fwd=doc.fwd||{};
+    for(const id in doc.rows){
+      const f=fwd[id]; if(!f)continue;
+      const x=f['x'+hz], r=f['r'+hz];
+      if(x==null&&r==null)continue;
+      const row=doc.rows[id];
+      const o={day,id,
+        tier:glGet(doc,row,'tier')||'범위밖', noCap:glGet(doc,row,'tierNoCap'),
+        n:glGet(doc,row,'n'), gate:glGet(doc,row,'gate'),
+        near:glGet(doc,row,'near'), cap:glGet(doc,row,'cap'),
+        ratioNow:glGet(doc,row,'ratioNow'), ratioZ:glGet(doc,row,'ratioZ'),
+        qm:glGet(doc,row,'qMissW')||0, am:glGet(doc,row,'aMissW')||0,
+        x:(x!=null?x:null), r:(r!=null?r:null)};
+      /* §19.9의 성분 결측 스냅샷은 **분리**한다. 섞어서 평균 내면 v4.10이 발견한
+       * 그 오염(가중치 63% 소실)이 결론에 그대로 실린다. */
+      if(o.qm>0||o.am>0){ skip.dirty++; continue; }
+      out.push(o);
+    }
+  }
+  return {obs:out,skip};
+}
+function lgViewVerify(){
+  /* 전 구간 로드는 이 화면에서만 필요하다. 비동기로 걸어 두고 먼저 그린다 —
+   * 로드가 끝나면 스스로 다시 그린다(glLoadFull 안에서). */
+  if(!glFullLoaded&&S.uid)glLoadFull();
+  const hz=(S.lg&&S.lg.hz)||60;
+  const days=Object.keys(S.glog||{}).sort();
+  const R=glObs(hz), obs=R.obs;
+  const fmt=v=>v==null?'—':((v>=0?'+':'−')+Math.abs(v).toFixed(1)+'%p');
+  const cell=(gp)=>gp.n?(fmt(gp.med)+' <small class="muted">('+gp.n+'건 · 종목 '+gp.uniq+')</small>'):'—';
+  const hold=gp=>(gp.n<GL_MIN_N);
+
+  let g='<div class="lgnote"><b>이 화면은 판정이 아니라 진단입니다.</b> 여기 수치를 보고 임계값을 바꾸지 않습니다 — '
+    +'그것이 §22-⑤가 금지하는 "스냅샷에 맞춘 조정"이고, 폐기된 <code>DT_GAP=0.85</code>가 실패한 방식입니다.<br>'
+    +'가설은 <b>2026-08-26에 사전 등록</b>됐습니다. 데이터를 본 뒤 가설을 만들면 §19.0(오진 위에 세운 방어)의 반복이 됩니다.<br>'
+    +'결과변수는 <b>지수 대비 초과수익</b>입니다 — 절대수익률은 국면이 하나뿐인 표본에서 전 종목이 같은 방향으로 움직여 '
+    +'등급 간 차이가 시장 베타에 파묻힙니다(§19.7).</div>';
+
+  /* ── 수집 상태 ── */
+  const matured=GL_HORIZ.map(h=>{ const o=glObs(h).obs; return h+'일 '+o.length+'건'; }).join(' · ');
+  g+='<div class="lgcards" style="margin-top:10px">'
+    +'<div class="lgtot"><div class="lb">판정 로그</div><div class="vl">'+days.length+'일</div>'
+      +'<div class="sb">'+(days.length?esc(days[0])+' ~ '+esc(days[days.length-1]):'수집 시작 전')+'</div></div>'
+    +'<div class="lgtot"><div class="lb">성숙 관측 ('+hz+'일)</div><div class="vl">'+obs.length+'</div>'
+      +'<div class="sb">고유 종목 '+(new Set(obs.map(o=>o.id))).size+'</div></div>'
+    +'<div class="lgtot"><div class="lb">제외</div><div class="vl">'+(R.skip.rv+R.skip.dirty)+'</div>'
+      +'<div class="sb">규칙 불일치 '+R.skip.rv+' · 성분결측 '+R.skip.dirty+'</div></div>'
+    +'<div class="lgtot"><div class="lb">규칙 버전</div><div class="vl" style="font-size:15px">'+esc(RULE_VER)+'</div>'
+      +'<div class="sb">이 버전 판정만 집계</div></div>'
+    +'</div>';
+  g+='<div class="lgnote" style="margin-top:8px">지평별 성숙 관측: '+esc(matured)+' · '
+    +'<span style="margin-left:6px">지평 </span>'
+    +GL_HORIZ.map(h=>'<button class="btn sm'+(h===hz?' primary':'')+'" data-lgact="glhz" data-lgid="'+h+'">'+h+'일</button>').join(' ')
+    +'</div>';
+
+  /* ── 판정 가능 여부 ── */
+  if(days.length<GL_MIN_DAYS||!obs.length){
+    g+='<div class="lgcard" style="margin-top:10px;border-color:var(--amber)"><b>⏳ 아직 판정하지 않습니다</b>'
+      +'<div style="margin-top:5px;font-size:12px">누적 '+days.length+'일 / 권고 '+GL_MIN_DAYS+'일 이상, 그리고 <b>국면 2개</b>를 넘겨야 합니다(§19.3).<br>'
+      +'표본이 적을 때의 승률·중앙값은 <b>운과 구분되지 않습니다.</b> 아래 수치는 파이프라인이 도는지 확인하는 용도이며, '
+      +'상수 변경의 근거로 쓰지 마십시오.<br>'
+      +'또한 이 시스템은 추천 산출률이 낮습니다(실측 55종목 중 상 1 · 중 2 · 하 7). 독립 표본의 실질 단위는 종목-일이 아니라 '
+      +'<b>등급 진입 이벤트</b>이며, 연간 수십 건 수준으로 추정됩니다 — 자동 튜닝이 불가능한 이유가 여기 있습니다.</div></div>';
+  }
+
+  /* ── 가설별 결과 ── */
+  const byTier={}; for(const t of STIER)byTier[t]=glGrp(obs.filter(o=>o.tier===t),o=>o.x);
+  const spr=(function(){ const f=obs.filter(o=>TIER_RANK[o.tier]!=null&&o.x!=null);
+    return f.length?glSpear(f.map(o=>TIER_RANK[o.tier]),f.map(o=>o.x)):null; })();
+  const capDown=glGrp(obs.filter(o=>o.cap===1&&o.tier==='하'&&(o.noCap==='상'||o.noCap==='중')),o=>o.x);
+  const capFree=glGrp(obs.filter(o=>o.cap!==1&&(o.tier==='상'||o.tier==='중')),o=>o.x);
+  const gFail=glGrp(obs.filter(o=>o.gate),o=>o.x), gPass=glGrp(obs.filter(o=>!o.gate),o=>o.x);
+  const nearY=glGrp(obs.filter(o=>o.near===1),o=>o.x), nearN=glGrp(obs.filter(o=>o.near!==1),o=>o.x);
+  const cn=constNow();
+  const dz=(cn.DT_Z&&cn.DT_Z.v)||DT_Z, dm=(cn.MA_DEV_MIN&&cn.MA_DEV_MIN.v)||MA_DEV_MIN;
+  const lowExempt=glGrp(obs.filter(o=>o.ratioZ!=null&&o.ratioZ<=-dz&&o.ratioNow!=null&&o.ratioNow>=dm),o=>o.x);
+  const lowCap   =glGrp(obs.filter(o=>o.ratioZ!=null&&o.ratioZ<=-dz&&o.ratioNow!=null&&o.ratioNow< dm),o=>o.x);
+
+  const verdict=(ok,a,b)=>{
+    if(!a.n||!b.n)return '<span class="muted">표본 없음</span>';
+    if(hold(a)||hold(b)||days.length<GL_MIN_DAYS)return '<span class="muted">판정 보류</span>';
+    return ok?'<b style="color:var(--up)">지지</b>':'<b style="color:var(--down)">⚠ 기각</b>';
+  };
+  g+='<div class="lgsec"><span class="t">사전등록 가설</span><span class="m">초과수익 중앙값 · 지평 '+hz+'거래일</span></div>';
+  g+='<div class="lgscroll"><table class="lgtbl">'
+    +'<tr><th>가설</th><th>내용</th><th>관측</th><th style="text-align:right">결과</th><th style="text-align:right">판정</th></tr>';
+
+  const mono=STIER.map(t=>byTier[t].med).filter(v=>v!=null);
+  let monoOK=true; for(let i=1;i<mono.length;i++)if(mono[i]>mono[i-1]+1e-9)monoOK=false;
+  g+='<tr><td><b>H1</b></td><td>등급 단조성<br><small class="muted">상 ≥ 중 ≥ 하 ≥ 범위밖</small></td>'
+    +'<td><small>'+STIER.map(t=>t+' '+byTier[t].n).join(' · ')+'</small></td>'
+    +'<td style="text-align:right"><small>'+STIER.map(t=>t+' '+fmt(byTier[t].med)).join('<br>')+'</small></td>'
+    +'<td style="text-align:right">'+(mono.length<2?'<span class="muted">표본 없음</span>'
+      :(days.length<GL_MIN_DAYS?'<span class="muted">판정 보류</span>'
+      :(monoOK?'<b style="color:var(--up)">지지</b>':'<b style="color:var(--down)">⚠ 기각</b>')))+'</td></tr>';
+
+  g+='<tr><td><b>H2</b></td><td>서열 상관<br><small class="muted">Spearman ρ(등급, 초과수익) > 0</small></td>'
+    +'<td><small>'+obs.filter(o=>o.x!=null).length+'건</small></td>'
+    +'<td style="text-align:right">'+(spr!=null?'ρ = '+(spr>=0?'+':'−')+Math.abs(spr).toFixed(3):'—')+'</td>'
+    +'<td style="text-align:right">'+(spr==null?'<span class="muted">표본 없음</span>'
+      :(days.length<GL_MIN_DAYS?'<span class="muted">판정 보류</span>'
+      :(spr>0?'<b style="color:var(--up)">지지</b>':'<b style="color:var(--down)">⚠ 기각</b>')))+'</td></tr>';
+
+  g+='<tr><td><b>H3</b></td><td>하락추세 캡의 정당성<br><small class="muted">캡 강등군 &lt; 비강등 상·중군 — §19.8의 핵심 질문</small></td>'
+    +'<td><small>강등 '+capDown.n+' (종목 '+capDown.uniq+')<br>비강등 '+capFree.n+' (종목 '+capFree.uniq+')</small></td>'
+    +'<td style="text-align:right"><small>강등 '+cell(capDown)+'<br>비강등 '+cell(capFree)+'</small></td>'
+    +'<td style="text-align:right">'+verdict(capDown.med!=null&&capFree.med!=null&&capDown.med<capFree.med,capDown,capFree)+'</td></tr>';
+
+  const byN=[]; for(let i=0;i<=6;i++){ const gp=glGrp(obs.filter(o=>o.n===i),o=>o.x); if(gp.n)byN.push([i,gp]); }
+  let n4=byN.map(p=>p[1].med).filter(v=>v!=null), n4OK=true;
+  for(let i=1;i<n4.length;i++)if(n4[i]<n4[i-1]-1e-9)n4OK=false;
+  g+='<tr><td><b>H4</b></td><td>저평가 확증 단조성<br><small class="muted">확증 개수 ↑ → 초과수익 ↑</small></td>'
+    +'<td><small>'+(byN.length?byN.map(p=>p[0]+'개 '+p[1].n).join(' · '):'—')+'</small></td>'
+    +'<td style="text-align:right"><small>'+(byN.length?byN.map(p=>p[0]+'개 '+fmt(p[1].med)).join('<br>'):'—')+'</small></td>'
+    +'<td style="text-align:right">'+(n4.length<2?'<span class="muted">표본 없음</span>'
+      :(days.length<GL_MIN_DAYS?'<span class="muted">판정 보류</span>'
+      :(n4OK?'<b style="color:var(--up)">지지</b>':'<b style="color:var(--down)">⚠ 기각</b>')))+'</td></tr>';
+
+  g+='<tr><td><b>H5</b></td><td>하드게이트 판별력<br><small class="muted">탈락군 &lt; 통과군</small></td>'
+    +'<td><small>탈락 '+gFail.n+'<br>통과 '+gPass.n+'</small></td>'
+    +'<td style="text-align:right"><small>탈락 '+cell(gFail)+'<br>통과 '+cell(gPass)+'</small></td>'
+    +'<td style="text-align:right">'+verdict(gFail.med!=null&&gPass.med!=null&&gFail.med<gPass.med,gFail,gPass)+'</td></tr>';
+
+  g+='<tr><td><b>H6</b></td><td>경계 판정의 실재<br><small class="muted">경계 종목의 산포(IQR)가 더 크다</small></td>'
+    +'<td><small>경계 '+nearY.n+'<br>비경계 '+nearN.n+'</small></td>'
+    +'<td style="text-align:right"><small>경계 IQR '+(nearY.iqr!=null?nearY.iqr.toFixed(1)+'%p':'—')
+      +'<br>비경계 IQR '+(nearN.iqr!=null?nearN.iqr.toFixed(1)+'%p':'—')+'</small></td>'
+    +'<td style="text-align:right">'+verdict(nearY.iqr!=null&&nearN.iqr!=null&&nearY.iqr>nearN.iqr,nearY,nearN)+'</td></tr>';
+
+  g+='<tr><td><b>H7</b></td><td>이탈 하한의 대가<br><small class="muted">z 음성인데 <code>MA_DEV_MIN</code>이 캡을 면제한 군 ≥ 캡이 걸린 군</small></td>'
+    +'<td><small>면제 '+lowExempt.n+' (종목 '+lowExempt.uniq+')<br>캡 '+lowCap.n+' (종목 '+lowCap.uniq+')</small></td>'
+    +'<td style="text-align:right"><small>면제 '+cell(lowExempt)+'<br>캡 '+cell(lowCap)+'</small></td>'
+    +'<td style="text-align:right">'+verdict(lowExempt.med!=null&&lowCap.med!=null&&lowExempt.med>=lowCap.med,lowExempt,lowCap)+'</td></tr>';
+  g+='</table></div>';
+
+  g+='<div class="lgnote" style="margin-top:8px"><b>H3과 H7이 이 표의 핵심입니다.</b> §19.8 실측에서 하드게이트를 전부 통과한 '
+    +'10종목 중 <b>6종목을 캡이 강등</b>시키고 있었고, 그 캡 통계경로의 판정 52%를 <code>MA_DEV_MIN=0.94</code>가 단독으로 좌우했습니다. '
+    +'즉 이 시스템의 판별력 질문은 사실상 "캡이 옳은가"로 환원됩니다.<br>'
+    +'가설이 기각되어도 <b>코드는 스스로 아무것도 바꾸지 않습니다.</b> 기각은 §19.8을 사람이 다시 열어 보라는 신호일 뿐입니다.<br>'
+    +'다중검정 주의 — 가설 7개를 동시에 보면 우연히 하나가 기각될 확률이 작지 않습니다. '
+    +'<b>한 번의 기각이 아니라 국면을 달리한 반복 기각</b>만 신호로 취급하십시오.</div>';
+
+  /* ── ADX 관측(2단계) ── */
+  const adxSeen=Object.keys(S.stocks).filter(id=>S.calc[id]&&S.calc[id].adx!=null).length;
+  g+='<div class="lgsec"><span class="t">ADX 관측 (2단계)</span><span class="m">표시 전용 · 판정 미반영</span></div>'
+    +'<div class="lgnote">현재 '+adxSeen+'종목에서 ADX가 산출되고 있으며 판정 로그에 함께 기록됩니다. '
+    +'편입 여부는 <b>캡이 걸린 종목 중 ADX가 자기 분포 하단이면서 +DI가 −DI를 넘은 군</b>의 초과수익이 '
+    +'그렇지 않은 캡 종목보다 높은지로 판단합니다. 그 측정이 나오기 전에는 편입하지 않습니다.<br>'
+    +'편입하더라도 형태는 <b>새 게이트가 아니라 기존 캡의 해제 조건</b>으로 한정합니다 — 게이트를 늘리면 '
+    +'보수성이 더 강해져 이미 낮은 산출률이 더 떨어집니다.</div>';
+
+  /* ── 상수 대장 ── */
+  g+='<div class="lgsec"><span class="t">상수 발효일 대장</span><span class="m">워크포워드 강제 장치</span></div>';
+  g+='<div class="lgscroll"><table class="lgtbl"><tr><th>상수</th><th style="text-align:right">값</th><th>발효</th><th>버전</th><th>§20 분류</th></tr>';
+  for(const r of CONST_LOG.slice().reverse())
+    g+='<tr'+(/부채/.test(String(r.cls||''))?' style="background:rgba(255,176,32,.08)"':'')
+      +'><td><code>'+esc(r.k)+'</code></td><td style="text-align:right">'+(r.v==null?'—':r.v)+'</td>'
+      +'<td><small>'+(r.from?esc(r.from):'<span class="muted">로그 이전</span>')+'</small></td>'
+      +'<td><small>'+esc(r.ver)+'</small></td><td><small>'+esc(r.cls||'')+'</small></td></tr>';
+  g+='</table></div>';
+  g+='<div class="lgnote" style="margin-top:6px">임계값을 바꿀 때는 기존 행을 고치지 말고 <b>새 행을 추가</b>하십시오(원장과 같은 원칙). '
+    +'이 대장이 없으면 과거 로그를 지금의 상수로 재해석해 "현재 상수가 과거에도 좋았다"는 사후 정당화가 자동으로 만들어집니다 — §19.0의 반복입니다.</div>';
+
+  /* ── 조작 ── */
+  g+='<div class="lgsec"><span class="t">수집</span><span class="m">평소에는 자동으로 돕니다</span></div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+    +'<button class="btn sm primary" data-lgact="glsave">오늘 판정 기록</button>'
+    +'<button class="btn sm" data-lgact="glback">전방수익률 백필</button>'
+    +'<button class="btn sm" data-lgact="glreload">로그 다시 읽기</button>'
+    +'</div>'
+    +'<div class="lgnote" style="margin-top:6px">접속할 때 자동으로 ①과거 로그 읽기 ②지수 캔들 갱신 ③성숙한 지평 백필 ④(요약 패스 완료 후) 오늘치 기록이 돕니다. '
+    +'위 버튼은 수동 재시도용입니다 — 하루에 여러 번 눌러도 같은 날짜 문서를 덮어쓸 뿐 중복 기록되지 않습니다.</div>'
+    +'<div id="glMsg" style="margin-top:8px;font-size:12px"></div>';
+  return g;
+}
 function lgViewTool(){
   const A=lgAudit();
   let g='<div class="lgsec"><span class="t">정합 점검</span><span class="m">고쳐야 할 것과 정상인 것을 갈라 놓습니다</span></div>';
@@ -5141,6 +5794,21 @@ $('#lgBody').addEventListener('click',async e=>{
     if(!confirm('이 거래 기록을 삭제할까요? 되돌릴 수 없습니다.'))return;
     try{ await D('qa_trades/'+tid).delete(); toast('삭제했습니다'); if(act==='delone')lgCloseForm(); }
     catch(x){ toast('삭제 실패','err'); }
+  }
+  else if(act==='glhz'){ S.lg.hz=+id||60; renderLedger(); }
+  else if(act==='glsave'||act==='glback'||act==='glreload'){
+    const msg=()=>$('#glMsg');
+    const put=t=>{ const m=msg(); if(m)m.innerHTML=t; };
+    put('<span class="muted">처리 중…</span>');
+    try{
+      if(act==='glsave'){ const ok=await glMaybeSave(true);
+        put(ok?'오늘('+lgToday()+') 판정을 기록했습니다.':'기록할 산출값이 없거나 이미 더 늦은 기록이 있습니다.'); }
+      else if(act==='glback'){ const w=await glBackfill();
+        put(w?(w+'일치 전방수익률을 채웠습니다.'):'새로 채울 지평이 없습니다 — 아직 성숙하지 않았거나 이미 채워져 있습니다.'); }
+      else { glFullLoaded=false; const nd=await glLoad(1000); await glBackfill();
+        put(nd+'일치 로그를 다시 읽었습니다.'); }
+      renderLedger();
+    }catch(e){ put('<span style="color:var(--down)">실패: '+esc((e&&e.message)||String(e))+'</span>'); }
   }
   else if(act==='reg'){ const p=lgPosByKey(k); if(p)lgRegisterStock(p); }
   else if(act==='fracfix'){ const p=lgPosByKey(k); if(p)lgOpenFrac(p); }
