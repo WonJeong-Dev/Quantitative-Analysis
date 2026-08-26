@@ -1756,6 +1756,7 @@ function compute(id,simPrice){
   k.revPSq=revPSq; k.revPSraw=(F.revPS!=null&&isFinite(F.revPS))?+F.revPS:null;
   k.perAuto=(price>0&&Feff.epsTtm!=null&&Feff.epsTtm>0)?price/Feff.epsTtm:null;
   k.perFwdAuto=(price>0&&Feff.epsFwd!=null&&Feff.epsFwd>0)?price/Feff.epsFwd:null;
+  k.epsFwdEff=(Feff.epsFwd!=null&&isFinite(Feff.epsFwd))?Feff.epsFwd:null;   // (v4.35) 판단 감사 로그용
   k.psrAuto=(price>0&&Feff.revPS!=null&&Feff.revPS>0)?price/Feff.revPS
            :((F.psrY!=null&&isFinite(F.psrY)&&fxq!=null&&fxq>0)?F.psrY/fxq:null);
   k.pbrAuto=(F.pbrY!=null&&isFinite(F.pbrY)&&fxq!=null&&fxq>0)?F.pbrY/fxq:null;
@@ -1769,6 +1770,7 @@ function compute(id,simPrice){
     if(thi!=null&&tlo!=null&&tmn!=null&&tmn>0&&thi>=tlo) tgtSpread=(thi-tlo)/tmn; }
 
   k.autoScaleBad=autoScaleBad; k.priceAnomaly=priceAnomaly; k.dataAnoms=dataAnoms;
+  k.dataAnomN=(dataAnoms&&dataAnoms.length)?dataAnoms.length:0;   // (v4.35) 판단 감사 로그용
 
   /* (v4.7) 이격도(현재가/SMA200) 분포 통계 — 하락추세 판정을 종목별 자기교정 기준으로 옮기는 입력.
    * 중위수·MAD로 로버스트 z를 만든다. 표준편차를 쓰면 급등 국면의 이격 극단치가 분모를 부풀려
@@ -1835,6 +1837,50 @@ function compute(id,simPrice){
     ||(priceSrc==='cache'&&k.cacheAgeDays!=null&&k.cacheAgeDays>STALE_MAX_D);
 
   k.ana=anaI; k.tgtF=tgtF; k.tgtW=tgtW; k.recEff=recEff; k.techRef=techRef;
+  /* ============ (v4.35) 사후 판단 감사 입력 — 전부 표시·로그 전용 ============
+   * 판정(classifyDetail)에 들어가지 않는다. 하는 일은 하나다:
+   * "이 등급이 매겨진 뒤 무슨 일이 있었나"를 **숫자로** 남긴다.
+   * 뉴스 헤드라인 대신 이것들을 쓰는 이유 — 서프라이즈에는 부호가, 등급 변경에는 방향이,
+   * 컨센 추정에는 수준이 있다. 사후 서사("주가가 빠졌으니 악재가 있었을 것")를 끼워 넣을
+   * 자리가 없고, 감성 판정이 필요 없으므로 새 임의 파라미터도 생기지 않는다. */
+  { const A0=(ch.ana||{});
+    const sp=Array.isArray(A0.surp)&&A0.surp.length?A0.surp[0]:null;
+    k.surpD=sp&&sp.d!=null?sp.d:null;                 // 최근 실적 발표일(epoch초)
+    k.surpPct=sp&&sp.pct!=null?sp.pct:null;           // 서프라이즈 % — ★ 양향성. 부호를 고정하지 않는다
+    const ug=A0.ugd||null;
+    const last=(ug&&Array.isArray(ug.last)&&ug.last.length)?ug.last[0]:null;
+    k.ugdD=last&&last.d!=null?last.d:null;            // 최신 애널 액션일
+    k.ugdAct=last?(last.act==='up'?1:(last.act==='down'?-1:0)):null;
+    k.ugdUp90=ug&&ug.up90!=null?ug.up90:null;
+    k.ugdDn90=ug&&ug.dn90!=null?ug.dn90:null;
+    k.ugdLast=(ug&&Array.isArray(ug.last))?ug.last:null;
+    const rv=A0.rev||null;
+    /* 개정 순증 = 상향 건수 − 하향 건수(30일). 부호만 쓰므로 크기 임계가 없다. */
+    k.revNet=(rv&&(rv.u30!=null||rv.d30!=null))?((rv.u30||0)-(rv.d30||0)):null;
+    /* ★ 가이던스 대리변수. 실적 서프라이즈만으로는 최근 테크의 주가 반응을 설명하지 못한다 —
+     * EPS를 beat하고도 **가이던스** 때문에 급락하는 일이 흔하다. 가이던스 자체는 정형
+     * 데이터로 오지 않지만, **컨센 추정 수준**이 그 해석을 흡수한다: 발표 뒤 내년 EPS
+     * 컨센이 내려갔다면 시장이 가이던스를 하향으로 읽었다는 뜻이다.
+     * 개정 '건수'(revNet)는 몇 명이 손댔는지만 말하고 얼마나 움직였는지를 말하지 않으므로
+     * 수준을 따로 남긴다. 이 축이 있어야 '실적 beat인데 급락'이 (C 불가피)가 아니라
+     * (B 커버리지 결함)으로 잡힌다 — 관측 가능했던 신호를 '어쩔 수 없었다'로 묻지 않는 것이
+     * 이 설계의 핵심이다. */
+    const es=A0.est||null;
+    k.estE=es?((es.ey1!=null)?es.ey1:(es.ey0!=null?es.ey0:null)):null;   // 내년(없으면 올해) 컨센 EPS
+    k.estR=es?((es.ry1!=null)?es.ry1:null):null;                          // 내년 컨센 매출
+    /* ★ CapEx는 **부호를 고정하지 않는다.** 급증을 '악재'로 못 박으면 AI 인프라 투자 국면에서
+     * 통째로 틀리고, '호재'로 못 박으면 과잉투자 국면에서 통째로 틀린다. 해석은 시장이 하고
+     * 우리는 사건이 있었다는 사실만 기록한다. 그래서 **원인 분류의 입력으로 쓰지 않고**
+     * 사건 카드 표시와 '해석 분기' 집단의 특성 기술에만 쓴다 — 임계값을 하나도 만들지 않는
+     * 유일한 방법이기도 하다. */
+    const cx=A0.capex||null;
+    const cq=(cx&&Array.isArray(cx.q)&&cx.q.length)?cx.q:null;
+    k.capexQ=cq?(cq[0]&&cq[0].v!=null?cq[0].v:null):null;                  // 최근 분기
+    k.capexY=(cq&&cq.length>=5)?(cq[4]&&cq[4].v!=null?cq[4].v:null)
+            :((cq&&cq.length>=4)?(cq[3]&&cq[3].v!=null?cq[3].v:null):null); // 전년동기(없으면 4분기 전)
+    k.fcf=(cx&&cx.fcf!=null)?cx.fcf:null;
+    k.anaN=(anaI&&anaI.n!=null)?anaI.n:null;
+  }
   k.anaRef=(ch.ana&&ch.ana.tgt!=null)?ch.ana.tgt:null;
   k.earn=(ch.ana&&ch.ana.earn!=null)?ch.ana.earn:null;
   k.rt=(ch.ana&&ch.ana.rt)?ch.ana.rt:null;
@@ -1878,6 +1924,18 @@ function compute(id,simPrice){
   const vmR=effVM(id); // 사업분야별 지표 신뢰도 (per/pbr/psr: 2핵심/1참고/0제외)
   const fvr=fairValue(manFV, tgtW, fundInput, k.quality, tgtSpread, techRef, vmR.per, vmR.psr, price);
   k.fvNow=fvr.fvNow; k.fvTarget=fvr.fvTarget; k.tgtUsed=fvr.tgtUsed; k.anaConf=fvr.anaConf; k.fundFV=fvr.fundFV; k.fvBasis=fvr.basis;
+  /* (v4.35) 적정가 근거를 **비트마스크로** 로그에 남긴다. 문자열을 그대로 저장하면 57종목 ×
+   * 매일이 되어 문서가 부풀고, 문구를 다듬는 순간 과거 로그와 갈라진다(하드게이트 라벨 대신
+   * 코드를 쓴 v4.34 ④와 같은 이유).
+   *  1 애널목표 · 2 펀더멘털 · 4 수동 · 8 펀더멘털 이상치 배제 · 16 신뢰↓ */
+  { const b=String(fvr.basis||''); let m=0;
+    if(b.indexOf('애널목표')>=0)m|=1;
+    if(b.indexOf('펀더멘털(')>=0)m|=2;
+    if(b.indexOf('수동')>=0)m|=4;
+    if(b.indexOf('이상치 배제')>=0)m|=8;
+    if(b.indexOf('신뢰↓')>=0)m|=16;
+    k.basisB=m; }
+  k.tgtSpread=(tgtSpread!=null&&isFinite(tgtSpread))?tgtSpread:null;
   k.fvTech=techRef; // 하위호환 표시용
   k.fv=k.fvTarget;  // 하위호환: 기존 k.fv 참조 → 적정목표가로 매핑
   // 상승여력 = 적정목표가 기준 (미래 반영). 하방여유 = 현재적정가 기준.
@@ -2522,18 +2580,33 @@ const GL_HORIZ=[20,60,120];   // 전방수익률 지평(거래일). 20≈1개월
  * 문서마다 cols를 함께 저장해 과거 문서를 자기 스키마로 읽는다(§22-⑫). */
 const GL_COLS=['tier','tierNoCap','A','Q','upside','downside','n','gate',
   'ratioNow','ratioZ','ratioMed','ratioQ25','rsi','pB','price',
-  'qMissW','aMissW','near','adx','adxZ','diDir','cap'];
+  'qMissW','aMissW','near','adx','adxZ','diDir','cap',
+  /* (v4.35) 판단 감사용 20열 — **끝에 붙인다.** 가운데에 끼우면 과거 문서의 순서가 밀린다.
+   * 앞 8열 = 판정 시점의 '산출 상태' ((A) 유형 판정 입력)
+   * 뒤 12열 = 판정 시점의 '이벤트 상태' — 나중 행과 비교해 그 사이 무슨 일이 있었는지 안다.
+   *   방향성 채널: anaTgt · estE · estR · revNet · ugdAct  (부호가 뜻을 갖는다)
+   *   양향성 채널: surpPct · capexQ/capexY · fcf          (해석이 갈린다 — 분류 입력 아님) */
+  'anaConf','tgtW','anaN','anaTgt','epsFwd','tgtSpread','basisB','dataAnomN',
+  'surpD','surpPct','ugdD','ugdAct','ugdUp90','ugdDn90','revNet',
+  'estE','estR','capexQ','capexY','fcf'];
 function glRow(k){
   if(!k)return null;
   const d=k.grd||{};
   const r1=x=>(x==null||!isFinite(x))?null:+x.toFixed(1);
   const r2=x=>(x==null||!isFinite(x))?null:+x.toFixed(2);
   const r4=x=>(x==null||!isFinite(x))?null:+x.toFixed(4);
+  const r0n=x=>(x==null||!isFinite(x))?null:Math.round(x);   // (v4.35) 금액 계열 — 정수로 줄인다
   return [k.tier||null, d.tierNoCap||null, r1(k.attract), r1(k.quality), r1(k.upside), r1(k.downside),
     (d.n!=null?d.n:null), (d.blockedCode||null),
     r4(k.ratioNow), r2(k.ratioZ), r4(k.ratioMed), r4(k.ratioQ25), r1(k.rsi), r2(k.pB), r4(k.price),
     (k.qMissW||0), (k.aMissW||0), (d.nearBoundary?1:0), r1(k.adx), r2(k.adxZ),
-    (k.diDir!=null?k.diDir:null), (d.downtrend?1:0)];
+    (k.diDir!=null?k.diDir:null), (d.downtrend?1:0),
+    r2(k.anaConf), r2(k.tgtW), (k.anaN!=null?k.anaN:null), r4(k.tgtUsed), r4(k.epsFwdEff),
+    r2(k.tgtSpread), (k.basisB!=null?k.basisB:null), (k.dataAnomN||0),
+    (k.surpD!=null?k.surpD:null), r1(k.surpPct), (k.ugdD!=null?k.ugdD:null),
+    (k.ugdAct!=null?k.ugdAct:null), (k.ugdUp90!=null?k.ugdUp90:null),
+    (k.ugdDn90!=null?k.ugdDn90:null), (k.revNet!=null?k.revNet:null),
+    r4(k.estE), r0n(k.estR), r0n(k.capexQ), r0n(k.capexY), r0n(k.fcf)];
 }
 /* 문서 자신의 cols로 읽는다 — 스키마가 늘어도 과거 문서가 조용히 밀리지 않는다. */
 function glGet(doc,row,name){
@@ -3819,7 +3892,18 @@ async function fetchSummary(id,force){
     const gn=x=>(x!=null&&isFinite(x))?x:null;
     if(j&&(j.n!==undefined||j.tgt!==undefined||j.lg!==undefined)){ // 워커 v3/v4 축약형
       ana={n:gn(j.n),tgt:gn(j.tgt),tgtHi:gn(j.tgtHi),tgtLo:gn(j.tgtLo),rec:gn(j.rec),lg:gn(j.lg),
-           earn:gn(j.earn), rt:(j.rt&&typeof j.rt==='object')?j.rt:null, ts:Date.now()};
+           earn:gn(j.earn), rt:(j.rt&&typeof j.rt==='object')?j.rt:null,
+           /* (v4.35 · 워커 v6.7) 사후 판단 감사용 이벤트 채널.
+            * 구버전 워커면 전부 undefined → null이 되고 해당 채널은 '관측 없음'이 된다.
+            * 없는 값을 0으로 채우면 '사건이 없었다'로 읽혀 조용히 틀린다 — null과 0은
+            * 다른 뜻이다(§22-⑫). */
+           surp:(Array.isArray(j.surp)&&j.surp.length)?j.surp:null,
+           ugd:(j.ugd&&typeof j.ugd==='object')?j.ugd:null,
+           rtH:(Array.isArray(j.rtH)&&j.rtH.length)?j.rtH:null,
+           rev:(j.rev&&typeof j.rev==='object')?j.rev:null,
+           est:(j.est&&typeof j.est==='object')?j.est:null,
+           capex:(j.capex&&typeof j.capex==='object')?j.capex:null,
+           ts:Date.now()};
       // v4 재무·밸류에이션 필드 (구버전 워커면 undefined → null)
       if(j.roe!==undefined||j.margin!==undefined||j.revG!==undefined||j.epsFwd!==undefined){
         // 성장률: earningsTrend 추정(epsGrowthEst) 우선, 없으면 financialData의 epsG
@@ -4144,10 +4228,18 @@ function diagCollect(){
   const nn=rows.filter(r=>r.k.ratioNow!=null).map(r=>r.k.ratioN).filter(v=>v!=null).sort((a,b)=>a-b);
   const fundMiss=rows.filter(r=>fundMissing(r.id));
   return {
-    빌드:'v4.34 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v4.35 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     판정로그:(function(){ const ds=Object.keys(S.glog||{}).sort();
       return ds.length?(ds.length+'일 · '+ds[0]+' ~ '+ds[ds.length-1]+(S.glSaved?' · 오늘 기록됨':' · 오늘 미기록')):'없음(수집 시작 전)'; })(),
     상수부채:CONST_LOG.filter(r=>/부채/.test(String(r.cls||''))).map(r=>r.k+'='+r.v+' ['+r.ver+']'),
+    /* (v4.35) 워커 v6.7 짝 확인 — 이벤트 채널이 실제로 들어오고 있는가.
+     * 워커가 구버전이면 전부 0으로 나오고 판단 감사의 (B)·(B*)가 영영 만들어지지 않는다.
+     * 조용히 'C 불가피'만 쌓이므로, 여기서 눈에 보이게 해 둔다(§22-⑮). */
+    이벤트채널:(function(){ const cnt={실적:0,애널액션:0,가이던스:0,개정:0,CapEx:0};
+      for(const id in S.stocks){ const a=(S.cache[id]||{}).ana||{};
+        if(a.surp)cnt.실적++; if(a.ugd)cnt.애널액션++; if(a.est)cnt.가이던스++;
+        if(a.rev)cnt.개정++; if(a.capex)cnt.CapEx++; }
+      return cnt; })(),
     ADX관측:(function(){ const a=rows.map(r=>r.k.adx).filter(v=>v!=null).sort((x,y)=>x-y);
       const z=rows.filter(r=>r.k.adxZ!=null).length;
       return a.length?{n:a.length,min:+a[0].toFixed(1),max:+a[a.length-1].toFixed(1),'z산출':z}:null; })(),
@@ -5493,6 +5585,16 @@ function glObs(hz){
         near:glGet(doc,row,'near'), cap:glGet(doc,row,'cap'),
         ratioNow:glGet(doc,row,'ratioNow'), ratioZ:glGet(doc,row,'ratioZ'),
         qm:glGet(doc,row,'qMissW')||0, am:glGet(doc,row,'aMissW')||0,
+        /* (v4.35) 판단 감사 입력. 구버전 문서에는 이 열이 없어 전부 null이 되고,
+         * revCause가 null을 '조건 미충족'으로 다뤄 (A)를 만들지 않는다 —
+         * **열이 없는 것을 결함으로 세지 않는다.** */
+        anaConf:glGet(doc,row,'anaConf'), tgtW:glGet(doc,row,'tgtW'), anaN:glGet(doc,row,'anaN'),
+        anaTgt:glGet(doc,row,'anaTgt'), basisB:glGet(doc,row,'basisB'),
+        dataAnomN:glGet(doc,row,'dataAnomN'), tgtSpread:glGet(doc,row,'tgtSpread'),
+        surpD:glGet(doc,row,'surpD'), surpPct:glGet(doc,row,'surpPct'),
+        ugdD:glGet(doc,row,'ugdD'), ugdAct:glGet(doc,row,'ugdAct'), revNet:glGet(doc,row,'revNet'),
+        estE:glGet(doc,row,'estE'), estR:glGet(doc,row,'estR'),
+        capexQ:glGet(doc,row,'capexQ'), capexY:glGet(doc,row,'capexY'), fcf:glGet(doc,row,'fcf'),
         x:(x!=null?x:null), r:(r!=null?r:null)};
       /* §19.9의 성분 결측 스냅샷은 **분리**한다. 섞어서 평균 내면 v4.10이 발견한
        * 그 오염(가중치 63% 소실)이 결론에 그대로 실린다. */
@@ -5501,6 +5603,121 @@ function glObs(hz){
     }
   }
   return {obs:out,skip};
+}
+/* ================= (v4.35) 사후 판단 감사 — 원인 계층 자동 분류 =================
+ *
+ * 묻는 것이 v4.34와 다르다.
+ *   H1~H7(결과 감사) : "등급이 매겨진 뒤 실제로 올랐나"
+ *   여기 (판단 감사)  : "그때 그 등급이 **근거상** 타당했나"
+ * 이 시스템에서는 후자가 더 중요하다. 등급 진입 이벤트가 연 수십 건뿐이라 결과 통계는
+ * 검정력이 거의 없지만, 판단 감사는 **한 건마다 정보가 나온다.**
+ *
+ * ★ 이 화면의 유일한 설계 목적은 **사후 서사를 못 쓰게 만드는 것**이다.
+ *   사후에 결과를 보고 "이 등급이 맞았나"를 물으면 사람은 거의 항상 결과를 설명하는 이야기를
+ *   찾아낸다. 빠졌으면 악재를 찾아 "틀렸다"고 하고 올랐으면 호재를 찾아 "맞았다"고 한다.
+ *   §19.0에 기록된 실패(결과 숫자 하나에서 원인을 추정하고 그 가설 위에 방어 코드를 세움)와
+ *   정확히 같은 구조다. 그래서 '맞았다/틀렸다' 2분법 대신 **어긋남의 원인이 어느 계층에
+ *   있는가**를 묻고, 그 판정을 사람이 아니라 **저장된 숫자만으로** 내린다.
+ *
+ *   (A) 프로세스 결함  판정 시점에 시스템이 **이미 갖고 있던 값**으로도 이 등급은 부실했다.
+ *                      → 버그다. 지금 고칠 수 있다. **행동 가능.**
+ *   (B) 커버리지 결함  판정 이후, 시스템이 **보지 않는 방향성 채널**에서 관측 가능한 사건이
+ *                      있었고 그 방향이 결과와 일치한다(순증 기준).
+ *                      → 처방은 임계값 조정이 아니라 **누락된 입력의 추가**다. §20 분류를
+ *                        늘리지 않는 유일한 개선 경로. **행동 가능.**
+ *   (B*) 해석 분기     사건은 있었으나 부호가 결과와 **반대**다. 시장이 그 숫자를 시스템과
+ *                      다르게 읽었다는 직접 증거다.
+ *                      → 최근 테크에서 가장 흔한 형태: EPS를 beat하고도 **가이던스** 때문에
+ *                        급락하거나, **CapEx 급증**을 성장 투자로 볼지 마진 훼손으로 볼지가
+ *                        갈리는 구간. 처방은 입력 추가가 아니라 **해석 축의 재검토**다.
+ *   (C) 불가피         관측 가능한 사건 자체가 없었다. 노이즈다. 이걸로 임계값을 바꾸면
+ *                      §22-⑤ 위반이다. **행동 불가.**
+ *
+ * ★ 우선순위 A > B > B* > C. (A)가 걸린 건은 그 뒤에 무슨 일이 있었든 **먼저 고칠 것이
+ *   판정 시점에 있다.** 원인을 둘로 적으면 어느 쪽을 고칠지가 흐려진다.
+ *
+ * ★ 임계값이 하나도 없다. 부호와 증감만 쓴다. '얼마나 크게 어긋났나'를 묻지 않으므로
+ *   크기 임계가 필요 없고, 따라서 스냅샷에 맞춰 고를 값도 없다.
+ *
+ * ★★ 판독 시 반드시 주의 — **무작위 기준선.** 방향성 채널이 5개이므로, 채널이 아무 정보도
+ *   없더라도 우연히 하나쯤 부호가 맞는다. 그래서 (B) 비율 자체는 아무 뜻이 없다.
+ *   의미가 있는 것은 **결과 사분위 사이의 차이**뿐이다 — 하위 25%와 상위 25%와 중간에서
+ *   원인 분포가 같다면 그 채널들은 판별력이 없다. 화면은 항상 세 구간을 나란히 놓는다. */
+const REV_A=[
+  ['성분결측',          '종합점수·가격매력도의 성분 일부가 수신되지 않은 상태에서 산출됐다(§19.9)'],
+  ['목표가 신선도 미달', '목표가 신뢰도가 D2 하한(0.5) 미만인데 적정가에 채택됐다'],
+  ['적정가 근거 없음',   '애널·펀더멘털·수동 어느 소스도 채택되지 않았는데 등급이 붙었다'],
+  ['입력 일부 배제',    '스케일 이상으로 입력이 배제된 상태에서 산출됐다(§8.5)'],
+  ['신뢰 낮은 단일 소스','소스가 하나뿐이고 그 하나에 신뢰↓ 표시가 붙어 있었다'],
+  ['커버리지 미달',     '애널리스트 수가 ANA_MIN 미만인데 목표가가 채택됐다']
+];
+/* 방향성 채널 — 부호가 뜻을 갖는다. 분류의 입력이다. */
+const REV_DIR=['애널 목표가 개정','컨센 EPS 추정(가이던스)','컨센 매출 추정','애널 등급 변경','개정 건수 순증'];
+/* 양향성 채널 — 해석이 갈린다. **분류의 입력으로 쓰지 않는다.**
+ * 실적 발표는 '부호 불일치' 감지에만 쓰고(그것이 곧 해석 분기의 증거),
+ * CapEx는 분류에 전혀 쓰지 않고 사건 카드 표시와 (B*) 집단의 특성 기술에만 쓴다. */
+const REV_AMB=['실적 발표','CapEx'];
+function revCause(o,later){
+  const A=[];
+  const bB=o.basisB, has=b=>(bB!=null&&!!(bB&b));
+  const srcN=(bB==null)?null:(((bB&1)?1:0)+((bB&2)?1:0)+((bB&4)?1:0));
+  if((o.qm||0)>0||(o.am||0)>0)                        A.push(REV_A[0][0]);
+  if(o.tgtW!=null&&o.tgtW<0.5&&has(1))                A.push(REV_A[1][0]);
+  if(srcN===0)                                        A.push(REV_A[2][0]);
+  if((o.dataAnomN||0)>0)                              A.push(REV_A[3][0]);
+  if(srcN===1&&has(16))                               A.push(REV_A[4][0]);
+  if(o.anaN!=null&&o.anaN<ANA_MIN&&has(1))            A.push(REV_A[5][0]);
+
+  const dir=[], opp=[]; let surpOpp=false, earnIn=false;
+  const x=o.x;
+  if(later&&x!=null&&x!==0){
+    const sx=x>0?1:-1;
+    const put=(nm,d)=>{ if(d==null||d===0)return; ((d>0?1:-1)===sx?dir:opp).push(nm); };
+    if(o.anaTgt!=null&&later.anaTgt!=null&&o.anaTgt>0) put(REV_DIR[0],later.anaTgt-o.anaTgt);
+    if(o.estE!=null&&later.estE!=null)                 put(REV_DIR[1],later.estE-o.estE);
+    if(o.estR!=null&&later.estR!=null)                 put(REV_DIR[2],later.estR-o.estR);
+    if(o.ugdD!=null&&later.ugdD!=null&&later.ugdD>o.ugdD&&later.ugdAct) put(REV_DIR[3],later.ugdAct);
+    if(later.revNet!=null)                             put(REV_DIR[4],later.revNet);
+    /* 실적 발표는 양향성이다 — 부호 일치를 (B)의 근거로 쓰지 않는다.
+     * 대신 **불일치**만 본다: beat했는데 빠졌다면 시장이 EPS가 아닌 다른 축(가이던스·CapEx)을
+     * 봤다는 뜻이고, 그것이 (B*)의 정의다. */
+    earnIn=(o.surpD!=null&&later.surpD!=null&&later.surpD>o.surpD);
+    surpOpp=!!(earnIn&&later.surpPct!=null&&later.surpPct!==0&&(later.surpPct>0?1:-1)!==sx);
+  }
+  const net=dir.length-opp.length;
+  const cause=A.length?'A':(net>0?'B':((net<0||surpOpp)?'B*':'C'));
+  return {A,dir,opp,net,surpOpp,earnIn,cause};
+}
+/* 지평 말에 가장 가까운 같은 종목의 로그 행. 로그는 접속한 날만 있으므로 정확히
+ * d+hz거래일이 존재한다는 보장이 없다 — 목표 달력일(거래일 × 1.45) 이하의 마지막 관측을 쓴다. */
+function glLaterRow(id,day,hz){
+  const t0=Date.parse(day+'T00:00:00Z');
+  if(!isFinite(t0))return null;
+  const target=t0+Math.round(hz*1.45)*86400000;
+  let best=null,bestT=-1;
+  for(const d2 in S.glog){
+    const t2=Date.parse(d2+'T00:00:00Z');
+    if(!isFinite(t2)||t2<=t0||t2>target)continue;
+    if(t2>bestT){ const doc=S.glog[d2], row=doc&&doc.rows&&doc.rows[id];
+      if(row){ bestT=t2; best={doc,row,day:d2}; } }
+  }
+  if(!best)return null;
+  const G=n=>glGet(best.doc,best.row,n);
+  return {day:best.day,surpD:G('surpD'),surpPct:G('surpPct'),ugdD:G('ugdD'),ugdAct:G('ugdAct'),
+          revNet:G('revNet'),anaTgt:G('anaTgt'),estE:G('estE'),estR:G('estR'),
+          capexQ:G('capexQ'),capexY:G('capexY'),tier:G('tier')};
+}
+/* 종목명 — 로그에는 id만 있으므로 현재 마스터에서 찾는다. 없으면 id를 그대로 쓴다. */
+function glName(id){ const st=S.stocks[id];
+  return st?((st.market==='KR')?(st.name||id):(st.symbol||id)):String(id); }
+/* 판정일 전후 뉴스 검색 링크. **자동 판정에 쓰지 않는다** — 감성 판정은 새 임의 파라미터
+ * 덩어리이고, 구글뉴스 RSS는 과거 특정 구간을 안정적으로 주지도 않는다.
+ * 사람이 사건 카드를 열어 볼 때의 참고 링크일 뿐이다. */
+function glNewsURL(id,day,hz){
+  const t0=Date.parse(day+'T00:00:00Z');
+  const t1=new Date(t0+Math.round(hz*1.45)*86400000).toISOString().slice(0,10);
+  const q=glName(id)+' after:'+day+' before:'+t1;
+  return 'https://news.google.com/search?q='+encodeURIComponent(q)+'&hl=ko&gl=KR&ceid=KR%3Ako';
 }
 function lgViewVerify(){
   /* 전 구간 로드는 이 화면에서만 필요하다. 비동기로 걸어 두고 먼저 그린다 —
@@ -5632,6 +5849,9 @@ function lgViewVerify(){
     +'편입하더라도 형태는 <b>새 게이트가 아니라 기존 캡의 해제 조건</b>으로 한정합니다 — 게이트를 늘리면 '
     +'보수성이 더 강해져 이미 낮은 산출률이 더 떨어집니다.</div>';
 
+  /* ── 판단 감사 (v4.35) ── */
+  g+=lgAuditPanel(obs,hz);
+
   /* ── 상수 대장 ── */
   g+='<div class="lgsec"><span class="t">상수 발효일 대장</span><span class="m">워크포워드 강제 장치</span></div>';
   g+='<div class="lgscroll"><table class="lgtbl"><tr><th>상수</th><th style="text-align:right">값</th><th>발효</th><th>버전</th><th>§20 분류</th></tr>';
@@ -5654,6 +5874,127 @@ function lgViewVerify(){
     +'<div class="lgnote" style="margin-top:6px">접속할 때 자동으로 ①과거 로그 읽기 ②지수 캔들 갱신 ③성숙한 지평 백필 ④(요약 패스 완료 후) 오늘치 기록이 돕니다. '
     +'위 버튼은 수동 재시도용입니다 — 하루에 여러 번 눌러도 같은 날짜 문서를 덮어쓸 뿐 중복 기록되지 않습니다.</div>'
     +'<div id="glMsg" style="margin-top:8px;font-size:12px"></div>';
+  return g;
+}
+/* 판단 감사 패널. lgViewVerify에서 분리한 이유는 길이가 아니라 책임이다 —
+ * 위쪽(H1~H7)은 결과를 묻고 여기는 근거를 묻는다. 한 함수에 두면 나중에 한쪽 기준이
+ * 다른 쪽으로 새어 든다(§22-⑰: 같은 증상이 같은 처방을 받아야 한다는 법은 없다). */
+function lgAuditPanel(obs,hz){
+  const fmt=v=>v==null?'—':((v>=0?'+':'−')+Math.abs(v).toFixed(1)+'%p');
+  let g='<div class="lgsec"><span class="t">판단 감사 — 원인 계층</span>'
+    +'<span class="m">"올랐나"가 아니라 "근거상 타당했나"</span></div>';
+  g+='<div class="lgnote"><b>자동 분류이며 사람 판정이 필요 없습니다.</b> 저장된 숫자의 부호와 증감만 씁니다 — '
+    +'크기 임계가 없으므로 스냅샷에 맞춰 고를 값도 없습니다(§22-⑤).<br>'
+    +'<b>(A) 프로세스 결함</b> 판정 시점에 이미 갖고 있던 값으로도 부실했다 → <b>버그. 지금 고친다.</b><br>'
+    +'<b>(B) 커버리지 결함</b> 시스템이 안 보는 방향성 채널의 사건이 결과와 같은 방향이었다 → <b>입력을 추가한다.</b><br>'
+    +'<b>(B*) 해석 분기</b> 사건은 있었는데 부호가 <b>반대</b>였다 → 시장이 그 숫자를 다르게 읽었다. '
+    +'최근 테크의 전형: <b>EPS는 beat인데 가이던스로 급락</b>, <b>CapEx 급증을 성장투자로 볼지 마진훼손으로 볼지</b>. '
+    +'처방은 입력 추가가 아니라 <b>해석 축의 재검토</b>입니다.<br>'
+    +'<b>(C) 불가피</b> 관측 가능한 사건 자체가 없었다 → <b>노이즈. 건드리지 않는다.</b></div>';
+
+  const use=obs.filter(o=>o.x!=null);
+  if(!use.length){ return g+'<div class="lgnote" style="margin-top:8px">성숙한 관측이 아직 없습니다.</div>'; }
+
+  /* 결과 구간은 **분위수**로 가른다. 고정 %를 쓰면 국면이 바뀔 때마다 뜻이 달라진다
+   * (DT_GAP=0.85가 실패한 방식). 분위수는 분포 상대값이라 임계값이 아니다. */
+  const xs=use.map(o=>o.x).sort((a,b)=>a-b);
+  const q1=glQt(xs,0.25), q3=glQt(xs,0.75);
+  const bandOf=o=>(o.x<=q1?'하위25%':(o.x>=q3?'상위25%':'중간50%'));
+  const BANDS=['하위25%','중간50%','상위25%'];
+  const CAUSES=['A','B','B*','C'];
+
+  const cz={}; for(const b of BANDS){ cz[b]={A:0,B:0,'B*':0,C:0,n:0}; }
+  const aCount={}, chAgree={}, chOppo={}, cases=[];
+  for(const o of use){
+    const later=glLaterRow(o.id,o.day,hz);
+    const rc=revCause(o,later);
+    o._rc=rc; o._later=later;
+    const b=bandOf(o); cz[b][rc.cause]++; cz[b].n++;
+    for(const a of rc.A)aCount[a]=(aCount[a]||0)+1;
+    if(b!=='중간50%'){
+      for(const d of rc.dir){ chAgree[d]=chAgree[d]||{'하위25%':0,'상위25%':0}; chAgree[d][b]++; }
+      for(const d of rc.opp){ chOppo[d]=chOppo[d]||{'하위25%':0,'상위25%':0}; chOppo[d][b]++; }
+    }
+    if(b==='하위25%'&&(o.tier==='상'||o.tier==='중'))cases.push(o);
+  }
+
+  /* ① 결과 구간 × 원인 교차표 — 세 구간을 반드시 나란히 놓는다.
+   * 방향성 채널이 5개라 우연히 하나쯤 부호가 맞으므로 (B) 비율 자체는 뜻이 없다.
+   * 구간 사이의 **차이**만 정보다. 이 표는 그 비교를 강제하는 장치다. */
+  g+='<div class="lgscroll" style="margin-top:8px"><table class="lgtbl">'
+    +'<tr><th>결과 구간</th><th style="text-align:right">관측</th>'
+    +CAUSES.map(c=>'<th style="text-align:right">'+esc(c)+'</th>').join('')+'</tr>';
+  for(const b of BANDS){
+    const r=cz[b];
+    g+='<tr'+(b==='중간50%'?' style="opacity:.7"':'')+'><td><b>'+esc(b)+'</b>'
+      +(b==='하위25%'?' <small class="muted">(≤'+fmt(q1)+')</small>':(b==='상위25%'?' <small class="muted">(≥'+fmt(q3)+')</small>':''))
+      +'</td><td style="text-align:right">'+r.n+'</td>'
+      +CAUSES.map(c=>'<td style="text-align:right">'+r[c]+(r.n?' <small class="muted">('+Math.round(r[c]/r.n*100)+'%)</small>':'')+'</td>').join('')
+      +'</tr>';
+  }
+  g+='</table></div>';
+  g+='<div class="lgnote" style="margin-top:6px"><b>읽는 법</b> — 세 줄의 비율이 <b>비슷하면 그 채널들은 판별력이 없습니다.</b> '
+    +'하위25%에서만 (B)·(B*)가 두드러질 때 비로소 신호입니다. 절대 비율은 무작위로도 나옵니다.</div>';
+
+  /* ② 채널별 판별력 — "무엇을 입력으로 추가할까"의 순위 */
+  const chans=Object.keys(chAgree).concat(Object.keys(chOppo).filter(k2=>!chAgree[k2]));
+  if(chans.length){
+    g+='<div class="lgsec"><span class="t">채널별 판별력</span><span class="m">일치 − 불일치 · 극단 구간만</span></div>';
+    g+='<div class="lgscroll"><table class="lgtbl">'
+      +'<tr><th>방향성 채널</th><th style="text-align:right">하위25% 순증</th><th style="text-align:right">상위25% 순증</th><th style="text-align:right">합</th></tr>';
+    const rows=chans.map(c=>{
+      const a=chAgree[c]||{'하위25%':0,'상위25%':0}, o2=chOppo[c]||{'하위25%':0,'상위25%':0};
+      const lo=a['하위25%']-o2['하위25%'], hi=a['상위25%']-o2['상위25%'];
+      return {c,lo,hi,tot:lo+hi};
+    }).sort((p,q2)=>q2.tot-p.tot);
+    for(const r of rows)
+      g+='<tr><td>'+esc(r.c)+'</td><td style="text-align:right">'+(r.lo>=0?'+':'')+r.lo+'</td>'
+        +'<td style="text-align:right">'+(r.hi>=0?'+':'')+r.hi+'</td>'
+        +'<td style="text-align:right"><b>'+(r.tot>=0?'+':'')+r.tot+'</b></td></tr>';
+    g+='</table></div>';
+    g+='<div class="lgnote" style="margin-top:6px">순증이 꾸준히 큰 채널이 <b>입력 추가 1순위</b>입니다. '
+      +'0 근처면 그 채널은 결과를 예고하지 못합니다. <b>실적 발표와 CapEx는 여기 없습니다</b> — '
+      +'해석이 양방향이라 부호를 고정할 수 없고, 고정하면 국면이 바뀔 때 통째로 틀립니다.</div>';
+  }
+
+  /* ③ (A) 사유별 — 즉시 고칠 목록 */
+  const aKeys=Object.keys(aCount).sort((p,q2)=>aCount[q2]-aCount[p]);
+  g+='<div class="lgsec"><span class="t">(A) 프로세스 결함</span><span class="m">지금 고칠 수 있는 것</span></div>';
+  if(!aKeys.length)g+='<div class="lgnote" style="color:var(--up)">해당 없음 — 판정 시점 산출 상태에서 발견된 결함이 없습니다.</div>';
+  else{
+    g+='<div class="lgscroll"><table class="lgtbl"><tr><th>사유</th><th style="text-align:right">건수</th><th>뜻</th></tr>';
+    for(const k2 of aKeys){ const d=(REV_A.find(r=>r[0]===k2)||[])[1]||'';
+      g+='<tr><td><b>'+esc(k2)+'</b></td><td style="text-align:right">'+aCount[k2]+'</td><td><small>'+esc(d)+'</small></td></tr>'; }
+    g+='</table></div>';
+  }
+
+  /* ④ 사건 목록 — 상·중이었는데 하위 25%로 끝난 건. 가장 설명이 필요한 표본이다. */
+  if(cases.length){
+    cases.sort((p,q2)=>p.x-q2.x);
+    g+='<div class="lgsec"><span class="t">설명이 필요한 사건</span><span class="m">상·중 등급 → 하위 25% · 최대 20건</span></div>';
+    g+='<div class="lgscroll"><table class="lgtbl">'
+      +'<tr><th class="nmc">종목</th><th>판정일</th><th>등급</th><th style="text-align:right">초과수익</th>'
+      +'<th>원인</th><th>채널</th><th style="text-align:right">CapEx YoY</th><th>참고</th></tr>';
+    for(const o of cases.slice(0,20)){
+      const rc=o._rc, L=o._later;
+      const cxy=(L&&L.capexQ!=null&&L.capexY!=null&&Math.abs(L.capexY)>0)
+        ? ((Math.abs(L.capexQ)/Math.abs(L.capexY)-1)*100) : null;
+      const chan=[].concat(rc.dir.map(d=>'↑'+d),rc.opp.map(d=>'↓'+d),
+        rc.surpOpp?['↔실적 부호 반대']:[],(rc.earnIn&&!rc.surpOpp)?['·실적 발표']:[]).join(' · ');
+      g+='<tr><td class="nmc"><b>'+esc(glName(o.id))+'</b></td><td><small>'+esc(o.day)+'</small></td>'
+        +'<td>'+esc(o.tier||'—')+'</td>'
+        +'<td style="text-align:right" class="lgneg">'+fmt(o.x)+'</td>'
+        +'<td><b>'+esc(rc.cause)+'</b>'+(rc.A.length?'<br><small class="muted">'+esc(rc.A.join(' · '))+'</small>':'')+'</td>'
+        +'<td><small>'+esc(chan||'—')+'</small></td>'
+        +'<td style="text-align:right">'+(cxy!=null?((cxy>=0?'+':'−')+Math.abs(cxy).toFixed(0)+'%'):'—')+'</td>'
+        +'<td><a href="'+glNewsURL(o.id,o.day,hz)+'" target="_blank" rel="noopener">뉴스</a></td></tr>';
+    }
+    g+='</table></div>';
+    g+='<div class="lgnote" style="margin-top:6px">CapEx YoY는 <b>분류에 쓰이지 않습니다</b> — 참고 표시입니다. '
+      +'급증을 악재로 못 박으면 인프라 투자 국면에서, 호재로 못 박으면 과잉투자 국면에서 통째로 틀립니다. '
+      +'뉴스 링크도 자동 판정에 쓰지 않습니다(감성 판정 = 새 임의 파라미터 덩어리). '
+      +'<b>B*가 특정 업종·국면에 몰리는지</b>를 사람이 눈으로 확인하는 용도입니다.</div>';
+  }
   return g;
 }
 function lgViewTool(){
