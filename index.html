@@ -4282,17 +4282,29 @@ function diagCollect(){
   const nn=rows.filter(r=>r.k.ratioNow!=null).map(r=>r.k.ratioN).filter(v=>v!=null).sort((a,b)=>a-b);
   const fundMiss=rows.filter(r=>fundMissing(r.id));
   return {
-    빌드:'v4.37 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v4.38 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     판정로그:(function(){ const ds=Object.keys(S.glog||{}).sort();
       return ds.length?(ds.length+'일 · '+ds[0]+' ~ '+ds[ds.length-1]+(S.glSaved?' · 오늘 기록됨':' · 오늘 미기록')):'없음(수집 시작 전)'; })(),
     상수부채:CONST_LOG.filter(r=>/부채/.test(String(r.cls||''))).map(r=>r.k+'='+r.v+' ['+r.ver+']'),
     /* (v4.35) 워커 v6.7 짝 확인 — 이벤트 채널이 실제로 들어오고 있는가.
      * 워커가 구버전이면 전부 0으로 나오고 판단 감사의 (B)·(B*)가 영영 만들어지지 않는다.
      * 조용히 'C 불가피'만 쌓이므로, 여기서 눈에 보이게 해 둔다(§22-⑮). */
-    이벤트채널:(function(){ const cnt={실적:0,애널액션:0,가이던스:0,개정:0,CapEx:0};
+    /* (v4.38) 채널을 **객체의 존재**가 아니라 **내용의 존재**로 센다.
+     * 실측(2026-08-27 · NVDA · 워커 v6.8): 야후가 cashflowStatementHistoryQuarterly에서
+     * 분기 `capitalExpenditures`를 더 이상 주지 않는다 — **날짜만 오고 값은 전부 null**이다.
+     * 그런데 `capex`는 fcf·ocf를 담은 객체라 truthy이고, 구 카운터는 이를 '도착'으로 셌다.
+     * **채널이 비어 있는데 화면은 정상이라고 말하는 상태** — 관측 장치가 자기 자신에 대해
+     * 거짓 양성을 내는 것이며, §22-㉒가 경계하는 실패의 거울상이다.
+     * CapEx와 현금흐름을 갈라 **어느 쪽이 없는지** 바로 읽히게 한다. */
+    이벤트채널:(function(){ const cnt={실적:0,애널액션:0,가이던스:0,개정:0,CapEx:0,현금흐름:0};
+      const has=o=>!!(o&&typeof o==='object'&&Object.keys(o).some(k2=>o[k2]!=null));
       for(const id in S.stocks){ const a=(S.cache[id]||{}).ana||{};
-        if(a.surp)cnt.실적++; if(a.ugd)cnt.애널액션++; if(a.est)cnt.가이던스++;
-        if(a.rev)cnt.개정++; if(a.capex)cnt.CapEx++; }
+        if(Array.isArray(a.surp)&&a.surp.length)cnt.실적++;
+        if(has(a.ugd))cnt.애널액션++;
+        if(has(a.est))cnt.가이던스++;
+        if(has(a.rev))cnt.개정++;
+        if(a.capex&&Array.isArray(a.capex.q)&&a.capex.q.some(x=>x&&x.v!=null))cnt.CapEx++;
+        if(a.capex&&(a.capex.fcf!=null||a.capex.ocf!=null))cnt.현금흐름++; }
       return cnt; })(),
     ADX관측:(function(){ const a=rows.map(r=>r.k.adx).filter(v=>v!=null).sort((x,y)=>x-y);
       const z=rows.filter(r=>r.k.adxZ!=null).length;
@@ -4405,9 +4417,15 @@ function diagRender(){
    * 0이 아닌지 확인하라"고 지시하는데, diagCollect가 값을 만들기만 하고 diagRender가
    * 그리지 않아 **화면에 존재하지 않는 항목을 확인하라고 안내**하고 있었다.
    * 같은 상태였던 ADX관측·상수부채·환율출처·환율미확보도 함께 복구한다. */
+  /* (v4.38) 꼬리 문구가 「워커가 v6.7 미만」으로 원인을 고정하고 있었다 — §22-㉓을 쓴
+   * 바로 다음 판에서 같은 실수를 했다. 0의 원인은 **워커 버전**일 수도 **야후 커버리지**일
+   * 수도 있고, 실제로 CapEx는 후자다. 지목하지 말고 확인 경로를 준다.
+   * CapEx는 경고 조건에서 뺀다 — 야후가 주지 않는 값에 빨간불을 켜면 §22-㉖ 위반이다. */
   g+=row('이벤트 채널',esc2(JSON.stringify(d.이벤트채널))
-    +'<span style="color:var(--muted)"> — 하나라도 0이면 워커가 v6.7 미만(§22-⑮)</span>',
-    Object.keys(d.이벤트채널).some(k2=>d.이벤트채널[k2]===0));
+    +'<span style="color:var(--muted)"> — 0의 원인은 <b>워커 버전</b>일 수도 <b>야후 커버리지</b>일 수도 '
+    +'있습니다. <b>/summary?sym=NVDA</b>를 직접 열어 해당 키를 확인하세요. '
+    +'실측(2026-08-27): 야후가 분기 CapEx를 주지 않아 <b>CapEx=0은 정상</b>이며 경고에서 제외합니다</span>',
+    ['실적','애널액션','가이던스','개정','현금흐름'].some(k2=>d.이벤트채널[k2]===0));
   g+=row('ADX 관측',d.ADX관측?esc2(JSON.stringify(d.ADX관측))
     +'<span style="color:var(--muted)"> — 표시·로그 전용 · 판정 미반영(§19.14)</span>':'—');
   g+=row('성분 결측',list(d.성분결측),bad(d.성분결측));
