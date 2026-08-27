@@ -3826,7 +3826,13 @@ function newsSectionHTML(id,st){
 /* (v4.22) ETF는 재무제표가 없어 fund가 영원히 비어 있다. 주식과 같은 기준으로 보면
  * 매 패스마다 전 ETF를 '미수신'으로 재조회하게 된다 — ETF는 etf 필드로 판단한다. */
 const fundMissing=id=>{ const c=S.cache[id], st=S.stocks[id];
-  if(st&&assetType(st)==='etf') return !(c&&c.etf&&(c.etf.exp!=null||c.etf.assets!=null||c.etf.cat));
+  /* (v4.36) '값이 도착했는가'가 아니라 '조회한 적이 있는가'를 묻는다.
+   * 야후는 KRX 상장 ETF에 fundProfile을 주지 않는다 — 실측(2026-08-27, 069500.KS):
+   * /summary?sym=069500.KS&t=etf → HTTP 200, exp·assets·yld·nav·cat·family 전부 null.
+   * 값 도착을 조건으로 두면 이 술어는 영원히 참이고, summaryStale이 OR로 묶여 있어
+   * ana.ts 3일 신선도가 통째로 무력화된다 → 접속마다 전량 재조회 + force 토스트 폭풍.
+   * c.etf.ts는 '언제 물어봤나'이며 값이 전부 null이어도 존재한다(§22-⑫: null≠0). */
+  if(st&&assetType(st)==='etf') return !(c&&c.etf&&c.etf.ts);
   const f=c&&c.fund;
   if(!(f&&(f.roe!=null||f.epsFwd!=null||f.margin!=null)))return true;
   /* (v4.28.1) 스키마 마이그레이션. v4.28에서 통화 태그(fcur/qcur)가 새로 생겼는데
@@ -3861,7 +3867,28 @@ function fxURL(from,to){
   if(!/^https:\/\//.test(base))return null;
   return base+'/fx?from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to);
 }
-async function fetchSummary(id,force){
+/* (v4.36) ETF 조회 흔적. 값은 하나도 지어내지 않는다 — 전부 null로 둔다(§22-⑫).
+ * nod는 '왜 비었나'의 관측 코드다:  404 = 야후가 모듈 자체를 주지 않음
+ *                                  200 = 응답은 왔으나 펀드 필드가 전부 비어 있음
+ *                                    0 = 값이 정상 도착 (미국 ETF)
+ * 이미 받아 둔 값이 있으면 덮지 않는다. */
+function etfProbeMiss(id,nod){
+  if(!S.cache[id])S.cache[id]={};
+  const p=S.cache[id].etf||{};
+  S.cache[id].etf=Object.assign(
+    {exp:null,assets:null,yld:null,nav:null,cat:null,family:null,beta3y:null},
+    p,{nod:nod,ts:Date.now()});
+  S.cache[id].ana={n:null,tgt:null,ts:Date.now()};   // ana.ts로 3일 캐시 성립
+  saveCache(id,true);
+}
+/* (v4.36) 요약 조회 실패를 토스트가 아니라 관측으로 남긴다. 자동 재시도 패스는
+ * quiet로 돌므로 화면에는 안 뜨고, 자기점검 패널에서 한 줄로 읽힌다. */
+function sumErrPut(id,msg){ S.sumErr=S.sumErr||{}; S.sumErr[id]=msg; }
+function sumErrClr(id){ if(S.sumErr)delete S.sumErr[id]; }
+/* (v4.36) force가 두 가지 뜻을 겸하고 있었다 — ①캐시 스킵 무시 ②토스트 발화.
+ * 자동 재시도 패스는 ①만 필요한데 ②가 딸려 와 접속마다 미수신 종목 수만큼
+ * 오류 토스트가 났다. quiet로 ②만 끈다. */
+async function fetchSummary(id,force,quiet){
   const st=S.stocks[id]; if(!st)return;
   const ch=S.cache[id];
   // 캐시 스킵 조건: ana가 3일 이내로 신선 AND fund(v5 재무·EPS)가 이미 존재할 때만.
@@ -3869,11 +3896,25 @@ async function fetchSummary(id,force){
   if(!summaryStale(id,force)) return;   // (v4.11) 스킵 조건 단일화 — 위 상수 참조
   const isEtf=(assetType(st)==='etf');
   const u=summaryURL(st.symbol,isEtf);
-  if(!u){ if(force)toast('애널리스트 자동 조회는 커스텀 워커 프록시 설정 후 가능합니다','err'); return; }
+  if(!u){ if(force&&!quiet)toast('애널리스트 자동 조회는 커스텀 워커 프록시 설정 후 가능합니다','err'); return; }
   try{
     const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),9000);
     const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(to);
-    if(!res.ok){ if(force)toast('애널리스트 자동 조회 실패(HTTP '+res.status+') — 워커가 /summary 지원 최신 버전인지 확인하세요','err'); return; }
+    if(!res.ok){
+      /* (v4.36) 야후 404 = "이 심볼에 그 모듈이 존재하지 않는다"는 관측 결과이지
+       * 전송 실패가 아니다. 그냥 return하면 c.etf가 영영 안 생겨 fundMissing이
+       * 풀리지 않는다. 값은 채우지 않고 사실만 기록한다.
+       * ★ 401·403·429·5xx는 그대로 실패로 둔다 — 진짜 장애를 데이터로 둔갑시키지 않는다.
+       * ★ 주식 경로의 404는 삼키지 않는다 — 상장폐지·티커 변경의 이상신호다. */
+      if(isEtf&&res.status===404){ etfProbeMiss(id,404); sumErrClr(id); return; }
+      sumErrPut(id,'HTTP '+res.status);
+      /* (v4.36) 꼬리 문구가 상태코드와 무관하게 '워커 버전'으로 고정돼 있어 404의
+       * 원인을 워커 쪽으로 오도했다. 실제로는 워커가 야후 상태를 통과시킨 것뿐이다. */
+      if(force&&!quiet)toast('애널리스트 자동 조회 실패(HTTP '+res.status+') — '
+        +(res.status===404?'야후에 이 심볼의 재무·펀드 모듈이 없습니다'
+                          :'워커가 /summary 지원 최신 버전인지 확인하세요'),'err');
+      return;
+    }
     const j=await res.json();
     if(isEtf){
       /* (v4.22) ETF 축약 응답 — 보수율·순자산·배당수익률·카테고리·운용사.
@@ -3881,11 +3922,18 @@ async function fetchSummary(id,force){
       const gn=x=>(x!=null&&isFinite(x))?+x:null;
       const e={exp:gn(j.exp),assets:gn(j.assets),yld:gn(j.yld),nav:gn(j.nav),
         cat:j.cat||null,family:j.family||null,beta3y:gn(j.beta3y),ts:Date.now()};
-      if(e.exp!=null||e.assets!=null||e.yld!=null||e.cat){
-        if(!S.cache[id])S.cache[id]={};
-        S.cache[id].etf=e; S.cache[id].ana={n:null,tgt:null,ts:Date.now()};   // ana.ts로 3일 캐시 성립
-        saveCache(id,true); S.calc[id]=compute(id); renderSoon();
-      }
+      /* (v4.36) 쓰기 게이트를 없앤다. 두 가지를 동시에 고친다.
+       *  ⓐ 실측된 주 원인 — 국내 ETF는 야후가 200을 주면서 전 필드를 null로 낸다.
+       *     게이트가 막아 c.etf가 아예 안 생겼고, fundMissing이 영구 참이 됐다.
+       *  ⓑ 비대칭 검사(§19.10) — 이 게이트는 yld를 세는데 fundMissing은 안 셌다.
+       *     배당수익률만 도착하는 종목은 '저장은 되는데 미수신은 안 풀리는' 상태였다.
+       * 값을 지어내지 않는다 — 전부 null 그대로 저장하고 nod에 사유만 남긴다. */
+      const hasV=(e.exp!=null||e.assets!=null||e.yld!=null||e.nav!=null||e.cat||e.family);
+      e.nod=hasV?0:200;
+      if(!S.cache[id])S.cache[id]={};
+      S.cache[id].etf=e; S.cache[id].ana={n:null,tgt:null,ts:Date.now()};   // ana.ts로 3일 캐시 성립
+      sumErrClr(id);
+      saveCache(id,true); S.calc[id]=compute(id); renderSoon();
       return;
     }
     let ana=null, fund=null;
@@ -3930,7 +3978,7 @@ async function fetchSummary(id,force){
       ana={n:g(fd.numberOfAnalystOpinions),tgt:g(fd.targetMeanPrice),
            rec:g(fd.recommendationMean),lg:null,earn:null,rt:null,ts:Date.now()};
     }
-    if(!ana||(ana.n==null&&ana.tgt==null&&ana.lg==null&&!fund)){ if(force)toast('야후 응답에 이 종목의 애널리스트 정보가 없습니다','err'); return; }
+    if(!ana||(ana.n==null&&ana.tgt==null&&ana.lg==null&&!fund)){ if(force&&!quiet)toast('야후 응답에 이 종목의 애널리스트 정보가 없습니다','err'); return; }
     if(!S.cache[id])S.cache[id]={};
     S.cache[id].ana=ana;
     if(fund&&(fund.roe!=null||fund.margin!=null||fund.revG!=null||fund.epsG!=null||fund.de!=null||fund.epsFwd!=null||fund.revPS!=null)) S.cache[id].fund=fund;
@@ -3948,14 +3996,18 @@ async function fetchSummary(id,force){
     }
     saveCache(id,true);   // (v4.13) 재무·애널은 비싸다 — 스로틀 예외 (§19.9)
     S.calc[id]=compute(id); renderSoon();
-    if(force){
+    sumErrClr(id);
+    if(force&&!quiet){
       const bits=[];
       if(ana.n!=null)bits.push(ana.n+'명');
       if(fund&&fund.roe!=null)bits.push('ROE '+fund.roe.toFixed(0)+'%');
       if(ana.earn)bits.push('실적 '+new Date(ana.earn*1000).toLocaleDateString('ko-KR'));
       toast(st.name+' 자동조회 갱신'+(bits.length?': '+bits.join(' · '):''));
     }
-  }catch(e){ if(force)toast('애널리스트 자동 조회 오류 — 워커 /summary 미지원 또는 네트워크 문제','err'); }
+  }catch(e){
+    sumErrPut(id,(e&&e.name==='AbortError')?'타임아웃(9s)':String((e&&e.message)||e));
+    if(force&&!quiet)toast('애널리스트 자동 조회 오류 — 워커 /summary 미지원 또는 네트워크 문제','err');
+  }
 }
 let sumBusy=false;
 /* (v4.11) 요약 패스. 조회 로직·임계값은 건드리지 않고 세 가지만 바꾼다.
@@ -3977,7 +4029,9 @@ async function refreshSummaries(force){
     const again=ids.filter(fundMissing);
     if(again.length){
       S.sumProg={done:0,total:again.length,retry:true}; updDataChip();
-      for(const id of again){ await fetchSummary(id,true); S.sumProg.done++; updDataChip(); await sleep(400); }
+      /* (v4.36) quiet=true — 이 패스는 캐시 스킵만 무시하면 된다. 토스트는 사용자가
+       * ⟳로 직접 부른 경우에만 뜬다. 실패는 S.sumErr에 쌓여 자기점검 패널로 간다. */
+      for(const id of again){ await fetchSummary(id,true,true); S.sumProg.done++; updDataChip(); await sleep(400); }
     }
   }finally{ sumBusy=false; S.sumProg=null; updDataChip(); renderSoon();
     syncFX();   /* (v4.29) 패스가 스킵으로 끝났든 조회로 끝났든, 환율 결손은 여기서 다시 훑는다 */ }
@@ -4228,7 +4282,7 @@ function diagCollect(){
   const nn=rows.filter(r=>r.k.ratioNow!=null).map(r=>r.k.ratioN).filter(v=>v!=null).sort((a,b)=>a-b);
   const fundMiss=rows.filter(r=>fundMissing(r.id));
   return {
-    빌드:'v4.35 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v4.36 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     판정로그:(function(){ const ds=Object.keys(S.glog||{}).sort();
       return ds.length?(ds.length+'일 · '+ds[0]+' ~ '+ds[ds.length-1]+(S.glSaved?' · 오늘 기록됨':' · 오늘 미기록')):'없음(수집 시작 전)'; })(),
     상수부채:CONST_LOG.filter(r=>/부채/.test(String(r.cls||''))).map(r=>r.k+'='+r.v+' ['+r.ver+']'),
@@ -4249,7 +4303,14 @@ function diagCollect(){
     등급분포:rows.reduce((a,r)=>(a[r.k.tier||'범위밖']=(a[r.k.tier||'범위밖']||0)+1,a),{}),
     성분결측:rows.filter(r=>(r.k.qMissW||0)>0||(r.k.aMissW||0)>0)
       .map(r=>r.nm+'('+[].concat(r.k.qMissW>0?['종합 '+r.k.qMissW+'%']:[],r.k.aMissW>0?['매력 '+r.k.aMissW+'%']:[]).join('·')+')'),
-    재무미수신:fundMiss.map(r=>r.nm),
+    /* (v4.36) ETF에 야후 펀드정보가 없는 것은 구조적 정상이다(v4.26이 종합점수에서
+     * 내린 판단과 같은 이유). 주식의 '재무 미수신'과 한 줄에 섞어 빨갛게 칠하면
+     * 정상을 결함으로 읽게 된다. 행을 나누고 ETF 쪽은 경고색을 쓰지 않는다. */
+    재무미수신:fundMiss.filter(r=>assetType(S.stocks[r.id])!=='etf').map(r=>r.nm),
+    ETF펀드없음:rows.filter(r=>assetType(S.stocks[r.id])==='etf'&&((r.ch.etf||{}).nod))
+      .map(r=>r.nm+'('+r.ch.etf.nod+')'),
+    요약조회실패:Object.keys(S.sumErr||{}).filter(id=>S.stocks[id])
+      .map(id=>nm(id)+'('+S.sumErr[id]+')'),
     이격계산불가:rows.filter(r=>r.k.ratioNow==null).map(r=>r.nm+'('+((r.ch.t||[]).length)+'봉)'),
     데이터지연:rows.filter(r=>r.k.dataStale).map(r=>r.nm),
     가격이상:rows.filter(r=>r.k.priceAnomaly).map(r=>r.nm),
@@ -4307,6 +4368,10 @@ function diagRender(){
   g+=row('등급 분포',esc2(JSON.stringify(d.등급분포)));
   g+=row('성분 결측',list(d.성분결측),bad(d.성분결측));
   g+=row('재무 미수신',list(d.재무미수신),bad(d.재무미수신));
+  g+=row('ETF 펀드정보',bad(d.ETF펀드없음)?(d.ETF펀드없음.map(esc2).join(' · ')
+    +'<span style="color:var(--muted)"> — 404=야후에 모듈 없음 · 200=응답은 왔으나 전부 빔. 국내 ETF는 구조적 정상</span>')
+    :'<span style="color:var(--up)">전부 수신</span>');
+  g+=row('요약조회 실패',list(d.요약조회실패),bad(d.요약조회실패));
   g+=row('이격 계산불가',list(d.이격계산불가));
   g+=row('데이터 지연',list(d.데이터지연),bad(d.데이터지연));
   g+=row('가격 이상',list(d.가격이상),bad(d.가격이상));
