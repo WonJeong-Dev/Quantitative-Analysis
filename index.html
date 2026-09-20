@@ -362,12 +362,67 @@
     .g-fv{grid-area:fv}.g-rs{grid-area:rs;text-align:right}.g-st{grid-area:st}.g-ch{grid-area:ch}
     .rsi{text-align:right}
   }
+
+/* v5.2: calm desktop workspace, compact touch layout, accessible input states */
+:root{--bg:#f3f6f5;--text:#152e31;--sub:#526b70;--muted:#526b70;--line:#dbe5e3;--accent:#086b60;--accent-soft:#e3f2ed;--radius:16px;--shadow:0 2px 8px rgba(17,55,48,.035)}
+body{font-size:15px;line-height:1.6}
+.wrap{max-width:1320px;padding:26px 24px 80px}
+header{margin-bottom:26px}.logo{letter-spacing:-.8px;font-size:22px}.logo small{margin-top:2px;font-size:12px}
+.overview{display:flex;justify-content:space-between;align-items:center;gap:30px;padding:30px 32px;background:#163f3a;color:#fff;border-radius:20px;margin:0 0 22px;box-shadow:0 12px 30px #163f3a0a}
+.eyebrow{font-size:10px;font-weight:800;letter-spacing:2.3px;color:#ade0cf}
+.overview h1{font-size:clamp(21px,2.4vw,30px);font-weight:700;letter-spacing:-1px;margin:8px 0}
+.overview p{color:#c4dbd6;font-size:13px}.overview #workspaceStatus{font-size:12px;line-height:1.8;white-space:pre-line;border-left:1px solid #ffffff30;padding-left:28px;min-width:225px;color:#e5f4ed}
+.marketbar{gap:10px;margin-bottom:18px;scrollbar-width:thin}.idx{padding:10px 15px;min-width:140px;border-radius:12px}.idx .nm{font-size:12px}.idx .vl{font-size:16px}
+nav.tabs{border-bottom:1px solid var(--line);padding:0 0 12px;gap:5px;margin-bottom:20px}nav.tabs button.tab{font-size:14px;padding:10px 15px}nav.tabs button.tab.on{background:var(--accent)}
+.controls{padding:14px;background:#fff;border:1px solid var(--line);border-radius:14px;gap:10px;margin-bottom:14px}
+.searchbox{display:flex;align-items:center;position:relative}.searchbox input{padding-right:35px!important;width:230px!important}.searchbox button{position:absolute;right:3px;width:36px;height:38px;border:0;background:none;font-size:23px;color:var(--sub)}
+.hold-filter{display:flex;align-items:center;gap:7px;font-size:13px;min-height:44px}.hold-filter input{accent-color:var(--accent);width:17px;height:17px}
+.btn,nav.tabs button,.lgt,.lgchip{min-height:44px}.btn.sm{min-height:36px;padding:6px 11px}
+input,select,textarea{border-radius:9px!important}.controls input,.controls select{min-height:44px}
+:focus-visible{outline:3px solid #069487!important;outline-offset:3px!important}
+.btn:active{transform:translateY(1px)}button:disabled{cursor:wait}
+.legend-panel{margin:10px 3px 16px;color:var(--sub);font-size:12px}.legend-panel summary{cursor:pointer;width:fit-content;min-height:32px}.legend-panel .striplegend{margin-top:8px;line-height:2}
+.row{margin-bottom:10px}.row .main{padding:17px 16px}.row.open{box-shadow:0 0 0 1px var(--accent)}.nm .k{line-height:1.4;overflow-wrap:anywhere}.nm .t{margin-top:3px}
+.detail{background:#fbfdfc}.detail .manual{background:#fff}.dsec{margin-top:24px}
+.evidence-card{border:1px solid #cce1da;background:#eef7f3;padding:16px;border-radius:12px;margin-bottom:18px}.evidence-card p{font-size:12px;margin:6px 0;color:var(--sub)}
+.evidence-card dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:12px;font-size:12px}.evidence-card dt{color:var(--sub)}.evidence-card dd{font-weight:600;overflow-wrap:anywhere}
+.modal{border-radius:20px;max-height:90dvh;overflow-y:auto;padding:26px;overscroll-behavior:contain}.modal h2{font-size:20px}.modal .foot{position:sticky;bottom:-26px;background:#fff;padding:14px 0;margin-bottom:0;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line)}
+.dialog-open{overflow:hidden}.login-tagline{color:var(--accent);font-size:13px;margin:8px 0 16px}.mask{backdrop-filter:blur(5px)}
+.lgform{padding:20px;background:#fff}.lggrid{gap:14px}.lggrid label{font-size:12px}.lggrid input,.lggrid select{min-height:44px}.lgtop{gap:12px;align-items:center}.lgtabs{gap:4px}
+.lgscroll{border:1px solid var(--line);border-radius:12px;background:#fff;scrollbar-width:thin;max-width:100%}.lgtbl th{position:sticky;top:0;background:#edf4f1;padding:12px 10px}.lgtbl td{padding:13px 10px;border-bottom:1px solid #edf2f0}.lgtbl tr:hover td{background:#f5faf7}
+.lgtot{border-radius:14px;padding:18px}.lgtot .vl{font-size:25px}.lgnote{font-size:12px;line-height:1.8;padding:14px}.lgalert{line-height:1.8}
+.backup-panel{padding:20px;background:#fff;border:1px solid var(--line);border-radius:14px;margin:0 0 20px}.backup-panel h3{font-size:16px}.backup-panel p{font-size:12px;color:var(--sub);margin:7px 0}.backup-actions{display:flex;flex-wrap:wrap;gap:10px;margin:15px 0}.backup-actions label{display:inline-flex;align-items:center;position:relative;overflow:hidden;cursor:pointer}.backup-actions input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}.import-choice{display:flex;gap:10px;padding:12px;background:#fff;border-bottom:1px solid var(--line);font-size:13px}
+#toasts{width:max-content;max-width:calc(100% - 32px);bottom:max(24px,env(safe-area-inset-bottom));pointer-events:none}.toast{font-weight:500;line-height:1.6}
+.skip-link{position:fixed;top:-100px;left:16px;z-index:999;background:var(--accent);color:white;padding:10px 16px;border-radius:8px}.skip-link:focus{top:10px}
+@media(min-width:881px) and (max-width:1160px){.listhead,.row .main{grid-template-columns:24px minmax(120px,1.2fr) 95px 100px 110px 76px 40px minmax(120px,1fr) 20px;gap:6px}.gradecell .badge{padding:3px 6px}.wrap{padding-inline:16px}}
+@media(max-width:880px){
+ .wrap{padding:16px 14px 50px}header{margin-bottom:18px}.logo{font-size:19px}.head-right{gap:6px}.statuschip{font-size:11px;padding:5px 9px}
+ .overview{padding:24px;gap:16px;align-items:flex-start}.overview #workspaceStatus{min-width:165px;padding-left:18px}
+ nav.tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;position:sticky;top:0;background:var(--bg);z-index:8;padding-top:8px;margin-bottom:14px}nav.tabs button.tab{flex-shrink:0;padding:10px 12px}.tabs .counts{display:none}
+ .evidence-card dl{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .lgtop{flex-wrap:wrap}.lgtabs{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:thin}.lgt{flex-shrink:0}
+}
+@media(max-width:560px){
+ .wrap{padding:14px 12px 35px}.logo small{font-size:10px}.head-right{margin-left:0;width:100%}.head-right #btnDiag{margin-left:auto}header{gap:12px}
+ .overview{display:block;padding:22px 20px;border-radius:16px;margin-bottom:16px}.overview h1{font-size:23px}.overview p{font-size:12px}.overview #workspaceStatus{border-left:0;border-top:1px solid #ffffff30;padding:12px 0 0;margin-top:16px;font-size:12px}
+ .marketbar .idx{min-width:127px}.controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:12px;gap:10px}.controls .spacer{display:none}.searchbox{grid-column:1/-1;grid-row:1}.searchbox input{width:100%!important}.controls select{width:100%;min-width:0}.controls .btn{padding:9px;font-size:13px}
+ input,select,textarea,.lggrid input,.lggrid select,.manual .fld select{font-size:16px!important}.row .main,#boardView.etfcols .row .main{grid-template-columns:18px minmax(0,1fr) 95px 16px;gap:8px;padding:15px 11px}.nm .k{font-size:14px}.nm .t .sec{display:none}.price .p{font-size:15px}.g-fv{font-size:12px}.ts-lab{font-size:10px}.ts-val{font-size:12px}.rank{font-size:11px}
+ .detail{padding:16px 12px!important}.detail .dgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.manual{grid-template-columns:repeat(2,minmax(0,1fr))!important}.dstat{min-width:0}.dstat .v{overflow-wrap:anywhere}.livebox input,.simbox input{max-width:100%}.simbox,.livebox{flex-wrap:wrap}.chart{max-width:100%}
+ .modal{width:100%;max-width:100%!important;border-radius:20px 20px 0 0;max-height:92dvh;padding:22px 18px calc(20px + env(safe-area-inset-bottom))}.mask{padding:0!important;align-items:flex-end!important}.modal .foot{bottom:-22px;padding:12px 0 calc(12px + env(safe-area-inset-bottom));gap:8px}.modal .foot .btn{flex-grow:1}.wrow{grid-template-columns:100px minmax(0,1fr) 35px;gap:8px}.lggrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.lgform{padding:16px 12px}.lggrid input,.lggrid select{min-width:0}.btn.sm,.lgchip{min-height:44px}.lgtbl{font-size:12px}.lgtbl td:first-child{min-width:130px}.lgscroll::after{content:'↔ 표를 좌우로 이동하여 확인하세요';display:block;position:sticky;left:0;padding:8px 12px;font-size:11px;color:var(--sub)}
+ #lgNew{width:100%}.lgcards{grid-template-columns:repeat(2,minmax(0,1fr))!important}.lgtot .vl{font-size:20px}.lgfoot{font-size:11px;line-height:1.7}.evidence-card{padding:14px}.evidence-card dl{gap:10px}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media print{header,.controls,nav.tabs,.marketbar,.mask,.actions,.btn,footer,.legend-panel,.mobile-nav{display:none!important}.wrap{padding:0;max-width:none}.row,.lgtot{break-inside:avoid;box-shadow:none}.overview{background:white;color:black;border:1px solid #aaa}.overview p,.overview #workspaceStatus{color:#222}}
+.searchbox input{border:1px solid var(--line);background:var(--card);padding:8px 11px;box-shadow:none;outline:none;min-width:0}
+.mobile-nav{display:none}.advanced-fields{border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:18px}.advanced-fields summary{cursor:pointer;font-weight:700;font-size:13px;min-height:32px;display:list-item}.advanced-fields[open] summary{margin-bottom:12px}
+@media(max-width:560px){.wrap{padding-bottom:95px}.overview{padding:17px 20px}.overview h1{font-size:23px;margin:4px 0}.overview #workspaceStatus{padding-top:8px;margin-top:10px}.overview .eyebrow{display:none}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:15;gap:6px;border-top:1px solid var(--line);background:#fffffff5;backdrop-filter:blur(12px);padding:9px 12px calc(9px + env(safe-area-inset-bottom))}.mobile-nav button{flex:1;border:0;border-radius:10px;background:transparent;color:var(--sub);font-weight:700;min-height:44px;font-size:13px}.mobile-nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent)}.mobile-nav #mobileAdd{background:var(--accent);color:#fff}#toasts{bottom:calc(76px + env(safe-area-inset-bottom))}.dialog-open .mobile-nav{display:none}}
 </style>
 </head>
 <body>
-<div class="wrap">
+<a class="skip-link" href="#mainContent">본문으로 이동</a>
+<main class="wrap" id="mainContent" tabindex="-1">
   <header>
-    <div class="logo">Quant Stock Board<small>정량지표 기반 적정가 · 매수 추천도 대시보드</small></div>
+    <div class="logo">Quant Stock Board<small>내 판단의 근거를 확인하는 투자 노트</small></div>
     <div class="head-right">
       <span class="statuschip" id="chipConn"><span class="dot" id="dotConn"></span><span id="txtConn">연결 중…</span></span>
       <span class="statuschip" id="chipData"><span class="dot" id="dotData"></span><span id="txtData">데이터 대기</span></span>
@@ -376,9 +431,11 @@
     </div>
   </header>
 
+  <section class="overview" aria-label="오늘의 확인 사항"><div><span class="eyebrow">MY INVESTMENT WORKSPACE</span><h1>나의 투자 현황</h1><p>관심종목 · 판단 근거 · 거래 기록</p></div><div id="workspaceStatus" role="status">로그인 후 나의 데이터를 불러옵니다.</div></section>
+  <div id="networkNotice" class="lgalert" hidden>오프라인입니다. 표시된 데이터의 기준 시각을 확인하세요. 연결이 복구되면 다시 갱신합니다.</div>
   <div class="marketbar" id="marketbar"></div>
 
-  <nav class="tabs">
+  <nav class="tabs" aria-label="시장과 거래기록">
     <button class="tab on" data-tab="KR_stock" title="단축키 1">🇰🇷 국내주식<b class="tcnt"></b></button>
     <button class="tab" data-tab="KR_etf" title="단축키 2">🇰🇷 국내ETF<b class="tcnt"></b></button>
     <button class="tab" data-tab="US_stock" title="단축키 3">🇺🇸 미국주식<b class="tcnt"></b></button>
@@ -398,13 +455,13 @@
       <option value="chg">등락률순</option>
       <option value="name">이름순</option>
     </select>
-    <input type="text" id="searchIn" placeholder="종목명·티커 검색">
+    <div class="searchbox"><input type="search" id="searchIn" aria-label="종목명 또는 티커 검색" placeholder="종목명·티커 검색"><button id="clearSearch" aria-label="검색 지우기" hidden>×</button></div><label class="hold-filter"><input type="checkbox" id="onlyHeld"> 보유만</label>
     <div class="spacer"></div>
     <button class="btn" id="btnRefresh">⟳ 전체 갱신</button>
     <button class="btn primary" id="btnAdd">+ 종목 추가</button>
   </div>
 
-  <div class="striplegend">
+  <details class="legend-panel"><summary>차트 범례와 읽는 법</summary><div class="striplegend">
     <span class="lg"><i style="background:var(--violet-soft);border:1px solid #d9c9f2"></i>매물대 VA(1Y)</span>
     <span class="lg"><i style="background:var(--violet)"></i>POC</span>
     <span class="lg"><i style="background:var(--accent-soft)"></i>볼린저(20,2)</span>
@@ -415,6 +472,7 @@
     <span class="lg"><i style="background:#fff;border:2px solid #555;border-radius:50%"></i>현재가</span>
   </div>
 
+  </details>
   <div class="listhead">
     <div>#</div><div>종목</div><div>현재가</div><div>종합 · 가격매력</div><div>적정목표가 · 여력</div><div style="text-align:center">매수등급</div><div style="text-align:center">RSI</div><div>포지션 (52주 범위)</div><div></div>
   </div>
@@ -445,7 +503,7 @@
     데이터: Yahoo Finance(시세·재무·실적일·애널) · Google News(헤드라인) · 캐시: Firebase Firestore<br>
     본 도구는 개인 참고용 계산기이며, 투자 자문 및 매매 권유가 아닙니다. 어떤 지표 조합도 수익을 보장하지 않으며 투자 판단과 책임은 본인에게 있습니다.
   </footer>
-</div>
+</main>
 
 <!-- (v4.31) 액면분할·병합 알림 — 마지막 확인 이후 새로 감지된 것만 띄운다 -->
 <div class="mask" id="maskSplit">
@@ -496,14 +554,13 @@
     <div id="wQ"></div>
     <div class="dsec">가격매력도 가중치 <small>지금 이 가격의 매력</small></div>
     <div id="wA"></div>
-    <div class="dsec">기대 적정가 혼합 비중 <small>내 적정가 미입력 시 자동 제외·재정규화</small></div>
-    <div id="wFv"></div>
+    <div id="wFv" hidden></div><div class="lgnote">적정가 모델의 혼합 규칙은 버전별로 고정됩니다. 점수 가중치 변경은 이후 판단 기록에 함께 저장됩니다.</div>
     <div class="mrow" style="margin-top:12px"><label>실시간 시세 주기 (초) — 활성 탭 현재가 · 미국 프리/정규/애프터, 한국 네이버 실시간</label>
       <input type="number" id="setQuote" min="10" max="600" step="5"></div>
     <div class="mrow"><label>캔들·지표 갱신 주기 (분) — 활성 탭 일봉 경량 갱신</label>
       <input type="number" id="setRefresh" min="1" max="120" step="1"></div>
     <div class="mrow"><label>커스텀 CORS 프록시 (선택, {url} 자리에 대상 URL 삽입)</label>
-      <input type="text" id="setProxy" placeholder="예: https://my-worker.example.workers.dev/?u={url}"></div>
+      <input type="text" id="setProxy" placeholder="예: https://my-worker.example.workers.dev/?url={url}"></div>
     <div class="mrow"><label>시세 조회 경로 — 공개 프록시는 응답을 갈아끼울 수 있는 자리입니다</label>
       <select id="setProxyMode"></select>
       <small style="display:block;margin-top:4px;color:var(--muted);font-size:11.5px">
@@ -516,23 +573,149 @@
 <!-- 로그인 -->
 <div class="mask" id="loginMask">
   <div class="modal" style="max-width:400px;text-align:center">
-    <h2 style="margin-bottom:6px">Quant Stock Board</h2>
+    <h2 style="margin-bottom:6px">Quant Stock Board</h2><p class="login-tagline">가족의 투자 기록, 각자의 안전한 공간.</p>
     <div class="note" style="margin-bottom:14px">지정된 구글 계정으로만 접근할 수 있는 개인 보드입니다.</div>
     <button class="btn primary" id="btnGoogleLogin" style="width:100%">Google 계정으로 로그인</button>
   </div>
 </div>
 
-<div id="toasts"></div>
+<nav class="mobile-nav" aria-label="모바일 주요 메뉴"><button data-mobile-view="board">관심종목</button><button data-mobile-view="ledger">거래·자산</button><button id="mobileAdd">+ 기록</button></nav>
+<div id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>/* Pure domain functions. Units, identity and observation time are explicit. */
+(function(root,factory){
+  const api=factory(); if(typeof module==='object'&&module.exports)module.exports=api;
+  else root.QADomain=api;
+})(globalThis,function(){
+  'use strict';
+  const num=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
+  const isYMD=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')&&Number.isFinite(Date.parse(v+'T00:00:00Z'))&&new Date(v+'T00:00:00Z').toISOString().slice(0,10)===v;
+  const accountKind=a=>String(a||'general').split(':')[0];
+  const instrument=t=>[t.market,t.type||'stock',t.code?String(t.code).trim().toUpperCase():'name:'+String(t.name||'').trim()].join('|');
+  const positionKey=t=>instrument(t)+'|'+(t.account||'general');
+  const debtRatio=(manual,auto)=>{
+    if(manual&&num(manual.de)!==null){
+      if(!['ratio','percent'].includes(manual.deUnit))return null; // legacy manual units are unknowable
+      return +manual.de/(manual.deUnit==='percent'?100:1);
+    }
+    if(auto&&num(auto.deRatio)!==null)return +auto.deRatio;
+    // Legacy automatic field came directly from Yahoo's percent-valued debtToEquity.
+    return auto&&num(auto.de)!==null?+auto.de/100:null;
+  };
+  function tradeError(t){
+    if(!t||!isYMD(t.date))return '일자를 확인하세요';
+    if(!['KR','US'].includes(t.market)||!['stock','etf'].includes(t.type||'stock')||!['buy','sell'].includes(t.side))return '시장·자산·구분을 확인하세요';
+    if(!String(t.name||'').trim()||!String(t.code||'').trim())return '종목명과 코드가 필요합니다';
+    if(!/^[A-Za-z0-9.^=\-]{1,20}$/.test(t.code))return '종목코드를 확인하세요';
+    if(!(num(t.price)>0)||!(num(t.qty)>0))return '단가와 수량은 유한한 양수여야 합니다';
+    if(t.sequence!=null&&(!Number.isInteger(+t.sequence)||+t.sequence<1))return '당일 순번은 1 이상의 정수여야 합니다';
+    if(!/^(general|isa|pension|irp|cma)(:[^|\n\r]{1,40})?$/.test(t.account||'general'))return '계좌를 확인하세요';
+    return null;
+  }
+  const fingerprint=t=>JSON.stringify([positionKey(t),t.date,t.side,+t.qty,+t.price,t.sequence??null]);
+  function importPlan(rows,existing){
+    const knownIds=new Set(existing.filter(t=>t.sourceId).map(t=>(t.account||'general')+'|'+t.sourceId));
+    const known=new Set(existing.map(fingerprint));
+    const add=[],duplicate=[],invalid=[],candidates=[];
+    rows.forEach((r,index)=>{
+      if(!r||typeof r!=='object'){invalid.push({index,error:'객체가 아닙니다'});return;}
+      const side=r.구분??r.side;
+      const t={date:String(r.일자??r.date??''),side:side==='매도'?'sell':side==='매수'?'buy':side,
+        market:r.시장??r.market,type:r.유형??r.type??'stock',account:r.계좌??r.account??'general',
+        name:String(r.종목명??r.name??'').trim(),code:String(r.코드??r.code??'').trim().toUpperCase(),
+        price:num(r.단가??r.price),qty:num(r.수량??r.qty),sequence:num(r.순번??r.sequence),
+        sourceId:String(r.sourceId??r.거래ID??'').trim(),snap:null,snapshotStatus:'historical-unverified'};
+      const error=tradeError(t); if(error){invalid.push({index,error});return;}
+      const sid=t.account+'|'+t.sourceId,fp=fingerprint(t);
+      if(t.sourceId&&knownIds.has(sid)){duplicate.push(t);return;}
+      if(!t.sourceId&&known.has(fp))candidates.push(t); else add.push(t);
+      known.add(fp); if(t.sourceId)knownIds.add(sid);
+    });
+    return {add,duplicate,invalid,candidates};
+  }
+  function positions(trades,splitFactor){
+    const groups=new Map();
+    for(const t of trades){const key=positionKey(t);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(t);}
+    return [...groups].map(([key,rows])=>{
+      rows=rows.slice().sort((a,b)=>a.date.localeCompare(b.date)||((num(a.sequence)??Infinity)-(num(b.sequence)??Infinity))||String(a.id||'').localeCompare(String(b.id||'')));
+      const t=rows[0],p={key,market:t.market,type:t.type||'stock',name:t.name,code:t.code||'',account:t.account||'general',
+        qty:0,cost:0,realized:0,buys:0,sells:0,buyQty:0,sellQty:0,sellAmt:0,adj:false,over:false,
+        first:t.date,last:t.date,firstBuy:null,lastSell:null,snap:null,snaps:[],ids:[],issues:[],valid:true};
+      const days=new Map();
+      rows.forEach(t=>{if(!days.has(t.date))days.set(t.date,[]);days.get(t.date).push(t);});
+      for(const rs of days.values()){
+        if(rs.some(t=>t.side==='buy')&&rs.some(t=>t.side==='sell')&&
+          (rs.some(t=>!(num(t.sequence)>0))||new Set(rs.map(t=>+t.sequence)).size!==rs.length))p.issues.push('당일 매매 순서 미확인');
+      }
+      for(const t of rows){
+        p.name=t.name;p.last=t.date;p.ids.push(t.id);
+        const f=splitFactor(t),q=+t.qty*f,price=+t.price/f;
+        if(!Number.isFinite(q)||!Number.isFinite(price)||q<=0||price<=0){p.issues.push('거래 입력 오류');continue;}
+        if(f!==1)p.adj=true;
+        if(t.side==='buy'){
+          p.qty+=q;p.cost+=q*price;p.buys++;p.buyQty+=q;p.firstBuy??=t.date;
+          if(t.snap&&t.snapshotStatus==='observed'){
+            p.snap??=t.snap;p.snaps.push({d:t.date,q,px:price,s:t.snap});
+          }else p.snapshotIncomplete=true;
+        }else{
+          const avg=p.qty>0?p.cost/p.qty:0;
+          if(q>p.qty+1e-6){p.over=true;p.issues.push('매도 수량이 확인된 보유를 초과');}
+          p.realized+=q*(price-avg);p.cost-=q*avg;p.qty-=q;
+          p.sells++;p.sellQty+=q;p.sellAmt+=q*price;p.lastSell=t.date;
+          if(Math.abs(p.qty)<1e-8){p.qty=0;p.cost=0;}
+        }
+      }
+      p.issues=[...new Set(p.issues)];p.valid=!p.issues.length;
+      if(!p.valid){p.cost=null;p.realized=null;p.snap=null;p.snaps=[];}
+      return p;
+    });
+  }
+  function lastIndex(times,at){let lo=0,hi=times.length-1,res=-1;while(lo<=hi){let m=(lo+hi)>>1;if(times[m]<=at){res=m;lo=m+1;}else hi=m-1;}return res;}
+  // Entry: first regular-session bar opening strictly after the observation.
+  // Exit: closing price of the h-th bar, counting entry as bar 1. Never use an unfinished bar.
+  function forward(chart,observedAt,h,now=Date.now()){
+    if(!chart||!chart.t||!chart.o||!chart.c||!observedAt||!Number.isInteger(h)||h<1)return null;
+    const i=lastIndex(chart.t,observedAt/1000)+1,j=i+h-1;
+    if(j>=chart.t.length||chart.t[j]+86400>now/1000)return null;
+    const a=chart.o[i],b=chart.c[j];if(!(a>0&&b>0&&Number.isFinite(a)&&Number.isFinite(b)))return null;
+    return {value:(b/a-1)*100,entryAt:chart.t[i],exitAt:chart.t[j]};
+  }
+  function stable(value){if(Array.isArray(value))return value.map(stable);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(k=>[k,stable(value[k])]));return value;}
+  function settingsKey(value){return JSON.stringify(stable(value));}
+  const BACKUP_COLLECTIONS=['qa_stocks','qa_settings','qa_trades','qa_fx','qa_splits','qa_rights','qa_shrs','qa_cache','qa_gradelog','qa_bench'];
+  function validateBackup(b){
+    if(!b||b.format!=='qa-board-backup'||b.version!==1||!b.collections||typeof b.collections!=='object')throw Error('지원하지 않는 백업 형식입니다');
+    let count=0;
+    for(const [col,rows] of Object.entries(b.collections)){
+      if(!BACKUP_COLLECTIONS.includes(col)||!Array.isArray(rows))throw Error('알 수 없는 컬렉션');
+      const seen=new Set();
+      for(const row of rows){
+        if(!row||typeof row.id!=='string'||!row.id||row.id.includes('/')||row.id==='.'||row.id==='..'||seen.has(row.id)||!row.data||Array.isArray(row.data)||typeof row.data!=='object')throw Error('문서 형식 또는 중복 ID 오류');
+        seen.add(row.id);count++;
+      }
+    }
+    if(count>20000)throw Error('한 번에 복구할 수 있는 문서 수를 초과했습니다');
+    return count;
+  }
+  return {num,isYMD,accountKind,instrument,positionKey,debtRatio,tradeError,fingerprint,importPlan,positions,lastIndex,forward,settingsKey,BACKUP_COLLECTIONS,validateBackup};
+});
+</script>
 <script>
 /* =====================================================================
  * Quant Stock Board — KR/US 정량분석 대시보드
  * 자동: 시세·캔들(2Y)·RSI·BB·EMA/SMA·매물대·52주·RVOL → Yahoo Finance
  * 수동: PER/PBR/PSR·목표가·종목의견·컨센서스·내 적정가·적립/차익 기준
  * ===================================================================== */
+async function fetchComplete(url,options={}){
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),9000);
+  const abort=()=>ctrl.abort();options.signal?.addEventListener('abort',abort,{once:true});
+  if(options.signal?.aborted)ctrl.abort();
+  try{const r=await fetch(url,{...options,signal:ctrl.signal});const body=await r.text();return new Response(body,{status:r.status,headers:r.headers});}
+  finally{clearTimeout(timer);options.signal?.removeEventListener('abort',abort);}
+}
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAAKbkNAXnpiogXEA_6dpRQUqbcZ2qYau8",
   authDomain: "quantitative-analysis-ed463.firebaseapp.com",
@@ -810,7 +993,7 @@ async function fetchJSON(url,opt){
   for(let i=0;i<chain.length;i++){
     const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),9000);
     try{
-      const res=await fetch(chain[i](url),{signal:ctrl.signal});
+      const res=await fetchComplete(chain[i](url),{signal:ctrl.signal});
       clearTimeout(to);
       if(!res.ok) throw new Error('HTTP '+res.status);
       const j=await res.json();
@@ -888,7 +1071,7 @@ async function ensureFX(from,to){
       if(wu){
         try{
           const ctrl=new AbortController(); const to2=setTimeout(()=>ctrl.abort(),9000);
-          const r=await fetch(wu,{signal:ctrl.signal}); clearTimeout(to2);
+          const r=await fetchComplete(wu,{signal:ctrl.signal}); clearTimeout(to2);
           if(r.ok){ const j=await r.json();
             if(j&&j.v!=null&&isFinite(j.v)&&j.v>0) return fxPut(from,to,j.v,'w:'+(j.src||'?')); }
         }catch(e){}
@@ -1193,14 +1376,14 @@ function qTrend(p,s50,s200,slope50,slope200){
 function qFinance(m,auto){
   const roe = numOr(m&&m.roe, auto&&auto.roe);        // %
   const mg  = numOr(m&&m.margin, auto&&auto.margin);  // 영업이익률 %
-  const de  = numOr(m&&m.de, auto&&auto.de);          // 부채비율 debt/equity (배 또는 %)
+  const de  = QADomain.debtRatio(m,auto);          // 부채비율 debt/equity (배 또는 %)
   const parts=[];
   if(roe!=null) parts.push([pl(roe,[[-10,10],[0,30],[8,50],[15,68],[25,82],[40,92],[60,98]]), 0.45]);
   if(mg!=null)  parts.push([pl(mg ,[[-20,8],[0,32],[8,52],[18,70],[30,84],[45,94]]), 0.35]);
   if(de!=null&&isFinite(de)&&de>=0){
     // Yahoo debtToEquity는 대개 백분율(예: 45.2 = 0.452배)로 옴. 값이 크면 %로 간주해 ÷100.
     // 안전 밴드: 5 이하는 이미 배수(예: 0.8배, 2.5배)일 가능성이 높아 그대로 사용.
-    const d = de>5 ? de/100 : de;
+    const d = de; // normalized ratio, never infer units from magnitude
     parts.push([pl(d,[[0,92],[0.5,82],[1,68],[2,48],[3,30],[5,12]]), 0.20]);
   }
   if(!parts.length)return null;
@@ -1371,7 +1554,7 @@ function fairPSR(growth){
 /* 펀더멘털 기반 적정가 산출.
  * epsFwd: 선행 EPS(1년), epsTtm: 후행 EPS, revPS: 주당매출, growth: 성장률%, quality: 종합점수
  * 반환 { now, target, basis } — now=현재실적기준, target=선행기준(성장반영) */
-function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality){
+function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality, revenueGrowth){
   const gp = (growth!=null&&isFinite(growth))?growth:null;
   /* (v4.4) 선행EPS가 음수면 적자 전환이다. v4.3까지는 '후행·선행 중 하나라도 양수'면 PER
    * 경로로 갔으므로, 과거 흑자로 미래 밸류를 매기는 오류가 났다.
@@ -1379,7 +1562,7 @@ function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality){
    * 선행EPS를 알면 그것이 판정하고, 모를 때만 후행으로 폴백한다. */
   const epsPos = (epsFwd!=null&&isFinite(epsFwd)) ? (epsFwd>0) : (epsTtm!=null&&epsTtm>0);
   if(epsPos){
-    const per = fairPER(gp!=null?gp:8, quality);      // 목표가용: 성장 완전 반영
+    const per = fairPER(gp, quality);      // 목표가용: 성장 완전 반영
     if(per==null)return null;
     // 현재적정가용 PER: 성장을 완화 반영(0으로 죽이지 않음). 성장 상한 25%로만 캡.
     const perNow = fairPER(gp!=null?Math.min(gp,25):6, quality);
@@ -1395,10 +1578,11 @@ function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality){
     return {now, target, basis:'PER'};
   }
   if(revPS!=null&&revPS>0){
-    const psr=fairPSR(gp);
+    const rg=(revenueGrowth!=null&&isFinite(revenueGrowth))?revenueGrowth:null;
+    const psr=fairPSR(rg);
     if(psr==null)return null;
     const now = revPS*psr*0.85;                  // 적자기업 현재값은 소폭 보수(85%)
-    const target = revPS*(1+(gp||0)/100)*psr;    // 미래 매출 반영
+    const target = revPS*(1+(rg||0)/100)*psr;    // 미래 매출 반영
     return {now, target, basis:'PSR'};
   }
   return null;
@@ -1409,7 +1593,7 @@ function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality){
  *  - 목표가가 없거나(신규상장) 커버리지 얇으면 펀더멘털이 주 앵커.
  *  - 현재적정가(하방)는 성장을 '완화 반영'(제거가 아님) — 고성장주가 프리미엄받는 현실 인정. */
 function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, psrReliable, price){
-  const fw=S.settings.fvw;
+  // Valuation weights are versioned model policy, not adjustable UI sliders.
   const num=x=>(x!=null&&x!==''&&isFinite(+x)&&+x>0)?+x:null;
 
   // --- 애널리스트 목표가 (분산 보정) ---
@@ -1432,7 +1616,7 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, psrR
      * EPS는 부호를 살려 전달한다. fundamentalFV의 PER 분기는 내부에서 다시 >0을 검사하므로 안전하다. */
     const sgn=x=>(x!=null&&x!==''&&isFinite(+x))?+x:null;
     fund2=fundamentalFV(sgn(fund.epsFwd),sgn(fund.epsTtm),num(fund.revPS),
-                    (fund.growth!=null&&isFinite(fund.growth))?fund.growth:null, quality);
+                    (fund.growth!=null&&isFinite(fund.growth))?fund.growth:null, quality, fund.revenueGrowth);
   }
 
   // PER 신뢰도(perReliable): 사이클주(반도체·메모리 등)는 저점 EPS로 PER 밸류가 폭주하므로
@@ -1732,7 +1916,7 @@ function compute(id,simPrice){
   const anaAutoTgtEff = badTgt ? null : autoTgt;
 
   // 성장률: 수동 epsG/revG 우선, 없으면 자동. 사이클주 극단 성장률(수백%)은 상한으로 방어.
-  let growthEff = gnum(man.epsG, Feff.epsG) ?? gnum(man.revG, Feff.revG);
+  let growthEff = gnum(man.epsG, Feff.epsG);
   if(growthEff!=null && isFinite(growthEff)){
     // 극단 성장률 상한: 반도체·2차전지 등 사이클 저점 회복기엔 EPS성장률이 수백%로 튐 → 허수.
     // 목표가 산정에 쓰는 성장률은 60%로 캡(그 이상 성장은 지속 불가능 가정).
@@ -1743,7 +1927,7 @@ function compute(id,simPrice){
     epsFwd: gnum(man.epsFwd, Feff.epsFwd),
     epsTtm: gnum(man.epsTtm, Feff.epsTtm),
     revPS:  gnum(man.revPS,  Feff.revPS),
-    growth: growthEff
+    growth: growthEff, revenueGrowth: gnum(man.revG,Feff.revG)
   };
 
   /* (v4.28) ★ 가치지표 자동 산출 — v4.27까지 PER/PBR/PSR은 **수동 입력 전용**이었다.
@@ -1769,6 +1953,7 @@ function compute(id,simPrice){
   { const thi=gnum(man.targetHigh, Feff.tgtHi), tlo=gnum(man.targetLow, Feff.tgtLo), tmn=gnum(man.target, anaAutoTgtEff);
     if(thi!=null&&tlo!=null&&tmn!=null&&tmn>0&&thi>=tlo) tgtSpread=(thi-tlo)/tmn; }
 
+  k.deUnitUnknown=man.de!=null&&!['ratio','percent'].includes(man.deUnit);
   k.autoScaleBad=autoScaleBad; k.priceAnomaly=priceAnomaly; k.dataAnoms=dataAnoms;
   k.dataAnomN=(dataAnoms&&dataAnoms.length)?dataAnoms.length:0;   // (v4.35) 판단 감사 로그용
 
@@ -1862,7 +2047,7 @@ function compute(id,simPrice){
      * 데이터로 오지 않지만, **컨센 추정 수준**이 그 해석을 흡수한다: 발표 뒤 내년 EPS
      * 컨센이 내려갔다면 시장이 가이던스를 하향으로 읽었다는 뜻이다.
      * 개정 '건수'(revNet)는 몇 명이 손댔는지만 말하고 얼마나 움직였는지를 말하지 않으므로
-     * 수준을 따로 남긴다. 이 축이 있어야 '실적 beat인데 급락'이 (C 불가피)가 아니라
+     * 수준을 따로 남긴다. 이 축이 있어야 '실적 beat인데 급락'이 (C 관측된 변화 없음)가 아니라
      * (B 커버리지 결함)으로 잡힌다 — 관측 가능했던 신호를 '어쩔 수 없었다'로 묻지 않는 것이
      * 이 설계의 핵심이다. */
     const es=A0.est||null;
@@ -2104,54 +2289,24 @@ let posRev=0, posMemo={rev:-1,raw:null};
 const bumpPos=()=>{ posRev++; };
 function positionsRaw(){
   if(posMemo.rev===posRev&&posMemo.raw)return posMemo.raw;
-  const byKey={};
-  const ts=(S.trades||[]).slice().sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:
-    ((a.side==='buy'?0:1)-(b.side==='buy'?0:1))));
-  for(const t of ts){
-    const key=[t.market,t.type||'stock',t.name,t.account||'general'].join('|');
-    const p=byKey[key]||(byKey[key]={key,market:t.market,type:t.type||'stock',name:t.name,
-      code:t.code||'',account:t.account||'general',qty:0,cost:0,realized:0,buys:0,sells:0,
-      buyQty:0,sellQty:0,sellAmt:0,adj:false,over:false,
-      first:t.date,last:t.date,firstBuy:null,lastSell:null,snap:null,snaps:[],ids:[]});
-    p.last=t.date; if(t.code&&!p.code)p.code=t.code; p.ids.push(t.id);
-    const f=splitFactor(t); if(f!==1)p.adj=true;
-    const q=(+t.qty||0)*f, pr=(+t.price||0)/f;
-    if(t.side==='buy'){ p.qty+=q; p.cost+=q*pr; p.buys++; p.buyQty+=q;
-      if(!p.firstBuy)p.firstBuy=t.date;
-      /* (v4.34) v4.33까지 `if(t.snap&&!p.snap)` — **첫 매수 스냅샷만** 살아남았다.
-       * 평단은 여러 시점에 걸쳐 형성되는데 성과는 첫 시점의 등급에 통째로 귀속됐다.
-       * 범위밖에서 물타기한 손실이 '상 등급의 성과'로 기록될 수 있다는 뜻이다.
-       * 이제 매수마다 (날짜·수량·단가·스냅샷)을 모두 남긴다. p.snap(첫 스냅샷)은
-       * 하위호환으로 그대로 둔다 — 기존 화면·CSV의 참조가 깨지지 않는다(§8.7과 같은 원칙). */
-      if(t.snap){ if(!p.snap)p.snap=t.snap;
-        p.snaps.push({d:t.date,q:q,px:pr,s:t.snap}); } }
-    else{
-      const avg=p.qty>0?p.cost/p.qty:0;
-      p.realized+=q*(pr-avg); p.cost-=q*avg; p.qty-=q; p.sells++;
-      p.sellQty+=q; p.sellAmt+=q*pr; p.lastSell=t.date;
-      /* (v4.30) v4.29까지 음수 잔량을 조용히 0으로 눌렀다. 매도가 매수를 넘는다는 것은
-       * 분할 미반영이거나 기록 누락이라는 뜻이므로, 지우지 말고 표시로 남긴다. */
-      if(p.qty<-1e-6)p.over=true;
-      if(p.qty<1e-9){ p.qty=0; p.cost=0; }
-    }
-  }
-  posMemo={rev:posRev,raw:Object.values(byKey)};
-  return posMemo.raw;
+  const raw=QADomain.positions(S.trades||[],splitFactor);
+  posMemo={rev:posRev,raw}; return raw;
 }
 function positions(){
-  return positionsRaw().map(p=>{
-    p.avg=p.qty>0?p.cost/p.qty:null;
+  return positionsRaw().map(raw=>{
+    const p={...raw};
+    p.avg=p.valid&&p.qty>0?p.cost/p.qty:null;
     // 대시보드에 같은 종목이 있으면 현재가를 붙여 평가손익을 낸다
     const id=findStockId(p);
     const k=id?S.calc[id]:null;
     p.stockId=id; p.price=(k&&k.price!=null)?k.price:null;
     p.tier=(k&&k.tier)||null;
-    p.mval=(p.qty>0&&p.price!=null)?p.qty*p.price:null;
+    p.mval=(p.valid&&p.qty>0&&p.price!=null)?p.qty*p.price:null;
     p.unreal=(p.qty>0&&p.price!=null&&p.avg!=null)?p.qty*(p.price-p.avg):null;
     p.rate=(p.qty>0&&p.price!=null&&p.avg)?((p.price/p.avg-1)*100):null;
     /* 청산 완료분의 실현수익률 — 매도대금 대비가 아니라 '들어간 원가' 대비로 낸다 */
     const cin=p.sellAmt-p.realized;
-    p.realRate=(p.sells>0&&cin>0)?(p.realized/cin*100):null;
+    p.realRate=(p.valid&&p.sells>0&&cin>0)?(p.realized/cin*100):null;
     /* (v4.34) 매수금액 가중 등급 — 첫 스냅샷 하나로 종목을 대표시키지 않는다.
      * snapPure=true(매수 전부가 같은 등급)인 종목만이 '그 등급의 성과'라고 부를 수 있다.
      * 섞인 종목을 첫 등급으로 집계하면 물타기가 등급의 성과로 둔갑한다. */
@@ -2161,7 +2316,7 @@ function positions(){
         const tt=(sn.s&&sn.s.tier)||'범위밖'; if(amt>0){ w[tt]=(w[tt]||0)+amt; tw+=amt; } }
       const mix=tw>0?Object.keys(w).map(tt=>[tt,w[tt]/tw]).sort((a,b)=>b[1]-a[1]):null;
       p.snapMix=mix; p.snapMain=mix&&mix.length?mix[0][0]:null;
-      p.snapPure=!!(mix&&mix.length===1);
+      p.snapPure=!!(mix&&mix.length===1&&!p.snapshotIncomplete);
     } else { p.snapMix=null; p.snapMain=null; p.snapPure=false; }
     return p;
   });
@@ -2169,11 +2324,11 @@ function positions(){
 /* 거래 기록의 종목을 대시보드 종목과 잇는다. 코드 우선, 없으면 이름으로.
  * 못 찾아도 기록은 그대로 유지된다 — 청산 완료 종목은 현재가가 필요 없다. */
 function findStockId(p){
-  if(p.code){ const a=p.market+'_'+p.code; if(S.stocks[a])return a; }
-  for(const id in S.stocks){ const s=S.stocks[id];
-    if(s.market!==p.market)continue;
-    if(s.name===p.name||s.symbol===p.code||s.code===p.code)return id; }
-  return null;
+ for(const [id,st] of Object.entries(S.stocks)){
+  if(st.market!==p.market||assetType(st)!==(p.type||'stock'))continue;
+  const code=String(st.code||st.symbol||'').replace(/\.(KS|KQ)$/,'').toUpperCase();
+  if(p.code?code===String(p.code).toUpperCase():st.name===p.name)return id;
+ }return null;
 }
 /* (v4.24) 달러 원가 — 환전 이동평균.
  * 달러를 보유한 채 주식을 사고파는 것은 환차익과 무관하다. 원화 기준 손익은
@@ -2193,7 +2348,7 @@ function fxTotals(){
 function holdMap(){
   const m={};
   for(const p of positions()){
-    if(p.qty<=0||!p.stockId)continue;
+    if(!p.valid||p.qty<=0||!p.stockId)continue;
     const h=m[p.stockId]||(m[p.stockId]={qty:0,cost:0,accs:0});
     h.qty+=p.qty; h.cost+=p.cost; h.accs++;
   }
@@ -2221,20 +2376,25 @@ let initDone=false;
  * 세그먼트 수는 접두사가 짝수(2개)라 컬렉션=홀수·문서=짝수 규칙이 그대로 유지된다. */
 let UBASE=null;                       // 로그인 전에는 null — 경로 조립 자체를 막는다
 function ubase(){
-  if(!UBASE)throw new Error('로그인 전에는 Firestore에 접근할 수 없습니다');
+  if(!UBASE||!auth.currentUser||auth.currentUser.uid!==S.uid)throw new Error('로그인 세션이 변경되었습니다');
   return UBASE;
 }
 function C(n){ return db.collection(ubase()+n); }
 function D(p){ return db.doc(ubase()+p); }
 
-let authSubscribed=false;
+let authSubscribed=false, sessionUid=null;
 async function start(){
   auth.onAuthStateChanged(u=>{
+    if(sessionUid&&(!u||u.uid!==sessionUid)){
+      S.uid=null; UBASE=null;
+      document.querySelector('.wrap').replaceChildren();
+      showLogin(); location.reload(); return;
+    }
     if(u){
       /* 계정이 바뀌면 이미 붙어 있는 onSnapshot 리스너가 이전 사용자 경로를 계속
        * 보고 있다. 리스너를 하나씩 떼어내는 것보다 새로 고치는 편이 확실하다. */
       if(S.uid&&S.uid!==u.uid){ location.reload(); return; }
-      S.uid=u.uid; UBASE='users/'+u.uid+'/'; hideLogin();
+      sessionUid=u.uid; S.uid=u.uid; UBASE='users/'+u.uid+'/'; hideLogin();
       if(u.email)$('#txtConn').title=u.email;
       if(!authSubscribed){ authSubscribed=true; updConnChip('busy','연결 중'); subscribe(); }
       return;
@@ -2372,14 +2532,14 @@ async function seed(){
       manual:{},createdAt:Date.now()});
   });
   try{ await batch.commit(); toast('엑셀 기반 관심종목 '+(SEED_US.length+SEED_KR.length+SEED_ETF.length)+'개를 등록했습니다'); }
-  catch(e){ toast('시드 등록 실패: '+e.message,'err'); }
+  catch(e){ toast('시드 등록 실패: '+e.message,'err'); if(!initDone){initDone=true;postInit();} }
 }
 
 /* ---------------- 갱신 큐 ---------------- */
-const Q={items:[],active:0,MAX:3,total:0,done:0};
+const Q={items:[],active:0,MAX:3,total:0,done:0,inFlight:new Map()};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function enqueue(id,mode){
-  if(Q.items.find(x=>x.id===id&&x.mode===mode))return;
+  if(Q.inFlight.get(id)===mode||Q.items.find(x=>x.id===id&&x.mode===mode))return;
   Q.items.push({id,mode}); Q.total++; updDataChip(); pump();
 }
 let pumping=false;
@@ -2387,8 +2547,10 @@ async function pump(){
   if(pumping)return; pumping=true;
   while(Q.items.length){
     if(Q.active>=Q.MAX){ await sleep(120); continue; }
-    const it=Q.items.shift(); Q.active++;
-    runFetch(it).finally(()=>{ Q.active--; Q.done++; updDataChip();
+    const index=Q.items.findIndex(x=>!Q.inFlight.has(x.id));
+    if(index<0){await sleep(120);continue;}
+    const it=Q.items.splice(index,1)[0]; Q.active++; Q.inFlight.set(it.id,it.mode);
+    runFetch(it).finally(()=>{ Q.active--; Q.inFlight.delete(it.id); Q.done++; updDataChip();
       if(!Q.items.length&&Q.active===0){ S.lastFull=Date.now(); Q.total=0; Q.done=0; setTimeout(updDataChip,400);} });
     await sleep(230);
   }
@@ -2507,7 +2669,7 @@ function saveCache(id,force){
   const bars=(c.t||[]).length, m=cacheSaveMeta[id];
   // 봉 개수가 그대로이고 최근에 저장했으면 건너뛴다. 장중 tick은 재fetch로 복구된다.
   if(!force && m && m.bars===bars && (Date.now()-m.ts)<CACHE_SAVE_GAP_MS) return;
-  cacheSaveMeta[id]={ts:Date.now(),bars};
+  // Metadata is updated only after acknowledgement.
   if(cacheSaveQ.indexOf(id)<0)cacheSaveQ.push(id);   // 중복 예약 방지 — 드레인 시점의 최신본을 쓴다
   drainCacheSaves();
 }
@@ -2517,7 +2679,7 @@ async function drainCacheSaves(){
     while(cacheSaveQ.length){
       const id=cacheSaveQ.shift(), c=S.cache[id];
       if(!c)continue;
-      try{ await D('qa_cache/'+id).set(c); }
+      try{ await D('qa_cache/'+id).set(c); cacheSaveMeta[id]={ts:Date.now(),bars:(c.t||[]).length}; }
       catch(e){ console.warn('cache save',id,(e&&e.code)||e); }
       await sleep(400);   // 서버 ack 후 400ms — 스트림에 누적되지 않는다
     }
@@ -2534,6 +2696,7 @@ let intervalTimer=null;
 function startInterval(){
   if(intervalTimer)clearInterval(intervalTimer);
   intervalTimer=setInterval(()=>{
+    if(!S.uid||document.visibilityState==='hidden')return;
     Object.keys(S.stocks).filter(inTab)
       .forEach(id=>enqueue(id,'light'));
     fetchIndices();
@@ -2613,31 +2776,25 @@ function glGet(doc,row,name){
   const cs=(doc&&doc.cols)||GL_COLS, i=cs.indexOf(name);
   return (i<0||!row||i>=row.length)?null:row[i];
 }
+let glSaveBusy=false;
+function glSettingsKey(){return QADomain.settingsKey({rule:RULE_VER,qw:S.settings.qw,aw:S.settings.aw,manual:Object.fromEntries(Object.entries(S.stocks).map(([id,st])=>[id,st.manual||{}]))});}
 async function glMaybeSave(force){
-  if(!S.uid)return false;
-  const day=lgToday();
-  if(!force&&S.glSaved===day)return false;                 // 세션 가드
-  const ids=Object.keys(S.stocks).filter(id=>S.calc[id]);
-  if(ids.length<3)return false;                            // 부팅 직후 부분 상태를 남기지 않는다
-  /* ★ 산출이 덜 된 상태를 기록하면 §19.9의 성분 결측이 로그에 **영구히** 박힌다.
-   * 요약 패스가 도는 중이면 남기지 않는다 — glBoot의 지연 재시도가 다시 부른다. */
-  if(!force&&S.sumProg&&S.sumProg.total&&S.sumProg.done<S.sumProg.total)return false;
-  const rows={};
-  for(const id of ids){ const r=glRow(S.calc[id]); if(r)rows[id]=r; }
-  if(!Object.keys(rows).length)return false;
-  const doc={d:day,at:Date.now(),rv:RULE_VER,cols:GL_COLS,rows,
-    idx:Object.keys(S.idx||{}).reduce((a,sy)=>(a[sy]=(S.idx[sy]&&S.idx[sy].price!=null)?+S.idx[sy].price:null,a),{})};
+  if(!S.uid||glSaveBusy||Q.active||Q.items.length||sumBusy)return false;
+  const day=lgToday(); if(S.glSaved===day)return false;
+  const ids=Object.keys(S.stocks).filter(id=>S.calc[id]);if(!ids.length)return false;
+  const rows={},inputs={};
+  for(const id of ids){const k=S.calc[id],c=S.cache[id]||{};rows[id]=glRow(k);inputs[id]={priceAsOf:k.priceTs||null,manual:S.stocks[id].manual||{},fund:c.fund||null,ana:c.ana||null};}
+  const doc={schema:2,d:day,at:Date.now(),rv:RULE_VER,cols:GL_COLS,rows,inputs,settings:glSettingsKey(),policy:'next-session-open-v1'};
+  const docId='v52_'+day;glSaveBusy=true;
   try{
-    /* 같은 날 여러 번 열면 **마지막 산출**을 남긴다 — 장 마감에 가까운 값이 그날의 결론에
-     * 가장 가깝기 때문이다. 이미 더 늦은 시각의 문서가 있으면 덮어쓰지 않는다. */
-    const ref=D('qa_gradelog/'+day), prev=await ref.get();
-    if(prev.exists){ const pv=prev.data(); if(pv&&pv.at&&pv.at>=doc.at){ S.glSaved=day; return false; }
-      if(pv&&pv.fwd)doc.fwd=pv.fwd; }
-    await ref.set(doc);
-    S.glSaved=day; S.glog[day]=doc;
-    return true;
-  }catch(e){ console.warn('gradelog save',e&&e.code); return false; }
+    const ref=D('qa_gradelog/'+docId);
+    const saved=await db.runTransaction(async tx=>{const prev=await tx.get(ref);if(prev.exists)return prev.data();tx.set(ref,doc);return doc;});
+    S.glSaved=day;S.glog[docId]=saved;return true;
+  }catch(e){console.warn('gradelog save',e&&e.code);return false;}finally{glSaveBusy=false;}
 }
+let glTimer=null;
+function glSchedule(){clearInterval(glTimer);glTimer=setInterval(()=>{if(document.visibilityState!=='hidden'){glMaybeSave();glBackfill();}},60000);}
+
 /* 부팅에는 백필 창(=가장 긴 지평 + 여유)만 읽고, 전 구간은 검증 탭을 열 때 한 번 읽는다.
  * merge=true면 이미 들고 있는 문서를 지우지 않고 덮어쓴다 — 전 구간 로드 뒤 부팅 로드가
  * 다시 돌아 과거가 사라지는 일이 없게 한다. */
@@ -2657,7 +2814,7 @@ async function glLoad(lim,merge){
 async function glLoadFull(){
   if(glFullLoaded)return 0;
   const n=await glLoad(1000,true);
-  glFullLoaded=true;
+  glFullLoaded=n>0;
   if(S.view==='ledger'&&S.lg&&S.lg.sub==='verify')renderLedger();
   return n;
 }
@@ -2676,11 +2833,11 @@ async function benchRefresh(){
     const b=S.bench[key];
     /* 하루 한 번이면 충분하다 — 지수는 전방수익률의 분모일 뿐 화면에 쓰이지 않는다
      * (마켓바 칩은 fetchIndices가 따로 받는다). 조건 없이 쓰면 §22-⑬가 된다. */
-    if(b&&b.updatedAt&&(Date.now()-b.updatedAt)<20*3600e3)continue;
+    if(b&&b.o&&b.updatedAt&&(Date.now()-b.updatedAt)<20*3600e3)continue;
     try{
       const ch=await fetchChart(BENCH[key],'2y');
       if(!ch||!ch.t||ch.t.length<200)continue;
-      const nb={sym:BENCH[key],t:ch.t.slice(-520),
+      const nb={sym:BENCH[key],t:ch.t.slice(-520),o:ch.o.slice(-520),
         c:ch.c.slice(-520).map(v=>(v!=null&&isFinite(v))?+(+v).toFixed(2):null),
         updatedAt:Date.now()};
       S.bench[key]=nb;
@@ -2707,34 +2864,24 @@ function glFwd(tArr,cArr,ymd,kk){
   const a=cArr[i], b=cArr[i+kk];
   return (a>0&&b>0&&isFinite(a)&&isFinite(b))?(b/a-1)*100:null;
 }
+let glBackfillBusy=false;
 async function glBackfill(){
-  const days=Object.keys(S.glog).sort();
-  if(!days.length)return 0;
-  let wrote=0;
-  for(const day of days){
-    const doc=S.glog[day]; if(!doc||!doc.rows)continue;
-    const fwd=Object.assign({},doc.fwd||{}); let changed=false;
-    for(const id in doc.rows){
-      const ch=S.cache[id]; if(!ch||!ch.t||!ch.c)continue;
-      const mkt=(S.stocks[id]&&S.stocks[id].market)||(String(id).slice(0,2)==='KR'?'KR':'US');
-      const bn=S.bench[mkt];
-      const cur=Object.assign({},fwd[id]||{});
-      let touched=false;
-      for(const kk of GL_HORIZ){
-        if(cur['r'+kk]!=null)continue;               // 이미 채워진 지평은 다시 계산하지 않는다
-        const r=glFwd(ch.t,ch.c,day,kk); if(r==null)continue;
-        cur['r'+kk]=+r.toFixed(2); touched=true;
-        const rb=(bn&&bn.t&&bn.c)?glFwd(bn.t,bn.c,day,kk):null;
-        if(rb!=null)cur['x'+kk]=+(r-rb).toFixed(2);  // 초과수익 = 종목 − 같은 구간 지수
-      }
-      if(touched){ fwd[id]=cur; changed=true; }
-    }
-    if(changed){
-      try{ await D('qa_gradelog/'+day).set({fwd},{merge:true}); doc.fwd=fwd; wrote++; }
-      catch(e){ console.warn('backfill',day,e&&e.code); }
-    }
+ if(glBackfillBusy||!S.uid)return 0;glBackfillBusy=true;let wrote=0;
+ try{for(const key of Object.keys(S.glog)){
+  const doc=S.glog[key];if(doc.schema!==2||doc.rv!==RULE_VER||!doc.rows)continue;
+  const fwd={...(doc.fwd||{})};let changed=false;
+  for(const id of Object.keys(doc.rows)){
+   const ch=S.cache[id],bn=S.bench[id.startsWith('KR')?'KR':'US'],cur={...(fwd[id]||{})};
+   for(const hz of GL_HORIZ){
+    const r=QADomain.forward(ch,doc.at,hz);if(!r)continue;
+    if(cur['r'+hz]==null){cur['r'+hz]=+r.value.toFixed(2);cur['e'+hz]=r.entryAt;cur['z'+hz]=r.exitAt;changed=true;}
+    if(cur['x'+hz]==null){const rb=QADomain.forward(bn,doc.at,hz);
+      if(rb&&rb.entryAt===r.entryAt&&rb.exitAt===r.exitAt){cur['x'+hz]=+(r.value-rb.value).toFixed(2);changed=true;}}
+   }
+   fwd[id]=cur;
   }
-  return wrote;
+  if(changed){await D('qa_gradelog/'+key).set({fwd},{merge:true});doc.fwd=fwd;wrote++;}
+ }}catch(e){console.warn('backfill',e);}finally{glBackfillBusy=false;}return wrote;
 }
 async function glBoot(){
   try{
@@ -2746,7 +2893,7 @@ async function glBoot(){
     await glBackfill();
     /* 오늘치는 요약 패스가 끝난 뒤에 남긴다. 기다리지 않고 지연 재시도로 처리한다 —
      * 패스가 실패해 영영 안 끝나는 경우에도 기록이 통째로 빠지지 않게 두 번 시도한다. */
-    setTimeout(()=>{glMaybeSave();},60000);
+    glSchedule(); setTimeout(()=>{glMaybeSave();},60000);
     setTimeout(()=>{glMaybeSave();},300000);
   }catch(e){ console.warn('glBoot',e&&e.message); }
 }
@@ -2804,7 +2951,8 @@ function renderMarketbar(){
 
 function sortedIds(){
   let ids=Object.keys(S.stocks).filter(inTab);
-  const q=S.ui.search.trim().toLowerCase();
+  if(S.ui.onlyHeld){const held=holdMap();ids=ids.filter(id=>held[id]&&held[id].qty>0);}
+  const q=String(S.ui.search||'').trim().toLowerCase();
   if(q)ids=ids.filter(id=>{const s=S.stocks[id];
     return (s.name||'').toLowerCase().includes(q)||(s.symbol||'').toLowerCase().includes(q)||(s.code||'').includes(q);});
   let key=effSort(); const nn=x=>x==null?-1e18:x;
@@ -3128,7 +3276,8 @@ function detailHTML(id){
     +SelVM('vmPer','PER 신뢰도',m)+SelVM('vmPbr','PBR 신뢰도',m)+SelVM('vmPsr','PSR 신뢰도',m)
     +F('roe','ROE % (비우면 자동)',autoHint(fnd.roe,'%')||'예: 22')
     +F('margin','영업이익률 % (자동)',autoHint(fnd.margin,'%')||'예: 25')
-    +F('de','부채비율 D/E (자동)',autoHint(fnd.de,'')||'예: 0.8')
+    +F('de','부채비율 D/E',autoHint(QADomain.debtRatio(null,fnd),'배')||'예: 0.8')
+    +'<div class="fld"><label>수동 부채비율 단위</label><select data-f="deUnit"><option value="">기존값 단위 확인 필요</option><option value="ratio"'+(m.deUnit==='ratio'?' selected':'')+'>배 (0.8 = 80%)</option><option value="percent"'+(m.deUnit==='percent'?' selected':'')+'>% (80 = 0.8배)</option></select></div>'
     +F('revG','매출성장률 % (자동)',autoHint(fnd.revG,'%')||'예: 15')
     +F('epsG','EPS성장률 % ★적정가 (자동)',autoHint(fnd.epsG,'%')||'예: 20')
     +F('epsFwd','선행 EPS(1년) ★적정가 (자동)',autoHint(fnd.epsFwd,'')||'예: 5.2')
@@ -3182,7 +3331,12 @@ function detailHTML(id){
     +(k.crashLbl?'<span class="warnpill crash">🪂</span> '+esc(k.crashLbl)+'. ':'')
     +'</div>':'';
 
-  return '<div class="detail">'
+const evidence='<div class="evidence-card"><b>판단 근거와 데이터</b><p>모델 추정가는 보장된 가치나 손실 한도가 아닙니다. 가격 신호끼리는 서로 연관될 수 있습니다.</p>'
+    +'<dl><div><dt>규칙</dt><dd>'+esc(RULE_VER)+'</dd></div><div><dt>시세 기준</dt><dd>'+esc(k.priceTs?new Date(k.priceTs*1000).toLocaleString('ko-KR'):'확인 필요')+'</dd></div>'
+    +'<div><dt>재무 수집</dt><dd>'+esc(fnd.ts?new Date(fnd.ts).toLocaleString('ko-KR'):'미수신')+'</dd></div>'
+    +'<div><dt>입력 상태</dt><dd>'+esc((k.qMissW||k.aMissW)?'일부 성분 결측 · 점수 해석 주의':'점수 성분 수신')+'</dd></div></dl>'
+    +(m.de!=null&&!m.deUnit?'<p class="lgalert">기존 수동 부채비율의 단위를 선택해야 점수에 반영됩니다.</p>':'')+'</div>';
+    return '<div class="detail">'+evidence
     +'<div class="dgrid">'+g+'</div>'
     +((fund.length||excl.length)?'<div class="muted" style="font-size:12px;margin-bottom:4px">가치지표: '+fund.join(' · ')
       +(m.consensusDate?' <span style="opacity:.75">('+esc(m.consensusDate)+')</span>':'')
@@ -3210,11 +3364,11 @@ function detailHTML(id){
     +(sim!=null?'<span class="simnote">시뮬레이션 적용 중 (실제가 '+curSym(C)+fmtP(S.calc[id]?S.calc[id].price:null,C)+')</span><button class="btn sm" data-act="simclear">해제</button>':'<span class="muted" style="font-size:12px">입력 후 Enter</span>')
     +'</div>'
     +'<div class="dsec">악재 보류 · 수동 리스크 <small>뉴스는 사람이 판단하고, 반영의 일관성은 시스템이 담당</small></div>'+hazardBox
-    +'<div class="dsec">수동 입력 <small>이미 채워져 있는 값은 <b>자동조회 결과가 아니라</b> Firestore에 저장된 값입니다 — 초기 엑셀 시드(§14)로 들어온 목표가·의견·컨센서스가 여기 해당합니다. 칸을 <b>비우고 저장</b>하면 자동값으로 되돌아갑니다. 회색 안내문구가 보이는 칸은 현재 자동값이 있다는 뜻입니다</small></div>'+manual
+    +'<details class="advanced-fields"><summary>수동 입력과 데이터 수정</summary><div class="dsec">수동 입력 <small>이미 채워져 있는 값은 <b>자동조회 결과가 아니라</b> Firestore에 저장된 값입니다 — 초기 엑셀 시드(§14)로 들어온 목표가·의견·컨센서스가 여기 해당합니다. 칸을 <b>비우고 저장</b>하면 자동값으로 되돌아갑니다. 회색 안내문구가 보이는 칸은 현재 자동값이 있다는 뜻입니다</small></div>'+manual
     +'<div class="actions"><button class="btn sm primary" data-act="save">수동값 저장</button>'
     +'<button class="btn sm" data-act="refresh">⟳ 개별 갱신</button>'
     +'<button class="btn sm" data-act="loadnews">📰 뉴스 새로고침</button>'
-    +'<button class="btn sm danger" data-act="del">종목 삭제</button></div>'
+    +'<button class="btn sm danger" data-act="del">종목 삭제</button></div></details>'
     +'</div>';
 }
 
@@ -3481,7 +3635,7 @@ const CONST_LOG=[
 function constNow(){ const m={}; for(const r of CONST_LOG)m[r.k]=r; return m; }
 /* ★ 판정 로직 버전. 이 값이 바뀌면 그 이전 로그와 이후 로그를 **같은 평균에 넣으면 안 된다**.
  * 판정에 영향을 주는 변경(임계값·게이트·등급식)이 있을 때만 올린다 — 표시 전용 변경은 그대로 둔다. */
-const RULE_VER='v4.34';
+const RULE_VER='v5.2';
 
 function classifyDetail(k){
   /* (v4.34) 조기 반환도 정규 반환과 **같은 키 집합**을 갖는다. 격자 검증에서
@@ -3496,7 +3650,7 @@ function classifyDetail(k){
   const fallingKnife=((deepDD||steep)&&k.makingNewLow===true);
   // 하방 안전: 현재가가 '현재 적정가'(근미래 실적 기준) 대비 지나치게 비싸지 않은가.
   //  성장주는 현재적정가 대비 프리미엄이 정상이므로 -25%까지 허용(그 이상은 거품 신호).
-  const downsideOK = (k.downside!=null) ? (k.downside >= -25) : true;
+  const downsideOK = (k.downside!=null) ? (k.downside >= -25) : false;
 
   /* (v4.34) 세 번째 원소 = 안정 코드. **라벨은 문구가 바뀌면 달라지지만 코드는 안 바뀐다.**
    * 판정 로그에 "어느 관문에서 걸렸는가"를 남기려면 시간이 지나도 같은 것을 가리키는
@@ -3530,7 +3684,7 @@ function classifyDetail(k){
    * RSI 하단권·볼린저 하단권·매물대 POC)는 ETF에도 그대로 유효하다.
    * 조건식을 새로 쓰지 않고 인덱스로 걸러낸다 — 주식 경로의 문구·임계값이 그대로 남는다. */
   const isETF=(k.assetType==='etf');
-  const gatesEff=isETF?gates.filter((_,i)=>i!==2&&i!==3&&i!==7):gates;
+  const gatesEff=isETF?gates.filter((_,i)=>i!==2&&i!==3&&i!==7):gates.concat([['필수 품질 성분 수신 · 수동 단위 확인',!(k.qMissW>0)&&!k.deUnitUnknown,'G11']]);
   const confEff =isETF?conf.filter((_,i)=>i!==0&&i!==4&&i!==5):conf;
   const g=gatesEff.every(x=>x[1]), n=confEff.filter(x=>x[1]).length;
   let blocked=null, blockedCode=null;
@@ -3774,7 +3928,7 @@ async function loadNews(id,force){
   renderNewsInline(id);
   try{
     const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),9000);
-    const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(to);
+    const res=await fetchComplete(u,{signal:ctrl.signal}); clearTimeout(to);
     const j=await res.json();
     const items=(j&&Array.isArray(j.items))?j.items:[];
     S.news[id]={items,ts:Date.now(),loading:false};
@@ -3899,7 +4053,7 @@ async function fetchSummary(id,force,quiet){
   if(!u){ if(force&&!quiet)toast('애널리스트 자동 조회는 커스텀 워커 프록시 설정 후 가능합니다','err'); return; }
   try{
     const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),9000);
-    const res=await fetch(u,{signal:ctrl.signal}); clearTimeout(to);
+    const res=await fetchComplete(u,{signal:ctrl.signal}); clearTimeout(to);
     if(!res.ok){
       /* (v4.36) 야후 404 = "이 심볼에 그 모듈이 존재하지 않는다"는 관측 결과이지
        * 전송 실패가 아니다. 그냥 return하면 c.etf가 영영 안 생겨 fundMissing이
@@ -3957,7 +4111,7 @@ async function fetchSummary(id,force,quiet){
         // 성장률: earningsTrend 추정(epsGrowthEst) 우선, 없으면 financialData의 epsG
         const epsGeff = (j.epsGrowthEst!=null&&isFinite(j.epsGrowthEst))?j.epsGrowthEst:gn(j.epsG);
         const revGeff = (j.revGrowthEst!=null&&isFinite(j.revGrowthEst))?j.revGrowthEst:gn(j.revG);
-        fund={roe:gn(j.roe),margin:gn(j.margin),de:gn(j.de),revG:revGeff,epsG:epsGeff,
+        fund={roe:gn(j.roe),margin:gn(j.margin),de:gn(j.de),deRatio:gn(j.deRatio),revG:revGeff,epsG:epsGeff,
               epsTtm:gn(j.epsTtm),epsFwd:gn(j.epsFwd),revPS:gn(j.revPS),
               tgtHi:gn(j.tgtHi),tgtLo:gn(j.tgtLo),
               /* (v4.28) 워커 v6.4의 통화 태그·야후 멀티플. 구버전 워커면 전부 undefined→null이
@@ -4184,7 +4338,7 @@ function saveManual(row,id){
   const man={...(S.stocks[id].manual||{})};
   row.querySelectorAll('[data-f]').forEach(inp=>{
     const key=inp.dataset.f;let v=inp.value.trim();
-    if(key==='memo'||key==='consensusDate'||key==='targetDate'){man[key]=v||null;return;}
+    if(key==='memo'||key==='consensusDate'||key==='targetDate'||key==='deUnit'){man[key]=v||null;return;}
     if(v===''){man[key]=null;return;}
     const num=parseFloat(v.replace(/,/g,''));
     man[key]=isFinite(num)?num:v;
@@ -4288,7 +4442,7 @@ function diagCollect(){
     상수부채:CONST_LOG.filter(r=>/부채/.test(String(r.cls||''))).map(r=>r.k+'='+r.v+' ['+r.ver+']'),
     /* (v4.35) 워커 v6.7 짝 확인 — 이벤트 채널이 실제로 들어오고 있는가.
      * 워커가 구버전이면 전부 0으로 나오고 판단 감사의 (B)·(B*)가 영영 만들어지지 않는다.
-     * 조용히 'C 불가피'만 쌓이므로, 여기서 눈에 보이게 해 둔다(§22-⑮). */
+     * 조용히 'C 관측된 변화 없음'만 쌓이므로, 여기서 눈에 보이게 해 둔다(§22-⑮). */
     /* (v4.38) 채널을 **객체의 존재**가 아니라 **내용의 존재**로 센다.
      * 실측(2026-08-27 · NVDA · 워커 v6.8): 야후가 cashflowStatementHistoryQuarterly에서
      * 분기 `capitalExpenditures`를 더 이상 주지 않는다 — **날짜만 오고 값은 전부 null**이다.
@@ -4508,7 +4662,8 @@ const isYMD=d=>{ const v=String(d||'');
 function lgToday(){ const d=new Date();
   return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
 function lgFxNow(){ const i=S.idx&&S.idx['KRW=X']; return (i&&i.price>0)?i.price:null; }
-const lgAccLabel=a=>((ACCOUNTS[a]||{}).label||a||'—');
+const lgAccLabel=a=>{const kind=QADomain.accountKind(a);return ((ACCOUNTS[kind]||{}).label||kind)+(String(a||'').includes(':')?' · '+String(a).split(':').slice(1).join(':'):'');};
+function lgAccountOptions(){return [...new Set([...Object.keys(ACCOUNTS),...(S.trades||[]).map(t=>t.account||'general')])].map(a=>[a,lgAccLabel(a)]);}
 
 /* ---------------- 집계 ---------------- */
 /* 4분류 × (보유·청산)로 갈라 담는다. 원가 합계는 '현재가를 아는 종목'만 따로 센다 —
@@ -4520,6 +4675,7 @@ function lgSummary(){
     byCls[mk+'_'+ty]={mk,ty,held:[],closed:[],mval:0,cost:0,costKnown:0,unreal:0,real:0,noPrice:0};
   for(const p of P){
     const b=byCls[p.market+'_'+p.type]; if(!b)continue;
+    if(!p.valid)continue;
     b.real+=p.realized;
     if(p.qty>0){ b.held.push(p); b.cost+=p.cost;
       if(p.mval!=null){ b.mval+=p.mval; b.costKnown+=p.cost; b.unreal+=(p.unreal||0); }
@@ -4549,8 +4705,8 @@ function lgSummary(){
   return {P,byCls,fxNow,fxAvg,
     krwMval,krwCost,krwReal,usdMval,usdCost,usdCostAll,usdNoPrice,usdReal,
     fxBoughtUsd:fxT.usd,fxBoughtKrw:fxT.krw,fxBase,fxBaseSrc,
-    totalMval:(usdRate!=null)?krwMval+usdMval*usdRate:null,
-    totalCost:(costRate!=null)?krwCost+usdCost*costRate:null,
+    totalMval:usdMval===0?krwMval:((usdRate!=null)?krwMval+usdMval*usdRate:null),
+    totalCost:usdCost===0?krwCost:((costRate!=null)?krwCost+usdCost*costRate:null),
     /* 환차 '참고' — 환전하기 전까지는 확정되지 않는다(§v4.24 환율 모델) */
     fxGap:(fxNow!=null&&fxAvg!=null&&fxBase>0)?fxBase*(fxNow-fxAvg):null,
     usdRate,costRate};
@@ -4560,12 +4716,13 @@ function lgSummary(){
 /* 개수가 아니라 '어떤 종류의 어긋남인가'로 나눈다(§22-⑪). 셋은 처방이 서로 다르다. */
 function lgAudit(){
   const P=positions();
+  const invalid=P.filter(p=>!p.valid);
   const over=P.filter(p=>p.over);                                  // 매도 > 매수
   const frac=P.filter(p=>p.qty>0&&p.market==='KR'&&Math.abs(p.qty-Math.round(p.qty))>1e-6);
   const noPx=P.filter(p=>p.qty>0&&p.price==null);
   const adj =P.filter(p=>p.adj);
-  return {over,frac,noPx,adj,
-    any:over.length+frac.length+noPx.length};
+  return {invalid,over,frac,noPx,adj,
+    any:invalid.length+frac.length+noPx.length};
 }
 
 /* ================= 분할·병합 ================= */
@@ -4848,7 +5005,7 @@ async function lgScanShares(){
 
   const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),12000);
   let j;
-  try{ const res=await fetch(u,{signal:ctrl.signal});
+  try{ const res=await fetchComplete(u,{signal:ctrl.signal});
     j=await res.json().catch(()=>({}));
     if(!res.ok)throw new Error(j.error||('HTTP '+res.status));
   } finally { clearTimeout(to); }
@@ -4961,11 +5118,12 @@ function lgFocusKey(ae){
 }
 function renderLedger(){
   const host=$('#lgBody'); if(!host)return;
+  if(S.lg.sub==='tool'&&host.querySelector('#importCommit'))return;
   const ae=document.activeElement;
   const inHost=!!(ae&&host.contains(ae)&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
   let rs=null;
   if(inHost){
-    if(lgComposing){ lgPending=true; return; }
+    if(lgComposing||ae.dataset.lgf!=null||ae.dataset.lgxf==='imp'){ lgPending=true; return; }
     const fk=lgFocusKey(ae);
     if(!fk||ae.type==='date'){ lgPending=true; return; }
     let pos=null; try{ pos=ae.selectionStart; }catch(e){}
@@ -4981,6 +5139,8 @@ function renderLedger(){
   else if(sub==='perf') g=lgViewPerf();
   else if(sub==='verify')g=lgViewVerify();
   else                  g=lgViewTool();
+  const invalid=positions().filter(p=>!p.valid);
+  if(invalid.length)g='<div class="lgalert" role="status"><b>원장 확인 필요 · '+invalid.length+'개 포지션</b><br>'+invalid.map(p=>esc(p.name+' · '+lgAccLabel(p.account)+' — '+p.issues.join(', '))).join('<br>')+'<br>이 항목은 자산 합계·확정 손익·성과 통계에서 제외됩니다. 거래내역에서 당일 순번과 수량을 확인하세요.</div>'+g;
   host.innerHTML=g;
   if(rs){ const el=host.querySelector('['+rs.fk.a+'="'+rs.fk.k+'"]');
     if(el){ el.focus(); if(rs.pos!=null){ try{ el.setSelectionRange(rs.pos,rs.pos); }catch(e){} } } }
@@ -5205,7 +5365,9 @@ function lgFormHTML(p){
     +sel('side','구분',[['buy','매수'],['sell','매도']],f.side,lock)
     +sel('market','시장',[['KR','국내'],['US','미국']],f.market,lock)
     +sel('type','자산',[['stock','주식'],['etf','ETF']],f.type,lock)
-    +sel('account','계좌',Object.keys(ACCOUNTS).map(a=>[a,ACCOUNTS[a].label]),f.account,lock&&mode!=='rights')
+    +sel('account','계좌',lgAccountOptions(),f.account,lock&&mode!=='rights')
+    +'<div><label>계좌 별칭 (선택)</label><input data-lgf="accountRef" value="'+esc(f.accountRef||'')+'" placeholder="예: 증권사·계좌끝4자리"'+(lock?' readonly':'')+'></div>'
+    +'<div><label>당일 체결 순번</label><input type="number" min="1" step="1" inputmode="numeric" data-lgf="sequence" value="'+esc(f.sequence||'')+'" placeholder="매매 순서 1, 2, 3…"></div>'
     +'<div><label>종목명</label><input type="text" data-lgf="name" value="'+esc(f.name||'')+'" placeholder="예: 엔비디아"'+(lock?' readonly':'')+'></div>'
     +'<div><label>코드·티커</label><input type="text" data-lgf="code" value="'+esc(f.code||'')+'" placeholder="NVDA / 005930"'+(lock?' readonly':'')+'></div>'
     +'<div><label>단가</label><input type="text" inputmode="decimal" data-lgf="price" value="'+esc(f.price||'')+'"></div>'
@@ -5238,7 +5400,7 @@ function lgFormHTML(p){
 }
 /* 계좌별 투자 가능 여부. 규칙은 ACCOUNTS 한 곳에만 있다. */
 function lgAccWarnHTML(f){
-  const A=ACCOUNTS[f.account||'general']; if(!A)return '';
+  const A=ACCOUNTS[QADomain.accountKind(f.account)]; if(!A)return '';
   const mk=f.market, ty=f.type;
   let bad=null;
   if(mk==='US'&&ty==='stock'&&!A.us)bad='미국 개별주는 '+A.label+'에서 매수할 수 없습니다 — 일반 위탁계좌만 가능합니다';
@@ -5256,7 +5418,7 @@ function lgOpenForm(mode,p,trade){
     name:p.name,code:p.code,price:p.price!=null?String(p.price):'',qty:''});
   if(mode==='edit'&&trade)Object.assign(f,{date:trade.date,side:trade.side,market:trade.market,
     type:trade.type||'stock',account:trade.account||'general',name:trade.name,code:trade.code||'',
-    price:String(trade.price),qty:String(trade.qty)});
+    price:String(trade.price),qty:String(trade.qty),sequence:trade.sequence||''});
   if(mode==='new')Object.assign(f,{market:tabMarket(),type:tabType()});
   /* (v4.32) 유상증자 청약 — 아는 값은 다 채우고 **수량 한 칸만** 비워 둔다.
    * 계좌는 그 종목을 이미 들고 있는 계좌를 기본값으로 준다(신주는 청약한 계좌로 들어온다).
@@ -5279,7 +5441,9 @@ async function lgSaveForm(){
   const o=S.lg.open||{}, f=S.lg.form||{};
   const v={date:String(f.date||'').slice(0,10),side:f.side,market:f.market,type:f.type,
     account:f.account,name:String(f.name||'').trim(),code:String(f.code||'').trim(),
-    price:+f.price,qty:+f.qty};
+    price:+f.price,qty:+f.qty,sequence:QADomain.num(f.sequence)};
+  if(f.accountRef&&String(f.accountRef).trim())v.account=QADomain.accountKind(v.account)+':'+String(f.accountRef).trim();
+  const inputError=QADomain.tradeError(v); if(inputError){toast(inputError,'err');return;}
   if(!v.date||!v.name||!(v.price>0)||!(v.qty>0)){ toast('일자·종목명·단가·수량을 확인하세요','err'); return; }
   /* (v4.33 fix) <input type="date">를 지원하지 않는 브라우저는 이 칸이 그냥 text다.
    * 그때 들어온 '2026/6/1'은 splitFactor의 문자열 비교를 통과하지 못해 분할 환산이
@@ -5287,10 +5451,17 @@ async function lgSaveForm(){
   if(!isYMD(v.date)){ toast('일자를 확인하세요 — YYYY-MM-DD 형식의 실제 날짜여야 합니다','err'); return; }
   try{
     if(o.mode==='edit'&&o.id){
+      const old=(S.trades||[]).find(t=>t.id===o.id);
+      if(!old||QADomain.instrument(old)!==QADomain.instrument(v)||old.date!==v.date||old.side!==v.side){v.snap=null;v.snapshotStatus='edited-unverified';}
+      v.updatedAt=Date.now();
       await D('qa_trades/'+o.id).update(v);
       toast('수정했습니다');
     }else{
-      if(v.side==='buy')v.snap=lgSnap(v.market,v.code,v.name);
+      if(v.side==='buy'){
+        v.snap=v.date===lgToday()?lgSnap(v.market,v.code,v.name):null;
+        if(v.snap)Object.assign(v.snap,{observedAt:Date.now(),instrument:QADomain.instrument(v),settings:glSettingsKey()});
+        v.snapshotStatus=v.snap?'observed':'historical-unverified';
+      }
       v.createdAt=Date.now();
       /* (v4.32) 유상증자에서 온 매수는 표시만 남긴다 — 원장에서는 **완전히 평범한 매수**다.
        * 이동평균에도 성과 통계에도 다른 매수와 똑같이 들어간다. 특별 취급하면 그 순간부터
@@ -5357,7 +5528,7 @@ function lgViewList(){
     +'<div><label>분류</label><select data-lgflt="cls">'+opt('','전체',f.cls)
       +LG_CLASSES.map(([m,t])=>opt(m+'_'+t,ASSET_LABEL[m+'_'+t],f.cls)).join('')+'</select></div>'
     +'<div><label>계좌</label><select data-lgflt="acc">'+opt('','전체',f.acc)
-      +Object.keys(ACCOUNTS).map(a=>opt(a,ACCOUNTS[a].label,f.acc)).join('')+'</select></div>'
+      +lgAccountOptions().map(([a,label])=>opt(a,label,f.acc)).join('')+'</select></div>'
     +'<div><label>구분</label><select data-lgflt="side">'+opt('','전체',f.side)+opt('buy','매수',f.side)+opt('sell','매도',f.side)+'</select></div>'
     +'<div><label>시작일</label><input type="date" data-lgflt="from" value="'+esc(f.from||'')+'"></div>'
     +'<div><label>종료일</label><input type="date" data-lgflt="to" value="'+esc(f.to||'')+'"></div>'
@@ -5570,8 +5741,8 @@ function lgViewFx(){
 /* ---------------- 성과 (§19.3 out-of-sample) ---------------- */
 function lgViewPerf(){
   const P=positions();
-  const closed=P.filter(p=>p.qty<=0&&p.sells>0);
-  const held=P.filter(p=>p.qty>0);
+  const closed=P.filter(p=>p.valid&&p.qty<=0&&p.sells>0);
+  const held=P.filter(p=>p.valid&&p.qty>0);
   let g='<div class="lgnote">매수를 기록할 때 그 순간의 <b>매수등급·적정목표가·상승여력</b>이 함께 저장됩니다(v4.24). '
     +'아래는 그 스냅샷과 실제 결과를 맞춰 본 것입니다 — §19.3(out-of-sample 검증 부재)을 별도 백테스트 없이 실거래로 채웁니다.<br>'
     +'표본이 적을 때의 승률·평균은 <b>운과 구분되지 않습니다.</b> 판정 근거가 아니라 관찰 기록으로 보세요.</div>';
@@ -5595,7 +5766,7 @@ function lgViewPerf(){
     /* (v4.34) 매수가 여러 등급에 걸친 종목은 등급별 집계에서 뺀다.
      * v4.33까지 첫 매수 등급으로 통째로 귀속시켰는데, 그러면 범위밖에서 물타기한 손실이
      * '상 등급의 성과'로 기록된다. 섞인 종목은 아래 별도 줄로 센다 — 지우지 않는다. */
-    const pure=p=>!(p.snapMix&&p.snapMix.length>1);
+    const pure=p=>!p.snapshotIncomplete&&!(p.snapMix&&p.snapMix.length>1);
     const cs=closed.filter(p=>pure(p)&&((p.snap&&p.snap.tier)||null)===key);
     const hs=held.filter(p=>pure(p)&&((p.snap&&p.snap.tier)||null)===key);
     if(!cs.length&&!hs.length)continue;
@@ -5717,14 +5888,14 @@ function glObs(hz){
   const out=[], skip={rv:0,dirty:0};
   for(const day of Object.keys(S.glog||{}).sort()){
     const doc=S.glog[day]; if(!doc||!doc.rows)continue;
-    if(doc.rv&&doc.rv!==RULE_VER){ skip.rv++; continue; }
+    if(doc.rv!==RULE_VER||doc.schema!==2||doc.settings!==glSettingsKey()){ skip.rv++; continue; }
     const fwd=doc.fwd||{};
     for(const id in doc.rows){
       const f=fwd[id]; if(!f)continue;
       const x=f['x'+hz], r=f['r'+hz];
       if(x==null&&r==null)continue;
       const row=doc.rows[id];
-      const o={day,id,
+      const o={day:doc.d,logId:day,id,observedAt:doc.at,endAt:f['z'+hz],
         tier:glGet(doc,row,'tier')||'범위밖', noCap:glGet(doc,row,'tierNoCap'),
         n:glGet(doc,row,'n'), gate:glGet(doc,row,'gate'),
         near:glGet(doc,row,'near'), cap:glGet(doc,row,'cap'),
@@ -5766,16 +5937,16 @@ function glObs(hz){
  *
  *   (A) 프로세스 결함  판정 시점에 시스템이 **이미 갖고 있던 값**으로도 이 등급은 부실했다.
  *                      → 버그다. 지금 고칠 수 있다. **행동 가능.**
- *   (B) 커버리지 결함  판정 이후, 시스템이 **보지 않는 방향성 채널**에서 관측 가능한 사건이
+ *   (B) 같은 방향 변화  판정 이후, 시스템이 **보지 않는 방향성 채널**에서 관측 가능한 사건이
  *                      있었고 그 방향이 결과와 일치한다(순증 기준).
  *                      → 처방은 임계값 조정이 아니라 **누락된 입력의 추가**다. §20 분류를
  *                        늘리지 않는 유일한 개선 경로. **행동 가능.**
- *   (B*) 해석 분기     사건은 있었으나 부호가 결과와 **반대**다. 시장이 그 숫자를 시스템과
+ *   (B*) 반대 방향 변화     사건은 있었으나 부호가 결과와 **반대**다. 시장이 그 숫자를 시스템과
  *                      다르게 읽었다는 직접 증거다.
  *                      → 최근 테크에서 가장 흔한 형태: EPS를 beat하고도 **가이던스** 때문에
  *                        급락하거나, **CapEx 급증**을 성장 투자로 볼지 마진 훼손으로 볼지가
  *                        갈리는 구간. 처방은 입력 추가가 아니라 **해석 축의 재검토**다.
- *   (C) 불가피         관측 가능한 사건 자체가 없었다. 노이즈다. 이걸로 임계값을 바꾸면
+ *   (C) 관측된 변화 없음         관측 가능한 사건 자체가 없었다. 노이즈다. 이걸로 임계값을 바꾸면
  *                      §22-⑤ 위반이다. **행동 불가.**
  *
  * ★ 우선순위 A > B > B* > C. (A)가 걸린 건은 그 뒤에 무슨 일이 있었든 **먼저 고칠 것이
@@ -5822,7 +5993,7 @@ function revCause(o,later){
     if(o.estE!=null&&later.estE!=null)                 put(REV_DIR[1],later.estE-o.estE);
     if(o.estR!=null&&later.estR!=null)                 put(REV_DIR[2],later.estR-o.estR);
     if(o.ugdD!=null&&later.ugdD!=null&&later.ugdD>o.ugdD&&later.ugdAct) put(REV_DIR[3],later.ugdAct);
-    if(later.revNet!=null)                             put(REV_DIR[4],later.revNet);
+    if(o.revNet!=null&&later.revNet!=null) put(REV_DIR[4],later.revNet-o.revNet);
     /* 실적 발표는 양향성이다 — 부호 일치를 (B)의 근거로 쓰지 않는다.
      * 대신 **불일치**만 본다: beat했는데 빠졌다면 시장이 EPS가 아닌 다른 축(가이던스·CapEx)을
      * 봤다는 뜻이고, 그것이 (B*)의 정의다. */
@@ -5830,27 +6001,23 @@ function revCause(o,later){
     surpOpp=!!(earnIn&&later.surpPct!=null&&later.surpPct!==0&&(later.surpPct>0?1:-1)!==sx);
   }
   const net=dir.length-opp.length;
-  const cause=A.length?'A':(net>0?'B':((net<0||surpOpp)?'B*':'C'));
+  const coverage=!!(later&&o.anaTgt!=null&&later.anaTgt!=null&&o.estE!=null&&later.estE!=null&&o.estR!=null&&later.estR!=null);
+  const cause=A.length?'A':(!coverage?'U':(net>0?'B':((net<0||surpOpp)?'B*':'C')));
   return {A,dir,opp,net,surpOpp,earnIn,cause};
 }
 /* 지평 말에 가장 가까운 같은 종목의 로그 행. 로그는 접속한 날만 있으므로 정확히
  * d+hz거래일이 존재한다는 보장이 없다 — 목표 달력일(거래일 × 1.45) 이하의 마지막 관측을 쓴다. */
 function glLaterRow(id,day,hz){
-  const t0=Date.parse(day+'T00:00:00Z');
-  if(!isFinite(t0))return null;
-  const target=t0+Math.round(hz*1.45)*86400000;
-  let best=null,bestT=-1;
-  for(const d2 in S.glog){
-    const t2=Date.parse(d2+'T00:00:00Z');
-    if(!isFinite(t2)||t2<=t0||t2>target)continue;
-    if(t2>bestT){ const doc=S.glog[d2], row=doc&&doc.rows&&doc.rows[id];
-      if(row){ bestT=t2; best={doc,row,day:d2}; } }
+  const initial=S.glog[day],f=initial&&initial.fwd&&initial.fwd[id],end=f&&f['z'+hz];
+  if(!initial||!end)return null;
+  let best=null;
+  for(const doc of Object.values(S.glog)){
+    if(doc.schema!==2||doc.rv!==initial.rv||doc.settings!==initial.settings||doc.at<=initial.at||doc.at>end*1000||!doc.rows||!doc.rows[id])continue;
+    if(!best||doc.at>best.at)best=doc;
   }
-  if(!best)return null;
-  const G=n=>glGet(best.doc,best.row,n);
-  return {day:best.day,surpD:G('surpD'),surpPct:G('surpPct'),ugdD:G('ugdD'),ugdAct:G('ugdAct'),
-          revNet:G('revNet'),anaTgt:G('anaTgt'),estE:G('estE'),estR:G('estR'),
-          capexQ:G('capexQ'),capexY:G('capexY'),tier:G('tier')};
+  if(!best||end*1000-best.at>7*86400000)return null;
+  const G=n=>glGet(best,best.rows[id],n);
+  return {day:best.d,surpD:G('surpD'),surpPct:G('surpPct'),ugdD:G('ugdD'),ugdAct:G('ugdAct'),revNet:G('revNet'),anaTgt:G('anaTgt'),estE:G('estE'),estR:G('estR'),capexQ:G('capexQ'),capexY:G('capexY'),tier:G('tier')};
 }
 /* 종목명 — 로그에는 id만 있으므로 현재 마스터에서 찾는다. 없으면 id를 그대로 쓴다. */
 function glName(id){ const st=S.stocks[id];
@@ -5869,13 +6036,13 @@ function lgViewVerify(){
    * 로드가 끝나면 스스로 다시 그린다(glLoadFull 안에서). */
   if(!glFullLoaded&&S.uid)glLoadFull();
   const hz=(S.lg&&S.lg.hz)||60;
-  const days=Object.keys(S.glog||{}).sort();
+  const days=Object.keys(S.glog||{}).filter(id=>{const d=S.glog[id];return d.schema===2&&d.rv===RULE_VER&&d.settings===glSettingsKey();}).sort();
   const R=glObs(hz), obs=R.obs;
   const fmt=v=>v==null?'—':((v>=0?'+':'−')+Math.abs(v).toFixed(1)+'%p');
   const cell=(gp)=>gp.n?(fmt(gp.med)+' <small class="muted">('+gp.n+'건 · 종목 '+gp.uniq+')</small>'):'—';
   const hold=gp=>(gp.n<GL_MIN_N);
 
-  let g='<div class="lgnote"><b>이 화면은 판정이 아니라 진단입니다.</b> 여기 수치를 보고 임계값을 바꾸지 않습니다 — '
+  let g='<div class="lgnote"><b>기술 통계이며 통계적 유의성 검정이 아닙니다.</b> 같은 종목의 중복 관측을 포함하며, 경향만 표시합니다. 여기 수치를 보고 임계값을 바꾸지 않습니다 — '
     +'그것이 §22-⑤가 금지하는 "스냅샷에 맞춘 조정"이고, 폐기된 <code>DT_GAP=0.85</code>가 실패한 방식입니다.<br>'
     +'가설은 <b>2026-08-26에 사전 등록</b>됐습니다. 데이터를 본 뒤 가설을 만들면 §19.0(오진 위에 세운 방어)의 반복이 됩니다.<br>'
     +'결과변수는 <b>지수 대비 초과수익</b>입니다 — 절대수익률은 국면이 하나뿐인 표본에서 전 종목이 같은 방향으로 움직여 '
@@ -5924,7 +6091,7 @@ function lgViewVerify(){
   const verdict=(ok,a,b)=>{
     if(!a.n||!b.n)return '<span class="muted">표본 없음</span>';
     if(hold(a)||hold(b)||days.length<GL_MIN_DAYS)return '<span class="muted">판정 보류</span>';
-    return ok?'<b style="color:var(--up)">지지</b>':'<b style="color:var(--down)">⚠ 기각</b>';
+    return ok?'<b style="color:var(--up)">같은 경향</b>':'<b style="color:var(--down)">반대 경향</b>';
   };
   g+='<div class="lgsec"><span class="t">사전등록 가설</span><span class="m">초과수익 중앙값 · 지평 '+hz+'거래일</span></div>';
   g+='<div class="lgscroll"><table class="lgtbl">'
@@ -5937,14 +6104,14 @@ function lgViewVerify(){
     +'<td style="text-align:right"><small>'+STIER.map(t=>t+' '+fmt(byTier[t].med)).join('<br>')+'</small></td>'
     +'<td style="text-align:right">'+(mono.length<2?'<span class="muted">표본 없음</span>'
       :(days.length<GL_MIN_DAYS?'<span class="muted">판정 보류</span>'
-      :(monoOK?'<b style="color:var(--up)">지지</b>':'<b style="color:var(--down)">⚠ 기각</b>')))+'</td></tr>';
+      :(monoOK?'<b style="color:var(--up)">같은 경향</b>':'<b style="color:var(--down)">반대 경향</b>')))+'</td></tr>';
 
   g+='<tr><td><b>H2</b></td><td>서열 상관<br><small class="muted">Spearman ρ(등급, 초과수익) > 0</small></td>'
     +'<td><small>'+obs.filter(o=>o.x!=null).length+'건</small></td>'
     +'<td style="text-align:right">'+(spr!=null?'ρ = '+(spr>=0?'+':'−')+Math.abs(spr).toFixed(3):'—')+'</td>'
     +'<td style="text-align:right">'+(spr==null?'<span class="muted">표본 없음</span>'
       :(days.length<GL_MIN_DAYS?'<span class="muted">판정 보류</span>'
-      :(spr>0?'<b style="color:var(--up)">지지</b>':'<b style="color:var(--down)">⚠ 기각</b>')))+'</td></tr>';
+      :(spr>0?'<b style="color:var(--up)">같은 경향</b>':'<b style="color:var(--down)">반대 경향</b>')))+'</td></tr>';
 
   g+='<tr><td><b>H3</b></td><td>하락추세 캡의 정당성<br><small class="muted">캡 강등군 &lt; 비강등 상·중군 — §19.8의 핵심 질문</small></td>'
     +'<td><small>강등 '+capDown.n+' (종목 '+capDown.uniq+')<br>비강등 '+capFree.n+' (종목 '+capFree.uniq+')</small></td>'
@@ -5959,7 +6126,7 @@ function lgViewVerify(){
     +'<td style="text-align:right"><small>'+(byN.length?byN.map(p=>p[0]+'개 '+fmt(p[1].med)).join('<br>'):'—')+'</small></td>'
     +'<td style="text-align:right">'+(n4.length<2?'<span class="muted">표본 없음</span>'
       :(days.length<GL_MIN_DAYS?'<span class="muted">판정 보류</span>'
-      :(n4OK?'<b style="color:var(--up)">지지</b>':'<b style="color:var(--down)">⚠ 기각</b>')))+'</td></tr>';
+      :(n4OK?'<b style="color:var(--up)">같은 경향</b>':'<b style="color:var(--down)">반대 경향</b>')))+'</td></tr>';
 
   g+='<tr><td><b>H5</b></td><td>하드게이트 판별력<br><small class="muted">탈락군 &lt; 통과군</small></td>'
     +'<td><small>탈락 '+gFail.n+'<br>통과 '+gPass.n+'</small></td>'
@@ -6028,14 +6195,14 @@ function lgAuditPanel(obs,hz){
   const fmt=v=>v==null?'—':((v>=0?'+':'−')+Math.abs(v).toFixed(1)+'%p');
   let g='<div class="lgsec"><span class="t">판단 감사 — 원인 계층</span>'
     +'<span class="m">"올랐나"가 아니라 "근거상 타당했나"</span></div>';
-  g+='<div class="lgnote"><b>자동 분류이며 사람 판정이 필요 없습니다.</b> 저장된 숫자의 부호와 증감만 씁니다 — '
+  g+='<div class="lgnote"><b>관측 비교이며 원인이나 투자 판단의 정답을 확정하지 않습니다.</b> 저장된 숫자의 부호와 증감을 비교합니다 — '
     +'크기 임계가 없으므로 스냅샷에 맞춰 고를 값도 없습니다(§22-⑤).<br>'
-    +'<b>(A) 프로세스 결함</b> 판정 시점에 이미 갖고 있던 값으로도 부실했다 → <b>버그. 지금 고친다.</b><br>'
-    +'<b>(B) 커버리지 결함</b> 시스템이 안 보는 방향성 채널의 사건이 결과와 같은 방향이었다 → <b>입력을 추가한다.</b><br>'
-    +'<b>(B*) 해석 분기</b> 사건은 있었는데 부호가 <b>반대</b>였다 → 시장이 그 숫자를 다르게 읽었다. '
+    +'<b>(A) 프로세스 결함</b> 판정 시점에 이미 갖고 있던 값으로도 부실했다 — 입력·모델 점검이 필요합니다.<br>'
+    +'<b>(B) 같은 방향 변화</b> 시스템이 안 보는 방향성 채널의 사건이 결과와 같은 방향이었다 — 인과관계는 별도 확인이 필요합니다.<br>'
+    +'<b>(B*) 반대 방향 변화</b> 사건은 있었는데 부호가 <b>반대</b>였다 → 시장이 그 숫자를 다르게 읽었다. '
     +'최근 테크의 전형: <b>EPS는 beat인데 가이던스로 급락</b>, <b>CapEx 급증을 성장투자로 볼지 마진훼손으로 볼지</b>. '
     +'처방은 입력 추가가 아니라 <b>해석 축의 재검토</b>입니다.<br>'
-    +'<b>(C) 불가피</b> 관측 가능한 사건 자체가 없었다 → <b>노이즈. 건드리지 않는다.</b></div>';
+    +'<b>(C) 관측된 변화 없음</b> 사용 중인 채널에서 방향성 변화를 찾지 못했습니다.<br><b>(U) 관측 불충분</b> 후속 기록 또는 비교 가능한 입력이 부족합니다.</div>';
 
   const use=obs.filter(o=>o.x!=null);
   if(!use.length){ return g+'<div class="lgnote" style="margin-top:8px">성숙한 관측이 아직 없습니다.</div>'; }
@@ -6046,12 +6213,12 @@ function lgAuditPanel(obs,hz){
   const q1=glQt(xs,0.25), q3=glQt(xs,0.75);
   const bandOf=o=>(o.x<=q1?'하위25%':(o.x>=q3?'상위25%':'중간50%'));
   const BANDS=['하위25%','중간50%','상위25%'];
-  const CAUSES=['A','B','B*','C'];
+  const CAUSES=['A','B','B*','C','U'];
 
-  const cz={}; for(const b of BANDS){ cz[b]={A:0,B:0,'B*':0,C:0,n:0}; }
+  const cz={}; for(const b of BANDS){ cz[b]={A:0,B:0,'B*':0,C:0,U:0,n:0}; }
   const aCount={}, chAgree={}, chOppo={}, cases=[];
   for(const o of use){
-    const later=glLaterRow(o.id,o.day,hz);
+    const later=glLaterRow(o.id,o.logId,hz);
     const rc=revCause(o,later);
     o._rc=rc; o._later=later;
     const b=bandOf(o); cz[b][rc.cause]++; cz[b].n++;
@@ -6165,7 +6332,7 @@ function lgViewTool(){
 
   g+='<div class="lgsec"><span class="t">가져오기</span><span class="m">JSON 배열</span></div>'
     +'<div class="lgnote">필드: <code>시장 · 유형 · 종목명 · 코드 · 구분 · 일자 · 단가 · 수량 · 계좌</code><br>'
-    +'<b>같은 일자·종목·구분·수량·단가</b>가 이미 있으면 건너뜁니다 — 여러 번 눌러도 중복되지 않습니다.</div>'
+    +'원천 거래ID가 같으면 중복으로 제외합니다. ID 없는 반복 거래는 미리보기에서 선택합니다. 계좌는 general:계좌별칭 형식, 당일 매매에는 순번을 함께 입력하세요.</div>'
     +'<textarea id="impBox" data-lgxf="imp" style="width:100%;height:150px;margin-top:8px;font-family:var(--mono);font-size:11px;'
     +'border:1px solid var(--line);border-radius:8px;padding:8px" '
     +'placeholder=\'[{"시장":"US","유형":"stock","종목명":"엔비디아","코드":"NVDA","구분":"매수","일자":"2026-06-15","단가":208.5,"수량":21,"계좌":"general"}]\'>'
@@ -6205,38 +6372,33 @@ function lgExportHoldCSV(){
       p.avg,p.price,p.mval,p.unreal,p.rate!=null?p.rate.toFixed(2):'',p.realized,(p.snap&&p.snap.tier)||'']);
   lgDownload('qa_holdings_'+lgToday()+'.csv','\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n'),'text/csv');
 }
+let importDraft=null,importBusy=false;
 async function lgImport(){
-  const box=$('#impBox'), msg=$('#impMsg'); if(!box||!msg)return;
-  let arr; try{ arr=JSON.parse(box.value||((S.lg.xf&&S.lg.xf.imp)||'')); }
-  catch(e){ msg.innerHTML='<span style="color:var(--down)">JSON 파싱 실패: '+esc(e.message)+'</span>'; return; }
-  if(!Array.isArray(arr)){ msg.innerHTML='<span style="color:var(--down)">배열이어야 합니다</span>'; return; }
-  const key=t=>[t.date,t.name,t.side,t.qty,t.price].join('|');
-  const have=new Set((S.trades||[]).map(key));
-  const add=[],skip=[];
-  for(const r of arr){
-    const t={date:String(r.일자||r.date||'').slice(0,10),
-      side:(r.구분||r.side)==='매도'||(r.구분||r.side)==='sell'?'sell':'buy',
-      market:(r.시장||r.market)==='KR'?'KR':'US', type:(r.유형||r.type)==='etf'?'etf':'stock',
-      account:r.계좌||r.account||'general', name:String(r.종목명||r.name||'').trim(),
-      code:String(r.코드||r.code||'').trim(), price:+(r.단가||r.price), qty:+(r.수량||r.qty)};
-    /* (v4.33 fix) 일자는 **문자열 비교**로 분할 환산·정렬·기간 필터에 전부 쓰인다
-     * ('2026/06/15' > '2026-12-01'이 참이 된다). 형식이 아니면 아예 받지 않는다 —
-     * 여기서 통과시키면 원장 전체가 조용히 어긋난다(§22-⑫).
-     * 계좌도 마찬가지로 모르는 값이면 경고 규칙(ACCOUNTS)이 걸리지 않으므로 되돌린다. */
-    if(!isYMD(t.date)){ skip.push((t.name||'?')+' (일자 — YYYY-MM-DD 형식의 실제 날짜여야 합니다)'); continue; }
-    if(!ACCOUNTS[t.account]){ skip.push((t.name||'?')+' (알 수 없는 계좌: '+t.account+')'); continue; }
-    if(!t.date||!t.name||!(t.price>0)||!(t.qty>0)){ skip.push(t.name+' (필드 누락)'); continue; }
-    if(have.has(key(t))){ skip.push(t.name+' '+t.date+' (중복)'); continue; }
-    have.add(key(t)); t.createdAt=Date.now(); add.push(t);
+ const box=$('#impBox'),msg=$('#impMsg');if(!box||!msg||importBusy)return;
+ try{
+  const rows=JSON.parse(box.value||'');if(!Array.isArray(rows)||rows.length>10000)throw Error('10,000건 이하의 JSON 배열이어야 합니다');
+  const plan=QADomain.importPlan(rows,S.trades||[]);importDraft=plan;
+  msg.innerHTML='<div class="lgnote"><b>가져오기 미리보기</b><br>새 거래 '+plan.add.length+'건 · 거래ID 중복 '+plan.duplicate.length+'건 · 입력 오류 '+plan.invalid.length+'건<br>'+esc(plan.invalid.slice(0,5).map(x=>(x.index+1)+'행: '+x.error).join(' / '))+'</div>'
+   +plan.candidates.map((t,i)=>'<label class="import-choice"><input type="checkbox" data-import-candidate="'+i+'"> 반복 체결로 추가: '+esc(t.date+' '+lgAccLabel(t.account)+' '+t.name+' '+t.qty+'주 × '+t.price)+'</label>').join('')
+   +'<button class="btn primary" id="importCommit">선택한 거래 저장</button>';
+ }catch(e){msg.textContent=e.message;}
+}
+async function lgImportCommit(){
+ if(!importDraft||importBusy)return;importBusy=true;
+ const msg=$('#impMsg'),draft=importDraft,chosen=draft.chosen||[...draft.add,...$$('[data-import-candidate]:checked').map(e=>draft.candidates[+e.dataset.importCandidate])];
+
+ try{
+  if(!chosen.length){toast('추가할 거래를 선택하세요');return;} draft.chosen=chosen;
+  if(!draft.ids)draft.ids=new Map();
+  for(const t of chosen)if(!draft.ids.has(t))draft.ids.set(t,C('qa_trades').doc().id);
+  let committed=0;
+  for(let i=0;i<chosen.length;i+=400){const b=db.batch();
+   chosen.slice(i,i+400).forEach(t=>b.set(D('qa_trades/'+draft.ids.get(t)),{...t,createdAt:Date.now()}));
+   await b.commit();committed+=chosen.slice(i,i+400).length;
   }
-  if(!add.length){ msg.innerHTML='추가할 거래가 없습니다 (건너뜀 '+skip.length+'건)'; return; }
-  if(!confirm(add.length+'건을 추가합니다. 계속할까요?'))return;
-  try{ /* 배치는 500건 한도라 나눠 커밋한다 */
-    for(let i=0;i<add.length;i+=400){ const b=db.batch();
-      add.slice(i,i+400).forEach(t=>b.set(C('qa_trades').doc(),t)); await b.commit(); }
-    msg.innerHTML='<span style="color:var(--up)">'+add.length+'건 추가 · 건너뜀 '+skip.length+'건</span>'
-      +(skip.length?'<div style="color:var(--muted);margin-top:4px">'+esc(skip.slice(0,10).join(' / '))+'</div>':'');
-  }catch(e){ msg.innerHTML='<span style="color:var(--down)">실패: '+esc(e.message)+'</span>'; }
+  importDraft=null;toast(committed+'건을 저장했습니다');if(msg)msg.textContent=committed+'건 저장 완료';
+ }catch(e){if(msg)msg.textContent='저장 중단: '+e.message+' · 미리보기를 다시 만들지 말고 아래 재시도를 사용하세요.';if(msg&&draft.ids)msg.insertAdjacentHTML('beforeend','<button class="btn" id="importCommit">동일 거래 재시도</button>');}
+ finally{importBusy=false;}
 }
 
 /* ---------------- 이벤트 (위임 1벌) ---------------- */
@@ -6388,11 +6550,13 @@ function lgStash(t){
 }
 $('#lgBody').addEventListener('input',e=>{
   if(!lgStash(e.target))return;
-  if(e.target.dataset.lgxf==='imp')return;      // 붙여넣기용 큰 상자 — 다시 그릴 이유가 없다
+  if(e.target.dataset.lgf!=null||e.target.dataset.lgxf==='imp')return;      // 붙여넣기용 큰 상자 — 다시 그릴 이유가 없다
   clearTimeout(lgInT); lgInT=setTimeout(()=>renderLedger(),160);
 });
 $('#lgBody').addEventListener('change',e=>{
   if(!lgStash(e.target))return;
+  if(e.target.dataset.lgxf==='imp')return;
+  if(e.target.dataset.lgf!=null){const w=document.querySelector('#lgAccWarn');if(w)w.innerHTML=lgAccWarnHTML(S.lg.form);return;}
   clearTimeout(lgInT); renderLedger();
 });
 function lgPosByKey(k){ if(!k)return null; return positions().find(p=>p.key===k)||null; }
@@ -6573,6 +6737,135 @@ window.addEventListener('resize',()=>{
 /* ---------------- 시작 ---------------- */
 updDataChip();
 start();
+
+
+
+
+
+
+
+
+</script>
+<script>/* Progressive enhancement; trading and score calculations stay in domain/app. */
+const BACKUP_COLS=QADomain.BACKUP_COLLECTIONS;
+let backupBusy=false,restoreDraft=null;
+async function backupData(download=true){
+  if(!S.uid)throw Error('로그인이 필요합니다');
+  const uid=S.uid,collections={};
+  for(const name of BACKUP_COLS){
+    const snap=await C(name).get();collections[name]=[];
+    snap.forEach(d=>collections[name].push({id:d.id,data:d.data()}));
+    if(S.uid!==uid)throw Error('계정이 변경되었습니다');
+  }
+  const data={format:'qa-board-backup',version:1,createdAt:new Date().toISOString(),uid,collections};
+  if(download)lgDownload('qa_backup_'+lgToday()+'.json',JSON.stringify(data,null,2),'application/json');
+  return data;
+}
+async function restorePreview(file){
+  if(!file||file.size>25*1024*1024)throw Error('25MB 이하 JSON 백업을 선택하세요');
+  const b=JSON.parse(await file.text()),count=QADomain.validateBackup(b);
+  if(b.uid!==S.uid)throw Error('현재 로그인한 사용자의 백업만 복구할 수 있습니다');
+  const preview=document.querySelector('#backupPreview');
+  restoreDraft=b;
+  let collisions=0;
+  for(const [name,rows] of Object.entries(b.collections)){
+    const snap=await C(name).get(),ids=new Set();snap.forEach(d=>ids.add(d.id));
+    collisions+=rows.filter(r=>ids.has(r.id)).length;
+  }
+  preview.innerHTML='<p><b>'+count+'개 문서</b> · 기존 ID '+collisions+'개. 현재 데이터의 백업을 먼저 내려받습니다.</p><p>복구는 백업 문서를 같은 ID에 덮어씁니다. 백업에 없는 현재 문서는 삭제하지 않습니다. 다른 기기의 편집을 중단한 뒤 진행하세요.</p><label><input type="checkbox" id="restoreAck"> 위 내용을 확인했습니다</label><button class="btn danger" id="restoreCommit">현재 백업 후 복구</button>';
+}
+async function restoreCommit(){
+  if(!restoreDraft||backupBusy||!document.querySelector('#restoreAck')?.checked)return;
+  backupBusy=true;const uid=S.uid,b=restoreDraft;
+  try{
+    if(uid!==b.uid)throw Error('계정이 변경되었습니다');
+    await backupData(true);let done=0;
+    const rows=Object.entries(b.collections).flatMap(([col,items])=>items.map(row=>({col,...row})));
+    for(let i=0;i<rows.length;i+=350){
+      if(S.uid!==uid)throw Error('계정이 변경되었습니다');
+      const batch=db.batch();rows.slice(i,i+350).forEach(r=>batch.set(D(r.col+'/'+r.id),r.data));
+      await batch.commit();done+=rows.slice(i,i+350).length;
+      document.querySelector('#backupPreview').textContent=done+' / '+rows.length+'개 복구 중';
+    }
+    restoreDraft=null;toast('복구 완료 · 새로고침합니다');location.reload();
+  }catch(e){toast('복구 중단: '+e.message+' · 일부 문서는 복구됐을 수 있습니다. 같은 파일로 재시도할 수 있습니다.','err');}
+  finally{backupBusy=false;}
+}
+function enhanceLedger(){
+  if(S.view!=='ledger'||S.lg.sub!=='tool'||document.querySelector('#backupPanel'))return;
+  const panel=document.createElement('section');panel.id='backupPanel';panel.className='backup-panel';
+  panel.innerHTML='<h3>전체 데이터 백업·복구</h3><p>거래·환전·주식수 변동·관심종목·설정·판정 기록을 내 계정 단위로 보관합니다.</p><div class="backup-actions"><button class="btn primary" id="backupAll">전체 백업 받기</button><label class="btn">복구 파일 선택<input id="restoreFile" type="file" accept=".json,application/json"></label></div><div id="backupPreview" role="status"></div>';
+  document.querySelector('#lgBody').prepend(panel);
+}
+function enhance(){
+  document.querySelectorAll('[data-mobile-view]').forEach(b=>b.setAttribute('aria-current',b.dataset.mobileView===S.view?'page':'false'));
+  document.querySelectorAll('nav.tabs .tab').forEach(b=>b.setAttribute('aria-current',b.classList.contains('on')?'page':'false'));
+  document.querySelectorAll('.row .main').forEach(el=>{
+    el.setAttribute('tabindex','0');el.setAttribute('role','button');
+    el.setAttribute('aria-expanded',el.closest('.row').classList.contains('open'));
+    el.setAttribute('aria-label',(el.querySelector('.nm .k')?.textContent||'종목')+' 상세 보기');
+  });
+  document.querySelectorAll('input,select,textarea').forEach(el=>{
+    if(el.getAttribute('aria-label')||el.labels?.length)return;
+    const label=el.parentElement.querySelector('label')?.textContent||el.title||el.placeholder||el.dataset.lgf||el.dataset.f;
+    if(label)el.setAttribute('aria-label',label);
+  });
+  document.querySelectorAll('.lgscroll').forEach(el=>{el.tabIndex=0;el.setAttribute('role','region');el.setAttribute('aria-label','가로로 스크롤하는 상세 표');});
+  const status=document.querySelector('#workspaceStatus');
+  const count=Object.keys(S.stocks).length,issues=positions().filter(p=>!p.valid).length;
+  const summary=S.uid?'관심종목 '+count+'개 · 원장 확인 '+issues+'건\n판정 근거는 종목 상세에서 확인하세요.':'로그인 후 나의 데이터를 불러옵니다.';
+  if(status.textContent!==summary)status.textContent=summary;
+  document.querySelector('#clearSearch').hidden=!document.querySelector('#searchIn').value;
+  enhanceLedger();
+}
+let enhanceTimer;
+const observer=new MutationObserver(()=>{clearTimeout(enhanceTimer);enhanceTimer=setTimeout(enhance,60);});
+observer.observe(document.querySelector('#list'),{childList:true,subtree:true});
+observer.observe(document.querySelector('#lgBody'),{childList:true,subtree:true});
+document.querySelector('#clearSearch').addEventListener('click',()=>{const el=document.querySelector('#searchIn');el.value='';el.dispatchEvent(new Event('input',{bubbles:true}));el.focus();});
+document.querySelector('#onlyHeld').addEventListener('change',e=>{S.ui.onlyHeld=e.target.checked;render();});
+document.querySelector('#list').addEventListener('keydown',e=>{
+ if(e.target.matches('.row .main')&&['Enter',' '].includes(e.key)){e.preventDefault();e.target.click();}
+});
+document.addEventListener('click',async e=>{
+ const button=e.target.closest('button');if(!button)return;
+ try{
+  if(button.dataset.mobileView){selectTab(button.dataset.mobileView==='ledger'?'ledger':S.tab);window.scrollTo({top:0,behavior:'smooth'});enhance();}
+  if(button.id==='mobileAdd'){selectTab('ledger');lgOpenForm('new',null,null);document.querySelector('#lgBody').scrollIntoView({behavior:'smooth'});enhance();}
+  if(button.id==='importCommit'){button.disabled=true;await lgImportCommit();}
+  if(button.id==='backupAll'){if(backupBusy)return;backupBusy=true;button.disabled=true;try{await backupData();toast('전체 백업을 저장했습니다');}finally{backupBusy=false;button.disabled=false;}}
+  if(button.id==='restoreCommit')await restoreCommit();
+ }catch(err){toast(err.message,'err');}
+});
+document.addEventListener('change',async e=>{if(e.target.id==='restoreFile')try{await restorePreview(e.target.files[0]);}catch(err){restoreDraft=null;toast(err.message,'err');}});
+// Dialog focus trap, Escape and focus restoration apply to touch and keyboards.
+let activeDialog=null,returnFocus=null;
+function syncDialog(){
+ const open=[...document.querySelectorAll('.mask.on')].at(-1);
+ if(open===activeDialog)return;
+ if(open){if(!activeDialog)returnFocus=document.activeElement;activeDialog=open;
+  const dialog=open.querySelector('.modal');dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-label',dialog.querySelector('h2')?.textContent||'대화상자');
+  setTimeout(()=>dialog.querySelector('input,select,button,[tabindex]')?.focus(),0);
+ }else{activeDialog=null;returnFocus?.focus();}
+ document.querySelector('.wrap').inert=!!open;document.body.classList.toggle('dialog-open',!!open);
+}
+document.querySelectorAll('.mask').forEach(el=>new MutationObserver(syncDialog).observe(el,{attributes:true,attributeFilter:['class']}));
+document.addEventListener('keydown',e=>{
+ if(!activeDialog)return;
+ if(e.key==='Escape'&&activeDialog.id!=='loginMask'){e.preventDefault();activeDialog.classList.remove('on');return;}
+ if(e.key!=='Tab')return;
+ const all=[...activeDialog.querySelectorAll('button,input,select,textarea,a[href],[tabindex="0"]')].filter(x=>!x.disabled&&x.getClientRects().length);
+ if(!all.length)return;const first=all[0],last=all.at(-1);
+ if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+ else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+});
+function network(){document.querySelector('#networkNotice').hidden=navigator.onLine;if(navigator.onLine&&S.uid){refreshQuotes();}}
+window.addEventListener('offline',network);window.addEventListener('online',network);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.uid){glMaybeSave();glBackfill();}});
+document.querySelector('#btnDiag').setAttribute('aria-label','데이터 자기점검');
+document.querySelector('#btnSettings').setAttribute('aria-label','설정 열기');
+syncDialog();enhance();network();
 </script>
 </body>
 </html>
+
