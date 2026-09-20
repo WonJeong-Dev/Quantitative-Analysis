@@ -524,7 +524,7 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
   <div class="modal" style="max-width:760px">
     <h2>🩺 자기점검</h2>
     <div id="diagBody" style="font-size:12px;line-height:1.7;max-height:60vh;overflow:auto"></div>
-    <div class="foot"><button class="btn" id="btnDiagCopy" style="margin-right:auto">JSON 복사</button><button class="btn" data-close>닫기</button></div>
+    <div class="foot"><button class="btn" id="btnDiagDownload">JSON 다운로드</button><button class="btn" id="btnDiagCopy" style="margin-right:auto">JSON 복사</button><button class="btn" data-close>닫기</button></div>
   </div>
 </div>
 
@@ -2777,20 +2777,29 @@ function glGet(doc,row,name){
   return (i<0||!row||i>=row.length)?null:row[i];
 }
 let glSaveBusy=false;
+function glWaitReason(){
+  if(!S.uid)return '로그인 대기';
+  if(glSaveBusy)return '저장 중';
+  if(Q.active||Q.items.length)return '시세 조회 대기';
+  if(sumBusy)return '재무 조회 대기';
+  if(S.glSaved===lgToday())return '오늘 기록됨';
+  if(!Object.keys(S.stocks).some(id=>S.calc[id]))return '산출값 대기';
+  return '저장 시도 가능';
+}
 function glSettingsKey(){return QADomain.settingsKey({rule:RULE_VER,qw:S.settings.qw,aw:S.settings.aw,manual:Object.fromEntries(Object.entries(S.stocks).map(([id,st])=>[id,st.manual||{}]))});}
 async function glMaybeSave(force){
-  if(!S.uid||glSaveBusy||Q.active||Q.items.length||sumBusy)return false;
+  if(glWaitReason()!=='저장 시도 가능')return false;
   const day=lgToday(); if(S.glSaved===day)return false;
   const ids=Object.keys(S.stocks).filter(id=>S.calc[id]);if(!ids.length)return false;
   const rows={},inputs={};
   for(const id of ids){const k=S.calc[id],c=S.cache[id]||{};rows[id]=glRow(k);inputs[id]={priceAsOf:k.priceTs||null,manual:S.stocks[id].manual||{},fund:c.fund||null,ana:c.ana||null};}
   const doc={schema:2,d:day,at:Date.now(),rv:RULE_VER,cols:GL_COLS,rows,inputs,settings:glSettingsKey(),policy:'next-session-open-v1'};
-  const docId='v52_'+day;glSaveBusy=true;
+  const docId='v52_'+day;glSaveBusy=true;S.glSaveAttempt=Date.now();
   try{
     const ref=D('qa_gradelog/'+docId);
     const saved=await db.runTransaction(async tx=>{const prev=await tx.get(ref);if(prev.exists)return prev.data();tx.set(ref,doc);return doc;});
-    S.glSaved=day;S.glog[docId]=saved;return true;
-  }catch(e){console.warn('gradelog save',e&&e.code);return false;}finally{glSaveBusy=false;}
+    S.glSaved=day;S.glog[docId]=saved;S.glSaveError=null;return true;
+  }catch(e){S.glSaveError={code:(e&&e.code)||'unknown',at:Date.now()};console.warn('gradelog save',e&&e.code);return false;}finally{glSaveBusy=false;}
 }
 let glTimer=null;
 function glSchedule(){clearInterval(glTimer);glTimer=setInterval(()=>{if(document.visibilityState!=='hidden'){glMaybeSave();glBackfill();}},60000);}
@@ -2803,11 +2812,13 @@ let glFullLoaded=false;
 async function glLoad(lim,merge){
   if(!S.uid)return 0;
   try{
+    S.glLoadState='조회 중';
     const q=await C('qa_gradelog').orderBy('d','desc').limit(lim||GL_BOOT_DAYS).get();
+    S.glLoadState='조회 완료';S.glLoadError=null;
     if(!merge)S.glog={};
     q.forEach(d=>{ S.glog[d.id]=d.data(); });
     return Object.keys(S.glog).length;
-  }catch(e){ console.warn('gradelog load',e&&e.code); return 0; }
+  }catch(e){ S.glLoadState='조회 실패';S.glLoadError={code:(e&&e.code)||'unknown',at:Date.now()};console.warn('gradelog load',e&&e.code); return 0; }
 }
 /* 검증 탭 최초 진입에서만 전 구간을 읽는다. 두 번째부터는 읽지 않는다 —
  * 탭을 오갈 때마다 수백 건을 읽으면 화면 전환이 곧 비용이 된다. */
@@ -4436,9 +4447,14 @@ function diagCollect(){
   const nn=rows.filter(r=>r.k.ratioNow!=null).map(r=>r.k.ratioN).filter(v=>v!=null).sort((a,b)=>a-b);
   const fundMiss=rows.filter(r=>fundMissing(r.id));
   return {
-    빌드:'v4.38 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
-    판정로그:(function(){ const ds=Object.keys(S.glog||{}).sort();
-      return ds.length?(ds.length+'일 · '+ds[0]+' ~ '+ds[ds.length-1]+(S.glSaved?' · 오늘 기록됨':' · 오늘 미기록')):'없음(수집 시작 전)'; })(),
+    빌드:'v5.2.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    판정로그:(function(){ const ds=Object.values(S.glog||{}).map(d=>d.d).filter(Boolean).sort();
+      return ds.length?(new Set(ds).size+'일 · '+ds[0]+' ~ '+ds[ds.length-1]):'현재 읽힌 기록 없음'; })(),
+    로그상태:{읽기:S.glLoadState||'아직 조회하지 않음',저장대기:typeof glWaitReason==='function'?glWaitReason():'확인 불가',
+      최근저장시도:S.glSaveAttempt||null,저장오류:S.glSaveError||null,조회오류:S.glLoadError||null},
+    점검상태:S.sumProg?'조회 진행 중 — 기존 캐시와 새 응답이 섞인 잠정 결과':'조회 진행 여부와 원천 수집시각을 함께 확인',
+    수집시각:rows.map(r=>({종목:r.nm,시세:r.k.priceTs||null,재무:r.ch.fund&&r.ch.fund.ts||null,
+      애널리스트:r.ch.ana&&r.ch.ana.ts||null,시세단위:'Unix seconds',재무단위:'Unix milliseconds'})),
     상수부채:CONST_LOG.filter(r=>/부채/.test(String(r.cls||''))).map(r=>r.k+'='+r.v+' ['+r.ver+']'),
     /* (v4.35) 워커 v6.7 짝 확인 — 이벤트 채널이 실제로 들어오고 있는가.
      * 워커가 구버전이면 전부 0으로 나오고 판단 감사의 (B)·(B*)가 영영 만들어지지 않는다.
@@ -4508,6 +4524,13 @@ function diagCollect(){
      * 얼마나 달라지는가"를 눈으로 확인한 뒤에 신뢰한다(§22-③). */
     /* (v4.28.1) 함의PSR이 튄 종목은 결론(배수)만 보면 원인을 못 찾는다.
      * 분자·분모·통화·환율을 그대로 늘어놓는다 — 추정 대신 관측으로 좁힌다(§22-⑥). */
+    PSR상세:rows.filter(r=>r.k.psrY!=null||r.k.revPSraw!=null).map(r=>({
+      종목:r.nm,현재가:r.k.price??null,주당매출원값:r.k.revPSraw??null,
+      재무통화:r.k.fcur??null,시세통화:r.k.qcur??null,환율:r.k.fxq??null,
+      야후PSR:r.k.psrY??null,자동표시PSR:r.k.psrAuto??null,
+      수동PSR:(S.stocks[r.id].manual||{}).psr??null,수동주당매출:(S.stocks[r.id].manual||{}).revPS??null,
+      자동주당매출배제:(r.k.dataAnoms||[]).some(x=>/함의PSR/.test(String(x))),
+      원천기준:'통화·ADR·분할·기준기간 검증 전 — 괴리 원인 미확정'})),
     PSR입력:rows.filter(r=>(r.k.dataAnoms||[]).some(x=>/함의PSR/.test(String(x))))
       .map(r=>r.nm+': 현재가 '+(r.k.price!=null?(+r.k.price).toFixed(2):'—')
         +' ÷ 주당매출 '+(r.k.revPSraw!=null?(+r.k.revPSraw).toFixed(4):'없음')
@@ -4516,36 +4539,27 @@ function diagCollect(){
     통화불일치:rows.filter(r=>r.k.curMismatch).map(r=>r.nm+' '+r.k.fcur+'→'+r.k.qcur
       +(r.k.fxq!=null?(' @'+r.k.fxq.toFixed(6)+'['+(r.k.fxSrc||'?')+']'):' @환율미확보')
       +(r.k.psrNoFx!=null?(' · PSR 환산전 '+r.k.psrNoFx.toFixed(2)):'')
-      +(r.k.psrAuto!=null?(' → '+r.k.psrAuto.toFixed(2)):' → 없음')
+      +(r.k.revPSraw>0&&r.k.fxq>0&&r.k.price>0?(' · 주당매출 환산 후 '+(r.k.price/(r.k.revPSraw*r.k.fxq)).toFixed(2)):' · 주당매출 환산 후 산출불가')
+      +(r.k.psrAuto!=null?(' · 표시 PSR '+r.k.psrAuto.toFixed(2)):' · 표시 PSR 없음')
       +(r.k.psrY!=null?(' · 야후원값 '+r.k.psrY.toFixed(2)
-          +(r.k.fxq!=null?('/환율='+(r.k.psrY/r.k.fxq).toFixed(2)):'')):' · 야후원값 없음')),
+          +(r.k.fxq!=null?('/환율='+(r.k.psrY/r.k.fxq).toFixed(2)+' [기존 대체값 산식 · 원천 기준 검증 필요]'):'')):' · 야후원값 없음')),
     /* (v4.29) 환율 결손은 PSR 공백의 유일한 원인이었다. 몇 개가 남아 있고 어느 경로로
      * 잡혔는지를 늘 보이게 둔다 — 값이 비는 것보다 '왜 비는지 모르는' 게 더 나빴다. */
     환율출처:(()=>{const c={};rows.forEach(r=>{ if(!r.k.curMismatch)return;
       const s=r.k.fxq!=null?(r.k.fxSrc||'?'):'미확보'; c[s]=(c[s]||0)+1; });
       return Object.keys(c).length?c:'통화불일치 종목 없음';})(),
     환율미확보:rows.filter(r=>r.k.curMismatch&&r.k.fxq==null).map(r=>r.nm+' '+r.k.fcur+'→'+r.k.qcur),
-    /* 야후 스냅샷 PSR과 현재가 재계산값의 정합. 큰 괴리는 규약 변경 신호다.
-     * (v4.37) 한 줄에 비율만 찍던 것을 **판별 가능한 형태**로 바꾼다. 임계값(0.15)은
-     * 그대로 둔다 — 화면을 초록으로 만들려고 임계를 넓히는 것이 §22-⑤가 금지하는 바로
-     * 그 동작이다. 대신 이미 존재하는 무료 분류축 두 개를 쓴다(새 상수 0개).
-     *  ① **입력 배제 여부** — 함의PSR 게이트에 걸린 종목은 revPS가 이미 null이 되어
-     *     판정에 쓰이지 않는다. 어긋나 있어도 판정에는 영향이 없다.
-     *  ② **야후 스냅샷 내포가** = psrY × revPS × fxq.
-     *     psrY와 revPS가 같은 매출·같은 주식수를 쓴다면 이 값은 조회 시점의 현재가와
-     *     같아야 한다. 크게 다르면 야후의 두 필드가 서로 다른 주식수를 쓰고 있다는
-     *     뜻이고(기본주/희석주·ADR 배수 등), 이건 이 앱이 고칠 수 있는 종류가 아니다.
-     *     현재가와 비슷하면 3일 캐시 창 안의 가격 변동으로 설명된다.
-     * 두 축 모두 저장된 값만으로 계산된다 — 추정 대신 관측으로 좁힌다(§22-⑥). */
+    /* 동일 주당·통화 기준을 가정한 비교. 비율=현재가/내포가로 통일한다.
+     * 원천 단위와 기간을 확인하기 전에는 괴리의 원인을 단정하지 않는다. */
     PSR정합:(function(){
       const f=rows.filter(r=>r.k.psrY!=null&&r.k.psrNoFx!=null&&r.k.psrY>0)
-        .map(r=>{ const b=+(r.k.psrNoFx/r.k.psrY).toFixed(3);
+        .map(r=>{
           const px=(r.k.revPSraw!=null&&r.k.fxq!=null&&r.k.revPSraw>0)
                     ?r.k.psrY*r.k.revPSraw*r.k.fxq:null;
-          return {nm:r.nm,비:b,px,현:r.k.price,
+          return {nm:r.nm,비:px>0&&r.k.price>0?r.k.price/px:null,px,현:r.k.price,
                   배제:(r.k.dataAnoms||[]).some(x=>/함의PSR/.test(String(x)))}; })
-        .filter(x=>Math.abs(x.비-1)>0.15);
-      const fmt=x=>x.nm+' '+x.비+'배'
+        .filter(x=>x.비!=null&&Math.abs(x.비-1)>0.15);
+      const fmt=x=>x.nm+' '+(+x.비.toFixed(3))+'배 (동일 주당·통화 기준 가정)'
         +(x.px!=null?(' [야후내포가 '+x.px.toFixed(2)
             +' vs 현재가 '+(x.현!=null?(+x.현).toFixed(2):'—')+']'):' [내포가 산출불가]');
       return {배제됨:f.filter(x=>x.배제).map(fmt), 사용중:f.filter(x=>!x.배제).map(fmt)};
@@ -4567,6 +4581,8 @@ function diagRender(){
   g+=row('점검 시각',esc2(d.시각)+' · 종목 '+d.종목수+' · 요약패스 '+esc2(d.요약패스));
   g+=row('등급 분포',esc2(JSON.stringify(d.등급분포)));
   g+=row('판정 로그',esc2(d.판정로그));
+  g+=row('로그 상태',esc2(JSON.stringify(d.로그상태)),!!(d.로그상태.저장오류||d.로그상태.조회오류));
+  g+=row('점검 상태',esc2(d.점검상태),!!S.sumProg);
   /* (v4.37) 설계가이드 §1556 배포 점검표와 설정가이드 서두가 "🩺 자기점검의 이벤트채널이
    * 0이 아닌지 확인하라"고 지시하는데, diagCollect가 값을 만들기만 하고 diagRender가
    * 그리지 않아 **화면에 존재하지 않는 항목을 확인하라고 안내**하고 있었다.
@@ -4578,7 +4594,7 @@ function diagRender(){
   g+=row('이벤트 채널',esc2(JSON.stringify(d.이벤트채널))
     +'<span style="color:var(--muted)"> — 0의 원인은 <b>워커 버전</b>일 수도 <b>야후 커버리지</b>일 수도 '
     +'있습니다. <b>/summary?sym=NVDA</b>를 직접 열어 해당 키를 확인하세요. '
-    +'실측(2026-08-27): 야후가 분기 CapEx를 주지 않아 <b>CapEx=0은 정상</b>이며 경고에서 제외합니다</span>',
+    +'<b>CapEx=0은 미수신</b>입니다. 기업의 실제 투자가 0이라는 뜻은 아닙니다</span>',
     ['실적','애널액션','가이던스','개정','현금흐름'].some(k2=>d.이벤트채널[k2]===0));
   g+=row('ADX 관측',d.ADX관측?esc2(JSON.stringify(d.ADX관측))
     +'<span style="color:var(--muted)"> — 표시·로그 전용 · 판정 미반영(§19.14)</span>':'—');
@@ -4603,14 +4619,14 @@ function diagRender(){
   g+=row('환율 미확보',list(d.환율미확보),bad(d.환율미확보));
   g+=row('PSR 정합',
     (bad(d.PSR정합.사용중)
-      ? '<b>판정 사용중 · 야후와 불일치</b> — '+d.PSR정합.사용중.map(esc2).join(' · ')+'<br>'
-      : '<span style="color:var(--up)">판정에 쓰이는 값은 전부 정합</span><br>')
+      ? '<b>자동 주당매출 미배제 · 비교 괴리</b> — '+d.PSR정합.사용중.map(esc2).join(' · ')+'<br>'
+      : '<span style="color:var(--muted)">비교 가능한 값에서 15% 초과 괴리 없음 · 데이터 정확성 보증 아님</span><br>')
     +(bad(d.PSR정합.배제됨)
-      ? '<span style="color:var(--muted)">배제됨(판정 영향 없음) — '+d.PSR정합.배제됨.map(esc2).join(' · ')+'</span><br>'
+      ? '<span style="color:var(--muted)">자동 주당매출 배제됨(다른 입력·표시값은 별도) — '+d.PSR정합.배제됨.map(esc2).join(' · ')+'</span><br>'
       : '')
-    +'<span style="color:var(--muted)">판독: 야후내포가 ≈ 현재가면 3일 캐시 창의 가격 변동. '
-    +'크게 다르면 야후의 psrY와 revPS가 서로 다른 주식수를 쓰는 것(기본주/희석주·ADR 배수) — '
-    +'앱이 고칠 수 없고, 극단이면 함의PSR 게이트가 이미 배제한다</span>',
+    +'<span style="color:var(--muted)">비교식: 현재가 ÷ (야후 PSR × 주당매출 × 환율). 동일 주당·통화 기준이라는 가정하의 비교입니다. '
+    +'괴리만으로 가격 변동·수집시점 차이·ADR·분할·원천 단위 중 원인을 확정할 수 없습니다. '
+    +'수동 입력과 대체 표시값도 별도로 확인해야 합니다</span>',
     bad(d.PSR정합.사용중));
   g+=row('세션 분포',esc2(d.세션));
   g+=row('MAD 척도',d.MAD척도?esc2(JSON.stringify(d.MAD척도))+' · 관측수 min '+d.관측수min:'—',
@@ -6450,7 +6466,7 @@ $('#lgBody').addEventListener('click',async e=>{
     put('<span class="muted">처리 중…</span>');
     try{
       if(act==='glsave'){ const ok=await glMaybeSave(true);
-        put(ok?'오늘('+lgToday()+') 판정을 기록했습니다.':'기록할 산출값이 없거나 이미 더 늦은 기록이 있습니다.'); }
+        put(ok?'오늘('+lgToday()+') 판정을 기록했습니다.':esc(S.glSaveError?('저장 실패: '+S.glSaveError.code):glWaitReason())); }
       else if(act==='glback'){ const w=await glBackfill();
         put(w?(w+'일치 전방수익률을 채웠습니다.'):'새로 채울 지평이 없습니다 — 아직 성숙하지 않았거나 이미 채워져 있습니다.'); }
       else { glFullLoaded=false; const nd=await glLoad(1000); await glBackfill();
@@ -6625,9 +6641,16 @@ function lgRegisterStock(p){
 }
 let diagLast=null;
 $('#btnDiag').addEventListener('click',()=>{ diagLast=diagRender(); $('#maskDiag').classList.add('on'); });
-$('#btnDiagCopy').addEventListener('click',()=>{
-  try{ navigator.clipboard.writeText(JSON.stringify(diagLast||diagCollect(),null,1)); toast('자기점검 결과를 복사했습니다'); }
-  catch(e){ toast('복사 실패 — 콘솔에 출력했습니다','err'); console.log(diagLast||diagCollect()); }
+$('#btnDiagCopy').addEventListener('click',async()=>{
+  diagLast=diagRender();
+  try{ await navigator.clipboard.writeText(JSON.stringify(diagLast,null,1)); toast('현재 시점의 점검 결과를 복사했습니다'); }
+  catch(e){ toast('복사 실패 — JSON 다운로드를 이용하세요','err'); }
+});
+$('#btnDiagDownload').addEventListener('click',()=>{
+  diagLast=diagRender();
+  const url=URL.createObjectURL(new Blob([JSON.stringify(diagLast,null,2)],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download='qa-diagnostics-'+Date.now()+'.json';
+  link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 $('#btnSettings').addEventListener('click',()=>{
   const qw=S.settings.qw||QW_DEF, aw=S.settings.aw||AW_DEF;
