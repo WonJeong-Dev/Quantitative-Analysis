@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-jtS+RBEjxKhETA4MAv3VbKMhrdKLA1wsJu6jaE6N8Ho=' 'sha256-QaHw5DnCs0SwhqloT4E/kHw55DX5k2TfYtI1oGC72Gk=' 'sha256-k2opCfe611r2k/g+Apj65qk90nwG1WsRwyTeGcCmw08=' 'sha256-YWL6TyR1oCBJgRzcakdgA8gjxnrHmrwg6WTQJ9pTJEs=' 'sha256-H6T51eksi26N2geQmuN2lDqN1180YhYOXQdd4oNq9do=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-XoVj0Q5KwB50av+Wyxa0ymWLZ3CH+AltT4RSJRIb1lI=' 'sha256-QaHw5DnCs0SwhqloT4E/kHw55DX5k2TfYtI1oGC72Gk=' 'sha256-EtH+OR9h4j4s5uDpb2nCEH5HoRGTjF1DUdZbT05DrRo=' 'sha256-YWL6TyR1oCBJgRzcakdgA8gjxnrHmrwg6WTQJ9pTJEs=' 'sha256-H6T51eksi26N2geQmuN2lDqN1180YhYOXQdd4oNq9do=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quant Stock Board — KR·US</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3ClinearGradient%20id='bg'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%234c1d95'/%3E%3Cstop%20offset='.5'%20stop-color='%230e7490'/%3E%3Cstop%20offset='1'%20stop-color='%230f9d8a'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='pk'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fde68a'/%3E%3Cstop%20offset='1'%20stop-color='%23fb5f57'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='gl'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fff'%20stop-opacity='.20'/%3E%3Cstop%20offset='.55'%20stop-color='%23fff'%20stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23bg)'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-opacity='.20'%20stroke-width='13'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-width='8.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='51'%20cy='18'%20r='8'%20fill='url(%23pk)'/%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23gl)'/%3E%3C/svg%3E">
@@ -747,7 +747,219 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
     if(bad.length)throw Error('형식이 맞지 않는 문서 '+bad.length+'건: '+bad.slice(0,3).join(' · '));
     return count;
   }
-  return {num,isYMD,accountKind,normCode,instrument,positionKey,debtRatio,tradeError,fingerprint,importPlan,positions,lastIndex,forward,forwardTaint,settingsKey,BACKUP_COLLECTIONS,RESTORE_SKIP,validateBackup};
+  /* ===================== (v5.6) 그림자 장부 · 횡단면 분모 =====================
+   * 명세: docs/SHADOW-5.6.md. 전부 순수함수이고 상수를 하나도 만들지 않는다.
+   * 입력은 qa_gradelog 문서 배열뿐이며, 같은 입력에 대해 항상 같은 값을 낸다. */
+
+  /* 결정론적 난수. 플라시보 arm이 같은 로그에서 늘 같은 표본을 뽑아야 재현이 된다. */
+  function hashStr(s){let h=2166136261>>>0;s=String(s);for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)>>>0;}return h>>>0;}
+  function rngFrom(seed){let x=(hashStr(seed)||1)>>>0;return function(){x^=x<<13;x>>>=0;x^=x>>>17;x^=x<<5;x>>>=0;return x/4294967296;};}
+  function sampleK(arr,k,rng){const a=arr.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));const t=a[i];a[i]=a[j];a[j]=t;}return a.slice(0,Math.max(0,k));}
+
+  const sortNum=a=>a.slice().sort((x,y)=>x-y);
+  function quantile(sorted,p){if(!sorted.length)return null;const i=(sorted.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return lo===hi?sorted[lo]:sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo);}
+  function median(values){const s=sortNum(values.filter(v=>v!=null&&Number.isFinite(v)));return s.length?quantile(s,0.5):null;}
+
+  /* 문서 자신의 cols로 행을 읽는다 — 스키마가 늘어도 과거 문서가 조용히 밀리지 않는다. */
+  function rowOf(doc,id){
+    const cs=(doc&&doc.cols)||[],r=((doc&&doc.rows)||{})[id];
+    if(!r||!cs.length)return null;
+    const o={};for(let i=0;i<cs.length;i++)o[cs[i]]=r[i];return o;
+  }
+  const marketOf=id=>String(id||'').indexOf('KR')===0?'KR':'US';
+  const typeOf=(doc,id)=>((((doc||{}).inputs||{})[id]||{}).cls||{}).type||'stock';
+
+  /* 횡단면 중앙값 대비 초과수익 — 같은 날짜·같은 시장·같은 자산유형.
+   * 외부 충격(전쟁·금리)은 모집단 전체를 같은 방향으로 밀므로 중앙값에서 상쇄된다.
+   * 참작 규칙이 아니라 분모다 — 자유 파라미터가 0개다(SHADOW-5.6 §1).
+   * ★ 저장하지 않는다. 문서 안의 r{h}들만으로 결정되는 순수함수이므로 읽을 때 계산한다. */
+  function crossMedianExcess(doc,h){
+    const out={},buckets=new Map();
+    const fwd=(doc||{}).fwd||{};
+    for(const id of Object.keys(fwd)){
+      const f=fwd[id]||{},r=f['r'+h];
+      if(r==null||!Number.isFinite(r)||f['q'+h])continue;   // 값 없음·오염은 모집단에서 뺀다
+      const key=marketOf(id)+'|'+typeOf(doc,id);
+      if(!buckets.has(key))buckets.set(key,[]);
+      buckets.get(key).push({id,r:+r});
+    }
+    for(const [key,rows] of buckets){
+      const med=median(rows.map(x=>x.r));
+      for(const x of rows)out[x.id]={m:+(x.r-med).toFixed(2),mn:rows.length,bucket:key,med:+med.toFixed(2)};
+    }
+    return out;
+  }
+
+  /* arm 정의 — 로그 열만 쓴다. 새 상수 없음(SHADOW-5.6 §2.3).
+   *   D 무작위: 그날 A와 같은 개수를 같은 모집단에서 뽑는다 → 영가설 분포
+   *   E 동일가중: 전 종목 보유 → '아무것도 안 하기' 벤치마크
+   * D·E가 없으면 A·B·C의 숫자는 읽을 수 없다. */
+  const SHADOW_ARMS=[
+    {key:'A',label:'현행',      note:'tier ∈ {상,중}',      enter:r=>r.tier==='상'||r.tier==='중'},
+    {key:'B',label:'캡 해제',    note:'tierNoCap ∈ {상,중}', enter:r=>r.tierNoCap==='상'||r.tierNoCap==='중'},
+    {key:'C',label:'전등급',     note:'tier ∈ {상,중,하}',   enter:r=>r.tier==='상'||r.tier==='중'||r.tier==='하'},
+    {key:'D',label:'무작위',     note:'플라시보 — A와 같은 개수',sample:true},
+    {key:'E',label:'동일가중 보유',note:'벤치마크 — 전 종목',   always:true}
+  ];
+
+  /* 진입 사건. 독립 관측 단위는 '등급 진입 이벤트'다 — 같은 종목의 연속된 날은 독립이 아니다.
+   *  ① 직전 문서에서 진입 조건이 거짓이었다가 참이 된 전이만 센다
+   *  ② 직전 문서에 그 종목 행이 없으면 **판정하지 않는다**(수집 공백을 가짜 진입으로 세지 않는다)
+   *  ③ 엠바고 — 같은 종목은 직전 사건의 청산 시각 이후에만 재진입한다 */
+  function shadowEvents(docs,arm,h,opt){
+    opt=opt||{};
+    const events=[],counts={},openUntil=new Map();
+    for(let di=0;di<docs.length;di++){
+      const doc=docs[di],prev=di>0?docs[di-1]:null,atSec=(doc.at||0)/1000;
+      const cand=[];
+      for(const id of Object.keys((doc||{}).rows||{})){
+        const f=((doc.fwd||{})[id])||{},r=f['r'+h];
+        if(r==null||!Number.isFinite(r)||f['q'+h])continue;        // 결과가 없거나 오염이면 사건이 아니다
+        const ou=openUntil.get(id);
+        if(ou!=null&&atSec<=ou)continue;                            // 엠바고
+        /* always(E)와 sample(D)은 진입 조건이 없다. D의 모집단은 그날의 **적격 전체**이고,
+         * 거기서 A와 같은 개수를 뽑는 것이 플라시보의 정의다 — 조건을 걸면 무작위가 아니다. */
+        if(arm.always||arm.sample){cand.push(id);continue;}
+        const now=rowOf(doc,id);
+        if(!now||!arm.enter(now))continue;
+        if(!prev||!((prev.rows||{})[id]))continue;                  // 직전 관측 없음 → 전이 판정 불가
+        const before=rowOf(prev,id);
+        if(before&&arm.enter(before))continue;                      // 이미 진입 상태였다
+        cand.push(id);
+      }
+      const want=arm.sample?Math.min(((opt.counts||{})[doc.id])||0,cand.length):cand.length;
+      const chosen=arm.sample?sampleK(cand,want,opt.rngFor?opt.rngFor(doc):rngFrom(doc.id||doc.d)):cand;
+      counts[doc.id]=chosen.length;
+      for(const id of chosen){
+        const f=doc.fwd[id];
+        events.push({arm:arm.key,id,d:doc.d,docId:doc.id,at:doc.at,market:marketOf(id),type:typeOf(doc,id),
+          r:+f['r'+h],x:(f['x'+h]!=null&&Number.isFinite(f['x'+h]))?+f['x'+h]:null,m:null,
+          entryAt:f['e'+h]!=null?f['e'+h]:null,exitAt:f['z'+h]!=null?f['z'+h]:null});
+        if(f['z'+h]!=null)openUntil.set(id,f['z'+h]);
+      }
+    }
+    return {events,counts};
+  }
+
+  /* 국면 — 벤치마크의 **직전** h봉 수익률 부호. 판정 시점에 이미 아는 값이라 선견이 없다.
+   * GL_HORIZ의 120을 재사용하므로 새 상수가 아니다(SHADOW-5.6 §2.5). */
+  function regimeOf(bench,observedAt,h){
+    if(!bench||!bench.t||!bench.c||!observedAt)return null;
+    const i=lastIndex(bench.t,observedAt/1000);
+    if(i<h)return null;
+    const a=bench.c[i-h],b=bench.c[i];
+    if(!(a>0&&b>0&&Number.isFinite(a)&&Number.isFinite(b)))return null;
+    return b>=a?1:-1;
+  }
+
+  /* 이동블록 부트스트랩 — 날짜 단면을 블록으로 리샘플한다.
+   * 겹치는 창 때문에 명목 N이 유효 표본을 크게 넘어선다(감사 §3-5). 블록이 그 자기상관을 흡수한다.
+   * 점추정만 보고하지 않는다 — 이 표본 크기에서 점추정은 오해만 만든다. */
+  function blockBootstrap(events,key,blockLen,iters,rng){
+    const byDate={};
+    for(const e of events){const v=e[key];if(v==null||!Number.isFinite(v))continue;(byDate[e.d]=byDate[e.d]||[]).push(v);}
+    const dates=Object.keys(byDate).sort();
+    if(dates.length<2)return null;
+    const L=Math.max(1,Math.min(blockLen,dates.length));
+    const nb=Math.ceil(dates.length/L),span=Math.max(1,dates.length-L+1),out=[];
+    for(let it=0;it<iters;it++){
+      const vals=[];
+      for(let b=0;b<nb;b++){const s=Math.floor(rng()*span);
+        for(let k=s;k<Math.min(s+L,dates.length);k++)for(const v of byDate[dates[k]])vals.push(v);}
+      const md=median(vals);if(md!=null)out.push(md);
+    }
+    if(!out.length)return null;
+    const s=sortNum(out);
+    return {lo:+quantile(s,0.05).toFixed(2),hi:+quantile(s,0.95).toFixed(2),iters:out.length,blocks:L,dates:dates.length};
+  }
+
+  /* 통계. 중앙값을 쓴다 — 주식 수익률은 꼬리가 지배하고 평균은 한 종목이 결정한다.
+   * MDE는 **항상 함께** 낸다. 효과크기 옆에 '그 표본으로 검출 가능한 최소 효과'가 없으면
+   * '차이 없음'과 '검출 못 함'을 구분할 수 없다(감사 §3-6 ④).
+   * 상수 1.645·0.842(z)와 1.253(중앙값 ARE)는 통계 관례이며 §20 (b)에 귀속된다. */
+  function shadowStats(events,key,opt){
+    opt=opt||{};
+    const v=events.map(e=>e[key]).filter(x=>x!=null&&Number.isFinite(x));
+    const n=v.length;
+    if(!n)return {n:0,uniq:0,dates:0,med:null,q25:null,q75:null,hit:null,mde:null,ci:null};
+    const s=sortNum(v),q25=quantile(s,0.25),q75=quantile(s,0.75);
+    const dates=new Set(events.map(e=>e.d)).size;
+    const sigma=(q75-q25)/1.349||0;                       // 로버스트 산포
+    const nEff=Math.max(1,Math.min(n,dates));             // 같은 날짜 군집을 보수적으로 흡수
+    const mde=sigma>0?+(2.487*1.253*sigma*Math.sqrt(2/nEff)).toFixed(2):null;
+    return {n,uniq:new Set(events.map(e=>e.id)).size,dates,
+      med:+quantile(s,0.5).toFixed(2),q25:+q25.toFixed(2),q75:+q75.toFixed(2),
+      hit:+(v.filter(x=>x>0).length/n*100).toFixed(1),nEff,mde,
+      ci:opt.blockLen?blockBootstrap(events,key,opt.blockLen,opt.iters||400,opt.rng||rngFrom('ci|'+key)):null};
+  }
+
+  /* 전체 실행 — 호출부가 하는 일은 문서 배열을 정렬해 넘기는 것뿐이다. */
+  function shadowRun(docs,opt){
+    opt=opt||{};
+    const h=opt.h||60,iters=opt.iters||400;
+    const list=(docs||[]).slice().sort((a,b)=>String(a.d).localeCompare(String(b.d)));
+    const mAll={};
+    for(const doc of list)mAll[doc.id]=crossMedianExcess(doc,h);
+    const seedBase=opt.seed||'shadow|'+h;
+    const rngFor=doc=>rngFrom(seedBase+'|'+(doc.id||doc.d));
+    const out={h,arms:[],docs:list.length};
+    let counts=null;
+    for(const arm of SHADOW_ARMS){
+      const res=shadowEvents(list,arm,h,{counts,rngFor});
+      if(arm.key==='A')counts=res.counts;                 // D가 A와 같은 개수를 뽑는다
+      for(const e of res.events){const mm=(mAll[e.docId]||{})[e.id];if(mm){e.m=mm.m;e.mn=mm.mn;}
+        if(opt.bench)e.regime=regimeOf(opt.bench[e.market],e.at,opt.regimeH||120);}
+      const so={blockLen:Math.max(1,Math.round(h/20)),iters,rng:rngFrom(seedBase+'|ci|'+arm.key)};
+      out.arms.push({key:arm.key,label:arm.label,note:arm.note,events:res.events,
+        x:shadowStats(res.events,'x',so),m:shadowStats(res.events,'m',so),r:shadowStats(res.events,'r',so)});
+    }
+    return out;
+  }
+
+  /* 승급 심사 — 감사 §3-6의 '상수 변경 최소 조건'을 코드로.
+   * **통과해도 코드는 아무것도 바꾸지 않는다.** 후보를 제시하고 새 arm을 올릴 뿐이다(§4.2). */
+  const PROMOTE={minEvents:30,minUniq:15,minDays:250,phases:2};
+  function promoteCheck(armRes,baseRes,opt){
+    opt=opt||{};const key=opt.key||'x',reasons=[],a=armRes[key],b=baseRes[key];
+    if(!a||!b)return {ok:false,reasons:['통계 없음']};
+    if(a.n<PROMOTE.minEvents||b.n<PROMOTE.minEvents)reasons.push('진입 사건 '+a.n+'/'+b.n+' < '+PROMOTE.minEvents);
+    if(a.uniq<PROMOTE.minUniq||b.uniq<PROMOTE.minUniq)reasons.push('고유 종목 '+a.uniq+'/'+b.uniq+' < '+PROMOTE.minUniq);
+    if((opt.days||0)<PROMOTE.minDays)reasons.push('누적 거래일 '+(opt.days||0)+' < '+PROMOTE.minDays);
+    const byReg={};
+    for(const e of armRes.events){if(e.regime==null)continue;(byReg[e.regime]=byReg[e.regime]||[]).push(e);}
+    const regs=Object.keys(byReg);
+    if(regs.length<PROMOTE.phases)reasons.push('국면 '+regs.length+'개 < '+PROMOTE.phases);
+    else{
+      const signs=[];
+      for(const g of regs){
+        const st=shadowStats(byReg[g],key,{blockLen:opt.blockLen||3,iters:opt.iters||400,rng:rngFrom('promote|'+g)});
+        if(!st.ci){reasons.push('국면 '+g+' CI 산출 불가');continue;}
+        if(st.ci.lo<=0&&st.ci.hi>=0)reasons.push('국면 '+g+' CI가 0을 포함 ['+st.ci.lo+', '+st.ci.hi+']');
+        else signs.push(st.ci.lo>0?1:-1);
+      }
+      if(signs.length===regs.length&&new Set(signs).size>1)reasons.push('국면 간 부호 불일치');
+    }
+    return {ok:reasons.length===0,reasons,delta:(a.med!=null&&b.med!=null)?+(a.med-b.med).toFixed(2):null};
+  }
+
+  /* 사전등록 본문 — 정의를 문자열로 굳혀 해시한다. 규칙이 create-only이므로 덮어쓸 수 없고,
+   * 나중에 정의가 바뀌면 해시 불일치로 드러난다(SHADOW-5.6 §5). */
+  function preregBody(rv){
+    const rows={arms:SHADOW_ARMS.map(a=>({key:a.key,label:a.label,note:a.note||(a.sample?'sample':a.always?'always':'')})),
+      entry:'직전 문서에서 거짓→참 전이 · 직전 행이 없으면 판정 안 함',
+      embargo:'같은 종목은 직전 사건의 청산 시각 이후에만 재진입',
+      regime:'벤치마크 직전 120거래일 수익률의 부호',
+      portfolio:'동일가중 사건 포트폴리오 · 자본제약·사이징·경로의존 청산 없음'};
+    const outcomes={primary:'x60',secondary:'m60',horizons:[20,60,120],
+      note:'x=지수 대비 · m=같은 날짜·시장·유형 중앙값 대비. 둘을 나란히 본다'};
+    const promote=Object.assign({},PROMOTE,{correction:'holm',placebo:'arm D'});
+    const body={id:rv+'_shadow_v1',rows,outcomes,promote};
+    return Object.assign({},body,{hash:String(hashStr(settingsKey(body)))});
+  }
+
+  return {num,isYMD,accountKind,normCode,instrument,positionKey,debtRatio,tradeError,fingerprint,importPlan,positions,lastIndex,forward,forwardTaint,settingsKey,BACKUP_COLLECTIONS,RESTORE_SKIP,validateBackup,
+    hashStr,rngFrom,sampleK,quantile,median,rowOf,crossMedianExcess,SHADOW_ARMS,
+    shadowEvents,regimeOf,blockBootstrap,shadowStats,shadowRun,PROMOTE,promoteCheck,preregBody};
 });
 </script>
 <script>(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.QAInvestment=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
@@ -3273,6 +3485,7 @@ async function glBoot(){
     /* 순서가 중요하다 — 저장을 먼저 하면 오늘 문서가 백필 루프에 들어가 헛돈다.
      * (오늘은 어떤 지평도 아직 성숙하지 않았다.) */
     await benchRefresh();
+    await preregEnsure();         // (v5.6) 사전등록 동결·대조 — 숫자를 보기 전에
     await glBackfill();
     /* 오늘치는 요약 패스가 끝난 뒤에 남긴다. 기다리지 않고 지연 재시도로 처리한다 —
      * 패스가 실패해 영영 안 끝나는 경우에도 기록이 통째로 빠지지 않게 두 번 시도한다. */
@@ -4020,6 +4233,13 @@ const CONST_LOG=[
   {k:'SCORE_ANCHOR', v:50,   from:null,         ver:'v4.15', cls:'구조적 요구'},
   {k:'ADX_P',        v:14,   from:'2026-08-26', ver:'v4.34', cls:'외부 관례(Wilder 1978) — **판정 미반영**'},
   {k:'GL_MIN_N',     v:30,   from:'2026-08-26', ver:'v4.34', cls:'표시 전용 — 검증 리포트의 판정 보류 문턱'},
+  /* (v5.6) 그림자 장부 승급 조건. **판정 미반영** — 상수를 바꾸는 것이 아니라
+   * '바꿀 근거가 섰는가'를 묻는 문턱이다. 넷 중 셋은 기존 값의 재사용이고,
+   * minUniq만 새 값이라 그 출처를 명시한다(§20). */
+  {k:'PROMOTE.minEvents', v:30,  from:'2026-10-16', ver:'v5.6', cls:'기존 상수 재사용 — GL_MIN_N과 같은 값(부팅 시 일치 검사)'},
+  {k:'PROMOTE.minUniq',   v:15,  from:'2026-10-16', ver:'v5.6', cls:'**새 값** — 0929 감사 §3-6의 방법론 처방. 표시·심사 전용이며 판정에 들어가지 않는다'},
+  {k:'PROMOTE.minDays',   v:250, from:'2026-10-16', ver:'v5.6', cls:'기존 상수 재사용 — GL_MIN_DAYS와 같은 값(부팅 시 일치 검사)'},
+  {k:'PROMOTE.phases',    v:2,   from:'2026-10-16', ver:'v5.6', cls:'구조적 필연 — 국면은 벤치마크 수익률의 부호이므로 값이 둘뿐이다'},
   /* (v5.5) 등급 결정 상수도 대장에 둔다 — 종전에는 TIER_SPEC에만 있어 발효일 추적이 안 됐다.
    * ★ from은 **배포일**로 고쳐 적는다(빌드일로 채워 둠). */
   {k:'TIER_A',       v:'72/62/54', from:null,   ver:'v4.9',  cls:'구조적 요구 — 등급 매력 임계(종전 값 기록)'},
@@ -4868,7 +5088,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.5.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.6.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -6337,6 +6557,10 @@ function lgViewPerf(){
  *   관측 수가 아무리 커도 그것은 표본이 큰 것이 아니다. */
 const GL_MIN_N=30;                 // [표시 전용] 이 미만이면 수치를 내되 '판정 보류'로 적는다
 const GL_MIN_DAYS=250;             // [표시 전용] 국면 1개분(≈1년)의 거래일. 이하면 판정하지 않는다
+/* (v5.6) '재사용'은 주장이 아니라 검사여야 한다. 한쪽만 바뀌면 CONST_LOG의 귀속이 거짓이 되고,
+ * §20 분류표가 장식이 된다. 어긋나면 콘솔에 남기고 자기점검에서 드러난다. */
+const PROMOTE_SYNC=(QADomain.PROMOTE.minEvents===GL_MIN_N&&QADomain.PROMOTE.minDays===GL_MIN_DAYS);
+if(!PROMOTE_SYNC)console.warn('CONST_LOG 귀속 불일치: PROMOTE가 GL_MIN_N/GL_MIN_DAYS와 어긋납니다');
 const STIER=['상','중','하','범위밖'];
 const TIER_RANK={'상':3,'중':2,'하':1,'범위밖':0};
 const HYPO=[
@@ -6534,6 +6758,156 @@ function glNewsURL(id,day,hz){
   const q=glName(id)+' after:'+day+' before:'+t1;
   return 'https://news.google.com/search?q='+encodeURIComponent(q)+'&hl=ko&gl=KR&ceid=KR%3Ako';
 }
+/* ================= (v5.6) 사전등록 동결 — qa_prereg =================
+ * 규칙이 create-only·update/delete 금지이므로 한 번 쓰면 바꿀 수 없다(firestore.rules:94).
+ * 그래서 '덮어쓰기'가 아니라 '대조'가 유일한 수단이다 — 정의가 바뀌면 경고로 드러난다.
+ * 숫자를 본 뒤에 규칙을 고르는 것이 §22-⑤가 금지하는 동작이고, 이 문서가 그 유혹을 막는다. */
+let preregState=null;
+async function preregEnsure(){
+  if(!S.uid)return null;
+  const body=QADomain.preregBody(RULE_VER), ref=D('qa_prereg/'+body.id.replace(/\./g,''));
+  try{
+    const snap=await ref.get();
+    if(snap.exists){
+      const cur=snap.data();
+      preregState={state:cur.hash===body.hash?'frozen':'drift',at:cur.at||null,
+        stored:cur.hash||null,now:body.hash,id:body.id};
+    }else{
+      await ref.set(Object.assign({at:Date.now()},body));
+      preregState={state:'created',at:Date.now(),stored:body.hash,now:body.hash,id:body.id};
+    }
+  }catch(e){ preregState={state:'error',msg:(e&&e.code)||'unknown',now:body.hash,id:body.id}; }
+  return preregState;
+}
+
+/* ================= (v5.6) 그림자 장부 — 검증 탭 =================
+ * 전부 qa_gradelog의 순수함수다(domain.js). 여기서 하는 일은 문서를 모아 넘기고 그리는 것뿐.
+ * 명세: docs/SHADOW-5.6.md */
+function glShadowDocs(){
+  return Object.keys(S.glog||{})
+    .filter(id=>{const d=S.glog[id];return d&&d.schema===2&&d.rv===RULE_VER&&d.settings===glSettingsKey();})
+    .map(id=>Object.assign({id},S.glog[id]));
+}
+/* (v5.6) 귀속 3층 — v5.5의 (A)/(B)/(B*)/(C) 분류기를 **체결 단위**로 돌린다.
+ * 분류기도 플라시보도 새로 만들지 않는다. 바뀌는 것은 집계 단위뿐이다(종목-일 → 진입 사건).
+ * (C) 불가피가 곧 '외부요인' 칸이다 — 전쟁 탐지기를 따로 만들지 않는 이유가 여기 있다.
+ * ★ (C) 비율 자체는 뜻이 없다. 관측과 **플라시보의 차이**만 해석한다(v4.35 무작위 기준선). */
+function lgShadowCause(out,hz){
+  const idx={};
+  for(const o of glObs(hz).obs)idx[o.logId+'|'+o.id]=o;
+  for(const a of out.arms){
+    const tally={A:0,B:0,'B*':0,C:0,U:0},pl={A:0,B:0,'B*':0,C:0,U:0};let matched=0;
+    for(const e of a.events){
+      const o=idx[e.docId+'|'+e.id];
+      if(!o)continue;                       // 성분 결측 등으로 분리된 관측 — 섞지 않는다
+      matched++;
+      e.cause=revCause(o,glLaterRow(e.id,e.docId,hz)).cause;      tally[e.cause]=(tally[e.cause]||0)+1;
+      e.causeP=revCause(o,glEarlierRow(e.id,e.docId,hz)).cause;   pl[e.causeP]=(pl[e.causeP]||0)+1;
+    }
+    a.cause=tally;a.causeP=pl;a.causeN=matched;
+  }
+}
+function lgShadowHTML(hz){
+  const docs=glShadowDocs();
+  const pct=v=>v==null?'—':((v>=0?'+':'−')+Math.abs(v).toFixed(1)+'%p');
+  let g='<div class="lgsec"><span class="t">그림자 장부</span>'
+   +'<span class="m">사전 고정 arm을 같은 로그 위에 병렬로 — 「잘했나」가 아니라 「어느 규칙이 나은가」</span></div>';
+
+  /* 사전등록 상태를 맨 위에 둔다 — 이 표의 모든 숫자가 그 정의에 묶여 있다. */
+  if(preregState){
+    const st=preregState.state;
+    const label={frozen:'동결됨',created:'이번에 동결',drift:'⚠ 정의 불일치',error:'확인 실패'}[st]||st;
+    g+='<div class="lgnote" style="'+(st==='drift'?'border-color:var(--down)':'')+'">'
+      +'<b>사전등록 '+esc(label)+'</b> — <code>'+esc(preregState.id)+'</code>'
+      +(st==='drift'
+        ? '<br>저장된 정의(해시 '+esc(String(preregState.stored))+')와 현재 코드(해시 '+esc(String(preregState.now))
+          +')가 다릅니다. 저장본은 수정할 수 없으므로(create-only), <b>아래 수치는 사전등록된 정의의 결과가 아닙니다.</b> '
+          +'새 버전으로 다시 동결하거나 코드를 되돌리십시오.'
+        : '<br>진입·청산·arm·승급 조건이 Firestore에 쓰기 금지로 굳어 있습니다. 숫자를 본 뒤 정의를 바꿀 수 없습니다.')
+      +'</div>';
+  }
+
+  if(docs.length<2){
+    return g+'<div class="lgcard" style="margin-top:8px"><b>로그가 아직 2일 미만입니다</b>'
+      +'<div style="margin-top:5px;font-size:12px">진입은 <b>전이</b>(직전 문서에서 거짓→참)로만 셉니다. '
+      +'하루치로는 전이를 정의할 수 없습니다.</div></div>';
+  }
+  const out=QADomain.shadowRun(docs,{h:hz,iters:300,bench:S.bench,regimeH:120});
+  lgShadowCause(out,hz);        // (v5.6) 귀속 — 체결 단위
+  const by=Object.fromEntries(out.arms.map(a=>[a.key,a]));
+  const A=by.A,Dp=by.D,E=by.E;
+
+  g+='<div class="lgnote" style="margin-top:8px">결과변수를 <b>둘 다</b> 보입니다. 하나를 고르면 그 선택이 사후 선택이 됩니다.<br>'
+   +'<b>x</b> = 지수 대비 · <b>m</b> = 같은 날짜·같은 시장·같은 자산유형 <b>중앙값 대비</b>. '
+   +'m은 전쟁·금리처럼 모집단 전체를 미는 충격을 <b>분모에서 상쇄</b>합니다 — 참작 규칙이 아니라 분모라서 자유 파라미터가 0개입니다.<br>'
+   +'<b>MDE</b>는 그 표본으로 검출 가능한 최소 효과입니다. 중앙값이 MDE보다 작으면 "차이 없음"이 아니라 <b>"검출 못 함"</b>입니다.</div>';
+
+  g+='<table class="lgtbl" style="margin-top:6px"><tr>'
+   +'<th>arm</th><th>진입 조건</th><th style="text-align:right">사건</th><th style="text-align:right">종목</th>'
+   +'<th style="text-align:right">x 중앙값</th><th style="text-align:right">x CI90</th>'
+   +'<th style="text-align:right">m 중앙값</th><th style="text-align:right">MDE</th><th style="text-align:right">적중</th></tr>';
+  for(const a of out.arms){
+    const hl=(a.key==='D'||a.key==='E')?' style="color:var(--muted)"':'';
+    g+='<tr'+hl+'><td><b>'+esc(a.key)+'</b> '+esc(a.label)+'</td><td><small>'+esc(a.note||'')+'</small></td>'
+      +'<td style="text-align:right">'+a.x.n+'</td><td style="text-align:right">'+a.x.uniq+'</td>'
+      +'<td style="text-align:right">'+pct(a.x.med)+'</td>'
+      +'<td style="text-align:right"><small>'+(a.x.ci?('['+a.x.ci.lo+', '+a.x.ci.hi+']'):'—')+'</small></td>'
+      +'<td style="text-align:right">'+pct(a.m.med)+'</td>'
+      +'<td style="text-align:right"><small>'+(a.x.mde!=null?('±'+a.x.mde):'—')+'</small></td>'
+      +'<td style="text-align:right">'+(a.x.hit!=null?a.x.hit+'%':'—')+'</td></tr>';
+  }
+  g+='</table>';
+
+  /* D·E 없이는 A의 숫자를 읽을 수 없다 — 그 사실을 표 바로 밑에 못 박는다. */
+  const d1=(A.x.med!=null&&Dp.x.med!=null)?+(A.x.med-Dp.x.med).toFixed(1):null;
+  const d2=(A.x.med!=null&&E.x.med!=null)?+(A.x.med-E.x.med).toFixed(1):null;
+  g+='<div class="lgnote"><b>읽는 법</b> — 보아야 할 것은 A의 절대값이 아니라 <b>A − D</b>(플라시보 대비)와 <b>A − E</b>(아무것도 안 하기 대비)입니다.<br>'
+   +'A − D = <b>'+pct(d1)+'</b> · A − E = <b>'+pct(d2)+'</b>'
+   +(A.x.mde!=null?(' · 현재 MDE ±'+A.x.mde+'%p'):'')
+   +'<br>D는 그날 A와 <b>같은 개수</b>를 같은 모집단에서 무작위로 뽑은 것입니다. A가 +3%p여도 D가 +3%p면 정보는 0입니다.</div>';
+
+  /* 승급 심사 — 통과해도 코드는 아무것도 바꾸지 않는다 */
+  const days=docs.length;
+  g+='<div class="lgsec" style="margin-top:10px"><span class="t">변경 후보 심사</span>'
+   +'<span class="m">통과해도 코드는 상수를 바꾸지 않습니다 — 후보를 제시하고 새 arm으로 올릴 뿐입니다</span></div>';
+  g+='<table class="lgtbl"><tr><th>후보</th><th style="text-align:right">A 대비</th><th>판정</th><th>미충족 조건</th></tr>';
+  for(const k of ['B','C']){
+    const r=QADomain.promoteCheck(by[k],A,{key:'x',days,blockLen:Math.max(1,Math.round(hz/20))});
+    g+='<tr><td><b>'+k+'</b> '+esc(by[k].label)+'</td>'
+      +'<td style="text-align:right">'+pct(r.delta)+'</td>'
+      +'<td>'+(r.ok?'<b style="color:var(--up)">후보 성립</b>':'<span class="muted">미성립</span>')+'</td>'
+      +'<td><small>'+(r.reasons.length?esc(r.reasons.join(' · ')):'—')+'</small></td></tr>';
+  }
+  g+='</table>';
+  /* ── 귀속 (3층) ── */
+  const CK=['A','B','B*','C','U'];
+  const CLBL={A:'(A) 프로세스 결함',B:'(B) 커버리지 결함','B*':'(B*) 해석 분기',C:'(C) 불가피',U:'관측불가'};
+  g+='<div class="lgsec" style="margin-top:10px"><span class="t">귀속 — 왜 그렇게 됐나</span>'
+   +'<span class="m">v5.5 분류기를 체결 단위로. (C) 불가피가 외부요인 칸입니다</span></div>';
+  g+='<table class="lgtbl"><tr><th>arm</th><th style="text-align:right">분류</th>'
+   +CK.map(k=>'<th style="text-align:right">'+esc(CLBL[k])+'</th>').join('')+'</tr>';
+  for(const a of out.arms){
+    if(!a.causeN)continue;
+    const row=(lbl,t,cls)=>'<tr'+(cls||'')+'><td>'+lbl+'</td><td style="text-align:right">'+a.causeN+'</td>'
+      +CK.map(k=>'<td style="text-align:right">'+(t[k]||0)+'</td>').join('')+'</tr>';
+    g+=row('<b>'+esc(a.key)+'</b> '+esc(a.label)+' <small class="muted">관측</small>',a.cause,'');
+    g+=row('<small class="muted">　같은 arm · 플라시보(판정 이전 창)</small>',a.causeP,' style="color:var(--muted)"');
+  }
+  g+='</table>';
+  g+='<div class="lgnote"><b>(C) 비율 자체는 뜻이 없습니다.</b> 방향성 채널이 5개라 아무 정보가 없어도 우연히 하나쯤 부호가 맞습니다. '
+   +'의미가 있는 것은 <b>관측 행과 플라시보 행의 차이</b>뿐입니다 — 판정 <b>이전</b> 창에서도 같은 만큼 일치한다면 '
+   +'그 채널은 결과를 예고한 것이 아니라 가격을 뒤따른 것입니다(역인과).<br>'
+   +'외부 충격을 "참작"하는 예외 규칙은 두지 않습니다. 그것은 어떤 실패든 사후 정당화할 수 있는 자유 파라미터가 됩니다. '
+   +'시장 전체를 미는 충격은 위의 <b>m</b>(횡단면 중앙값 대비)에서 이미 분모로 상쇄됩니다.</div>';
+
+  g+='<div class="lgnote">승급 조건은 사전등록에 동결돼 있습니다: 진입 사건 ≥'+QADomain.PROMOTE.minEvents
+   +' · 고유 종목 ≥'+QADomain.PROMOTE.minUniq+' · 누적 '+QADomain.PROMOTE.minDays+'일 · '
+   +'<b>국면 '+QADomain.PROMOTE.phases+'개 각각에서 CI90이 0을 배제하고 부호가 같을 것</b>. '
+   +'미달할 때 조건을 완화하는 것이 바로 §22-⑤ 위반입니다.<br>'
+   +'국면은 벤치마크의 직전 120거래일 수익률 부호로 정의합니다 — 판정 시점에 이미 아는 값이라 선견이 없습니다.</div>';
+  return g;
+}
+
 function lgViewVerify(){
   /* 전 구간 로드는 이 화면에서만 필요하다. 비동기로 걸어 두고 먼저 그린다 —
    * 로드가 끝나면 스스로 다시 그린다(glLoadFull 안에서). */
@@ -6695,6 +7069,7 @@ function lgViewVerify(){
     +'<div class="lgnote" style="margin-top:6px">접속할 때 자동으로 ①과거 로그 읽기 ②지수 캔들 갱신 ③성숙한 지평 백필 ④(요약 패스 완료 후) 오늘치 기록이 돕니다. '
     +'위 버튼은 수동 재시도용입니다 — 하루에 여러 번 눌러도 같은 날짜 문서를 덮어쓸 뿐 중복 기록되지 않습니다.</div>'
     +'<div id="glMsg" style="margin-top:8px;font-size:12px"></div>';
+  g+=lgShadowHTML(hz);          // (v5.6) 그림자 장부 · 변경 후보 심사
   return g;
 }
 /* 판단 감사 패널. lgViewVerify에서 분리한 이유는 길이가 아니라 책임이다 —
