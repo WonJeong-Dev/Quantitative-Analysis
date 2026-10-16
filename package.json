@@ -1,0 +1,10 @@
+{
+  "name": "qa-stock-board",
+  "version": "5.6.2",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "verify": "node scripts/verify.cjs",
+    "preview": "node scripts/serve.cjs"
+  }
+}

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<!-- BUILD:CSP -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quant Stock Board — KR·US</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3ClinearGradient%20id='bg'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%234c1d95'/%3E%3Cstop%20offset='.5'%20stop-color='%230e7490'/%3E%3Cstop%20offset='1'%20stop-color='%230f9d8a'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='pk'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fde68a'/%3E%3Cstop%20offset='1'%20stop-color='%23fb5f57'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='gl'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fff'%20stop-opacity='.20'/%3E%3Cstop%20offset='.55'%20stop-color='%23fff'%20stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23bg)'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-opacity='.20'%20stroke-width='13'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-width='8.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='51'%20cy='18'%20r='8'%20fill='url(%23pk)'/%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23gl)'/%3E%3C/svg%3E">
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Quant Board">
+<meta name="theme-color" content="#0e7490">
+<style>/* BUILD:STYLE */</style>
+</head>
+<body>
+<a class="skip-link" href="#mainContent">본문으로 이동</a>
+<main class="wrap" id="mainContent" tabindex="-1">
+  <header>
+    <div class="logo">Quant Stock Board<small>내 판단의 근거를 확인하는 투자 노트</small></div>
+    <div class="head-right">
+      <span class="statuschip" id="chipConn"><span class="dot" id="dotConn"></span><span id="txtConn">연결 중…</span></span>
+      <span class="statuschip" id="chipData"><span class="dot" id="dotData"></span><span id="txtData">데이터 대기</span></span>
+      <button class="btn icon" id="btnDiag" title="자기점검 — 데이터 상태 한눈에">🩺</button>
+      <button class="btn icon" id="btnSettings" title="설정">⚙</button>
+    </div>
+  </header>
+
+  <section class="overview" aria-label="오늘의 확인 사항"><div><span class="eyebrow">MY INVESTMENT WORKSPACE</span><h1>나의 투자 현황</h1><p>관심종목 · 판단 근거 · 거래 기록</p></div><div id="workspaceStatus" role="status">로그인 후 나의 데이터를 불러옵니다.</div></section>
+  <div id="networkNotice" class="lgalert" hidden>오프라인입니다. 표시된 데이터의 기준 시각을 확인하세요. 연결이 복구되면 다시 갱신합니다.</div>
+  <div class="marketbar" id="marketbar"></div>
+
+  <nav class="tabs" aria-label="시장과 거래기록">
+    <button class="tab on" data-tab="KR_stock" title="단축키 1">🇰🇷 국내주식<b class="tcnt"></b></button>
+    <button class="tab" data-tab="KR_etf" title="단축키 2">🇰🇷 국내ETF<b class="tcnt"></b></button>
+    <button class="tab" data-tab="US_stock" title="단축키 3">🇺🇸 미국주식<b class="tcnt"></b></button>
+    <button class="tab" data-tab="US_etf" title="단축키 4">🇺🇸 미국ETF<b class="tcnt"></b></button>
+    <button class="tab" data-tab="ledger" title="단축키 5 — 보유·거래·분할·환전">📒 거래기록<b class="tcnt"></b></button>
+    <div class="counts" id="counts"></div>
+  </nav>
+
+  <div id="boardView">
+  <div class="controls">
+    <select id="sortSel" title="정렬 기준">
+      <option value="grade">규칙 후보등급순</option>
+      <option value="score">가격매력순</option>
+      <option value="quality">종합점수순</option>
+      <option value="upside">상승여력순</option>
+      <option value="rsi">RSI 낮은순</option>
+      <option value="chg">등락률순</option>
+      <option value="name">이름순</option>
+    </select>
+    <div class="searchbox"><input type="search" id="searchIn" aria-label="종목명 또는 티커 검색" placeholder="종목명·티커 검색"><button id="clearSearch" aria-label="검색 지우기" hidden>×</button></div><label class="hold-filter"><input type="checkbox" id="onlyHeld"> 보유만</label>
+    <div class="spacer"></div>
+    <button class="btn" id="btnInvestment">투자정책·검증</button>
+    <button class="btn" id="btnRefresh">⟳ 전체 갱신</button>
+    <button class="btn primary" id="btnAdd">+ 종목 추가</button>
+  </div>
+
+  <details class="legend-panel"><summary>차트 범례와 읽는 법</summary><div class="striplegend">
+    <span class="lg"><i style="background:var(--violet-soft);border:1px solid #d9c9f2"></i>매물대 VA(1Y)</span>
+    <span class="lg"><i style="background:var(--violet)"></i>POC</span>
+    <span class="lg"><i style="background:var(--accent-soft)"></i>볼린저(20,2)</span>
+    <span class="lg"><i style="background:#9db1e8"></i>BB중단</span>
+    <span class="lg"><i style="background:var(--green)"></i>EMA20</span>
+    <span class="lg"><i style="background:var(--amber)"></i>SMA50</span>
+    <span class="lg"><i style="background:#4a5670"></i>SMA200</span>
+    <span class="lg"><i style="background:#fff;border:2px solid #555;border-radius:50%"></i>현재가</span>
+  </div>
+
+  </details>
+  <div class="listhead">
+    <div>#</div><div>종목</div><div>현재가</div><div>종합 · 가격매력</div><div>적정목표가 · 여력</div><div style="text-align:center">규칙 후보등급</div><div style="text-align:center">RSI</div><div>포지션 (52주 범위)</div><div></div>
+  </div>
+  <div id="list"></div>
+  </div><!-- /#boardView -->
+
+  <!-- (v4.30) 거래기록 탭 — 모달에서 탭으로 승격 -->
+  <section id="ledgerView" hidden>
+    <div class="lgtop">
+      <div class="lgtabs" id="lgTabs">
+        <button class="lgt on" data-lg="hold">보유</button>
+        <button class="lgt" data-lg="list">거래내역</button>
+        <button class="lgt" data-lg="split">주식수 변동</button>
+        <button class="lgt" data-lg="fx">환전</button>
+        <button class="lgt" data-lg="perf">성과</button>
+        <button class="lgt" data-lg="verify">검증</button>
+        <button class="lgt" data-lg="tool">도구</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn primary" id="lgNew">+ 거래 직접 입력</button>
+    </div>
+    <div id="lgBody"></div>
+    <div class="lgfoot">이동평균법 · <b>돈이 오가지 않은</b> 주식수 변동(분할·병합·무상증자)만 소급 환산합니다 · 유상증자는 매수 기록으로 처리합니다 · 계산 보조이며 세무 조언이 아닙니다</div>
+  </section>
+
+  <footer>
+    <b>종합점수</b>(기업 자체 품질: 재무·성장·애널·안정) · <b>가격매력도</b>(현재가 매력: 상승여력·기술적 위치, 급락 허수 자동 감쇠) · <b>규칙 후보등급</b>(입력·가격 조건을 통과한 후보, 수익 보장 아님)의 3축 분리 모델<br>
+    데이터: Yahoo Finance(시세·재무·실적일·애널) · Google News(헤드라인) · 캐시: Firebase Firestore<br>
+    본 도구는 개인 참고용 계산기이며, 투자 자문 및 매매 권유가 아닙니다. 어떤 지표 조합도 수익을 보장하지 않으며 투자 판단과 책임은 본인에게 있습니다.
+  </footer>
+</main>
+
+<!-- (v4.31) 액면분할·병합 알림 — 마지막 확인 이후 새로 감지된 것만 띄운다 -->
+<div class="mask" id="maskSplit">
+  <div class="modal" style="max-width:760px">
+    <h2>🔁 주식수 변동을 반영했습니다</h2>
+    <div class="lgnote" style="margin-bottom:10px">마지막 확인 이후, 거래 기록이 있는 종목에서 새 분할·병합이 조회되어
+      <b>기준일 이전 거래의 수량·단가를 신주 기준으로 환산</b>했습니다. 아래는 그 결과입니다.<br>
+      원본 거래 기록은 고치지 않았으므로, 이미 손으로 맞춰 두셨다면 <b>[되돌리기]</b> 한 번으로 원래 숫자로 돌아갑니다.</div>
+    <div id="splitAlertBody" style="font-size:12.5px;max-height:52vh;overflow:auto"></div>
+    <div class="foot"><small style="margin-right:auto;color:var(--muted)">[분할·병합] 탭에서 언제든 다시 켜고 끌 수 있습니다</small>
+      <button class="btn" id="btnSplitLater">나중에</button>
+      <button class="btn primary" id="btnSplitAckAll">모두 확인</button></div>
+  </div>
+</div>
+
+<!-- (v4.17) 자기점검 패널 -->
+<div class="mask" id="maskDiag">
+  <div class="modal" style="max-width:760px">
+    <h2>🩺 자기점검</h2>
+    <div id="diagBody" style="font-size:12px;line-height:1.7;max-height:60vh;overflow:auto"></div>
+    <div class="foot"><button class="btn" id="btnDiagDownload">JSON 다운로드</button><button class="btn" id="btnDiagCopy" style="margin-right:auto">JSON 복사</button><button class="btn" data-close>닫기</button></div>
+  </div>
+</div>
+
+<!-- 종목 추가 모달 -->
+<div class="mask" id="maskAdd">
+  <div class="modal">
+    <h2>종목 추가</h2>
+    <div class="mrow"><label>시장</label>
+      <select id="addMarket"><option value="KR">한국 (KOSPI/KOSDAQ)</option><option value="US">미국</option></select></div>
+    <div class="mrow"><label>종류</label>
+      <select id="addKind"><option value="stock">개별주식</option><option value="etf">ETF</option></select></div>
+    <div class="mrow"><label id="addSymLabel">종목코드 (6자리 숫자)</label>
+      <input type="text" id="addSym" placeholder="예: 005930"></div>
+    <div class="mrow"><label>종목명</label><input type="text" id="addName" placeholder="예: 삼성전자"></div>
+    <div class="mrow"><label>업종 (선택)</label><input type="text" id="addSector" placeholder="예: 반도체"></div>
+    <div class="note">한국 종목은 .KS(코스피)/.KQ(코스닥)을 자동 판별합니다. 미국은 티커(예: NVDA)를 입력하세요. 추가 시 데이터 조회로 유효성을 검증합니다.<br>
+      <b>ETF</b>를 고르면 ETF 탭으로 들어가고 적정가·종합점수를 요구하지 않는 판정 경로를 씁니다. 나중에 바꾸려면 삭제 후 다시 추가하세요.</div>
+    <div class="foot"><button class="btn" data-close>취소</button><button class="btn primary" id="btnAddGo">검증 후 추가</button></div>
+  </div>
+</div>
+
+<!-- 설정 모달 -->
+<div class="mask" id="maskSet">
+  <div class="modal">
+    <h2>설정 — 점수 가중치 · 갱신</h2>
+    <div class="dsec" style="margin-top:0">종합점수 가중치 <small>기업 자체 품질 (가격 무관)</small></div>
+    <div id="wQ"></div>
+    <div class="dsec">가격매력도 가중치 <small>지금 이 가격의 매력</small></div>
+    <div id="wA"></div>
+    <div id="wFv" hidden></div><div class="lgnote">적정가 모델의 혼합 규칙은 버전별로 고정됩니다. 점수 가중치 변경은 이후 판단 기록에 함께 저장됩니다.</div>
+    <div class="mrow" style="margin-top:12px"><label>실시간 시세 주기 (초) — 활성 탭 현재가 · 미국 프리/정규/애프터, 한국 네이버 실시간</label>
+      <input type="number" id="setQuote" min="10" max="600" step="5"></div>
+    <div class="mrow"><label>캔들·지표 갱신 주기 (분) — 활성 탭 일봉 경량 갱신</label>
+      <input type="number" id="setRefresh" min="1" max="120" step="1"></div>
+    <div class="mrow"><label>커스텀 CORS 프록시 (선택, {url} 자리에 대상 URL 삽입)</label>
+      <input type="text" id="setProxy" placeholder="예: https://my-worker.example.workers.dev/?url={url}"></div>
+    <div class="mrow"><label>시세 조회 경로 — 공개 프록시는 응답을 갈아끼울 수 있는 자리입니다</label>
+      <select id="setProxyMode"></select>
+      <small style="display:block;margin-top:4px;color:var(--muted);font-size:11.5px">
+        어느 경로로 받든 <b>요청한 심볼의 응답이 맞는지</b>는 항상 검증합니다.
+        '워커 전용'은 내 워커가 죽으면 시세가 멈추는 대신, 남이 만진 값을 받을 자리가 없습니다.</small></div>
+    <div class="foot"><button class="btn" id="btnLogout" style="margin-right:auto">로그아웃</button><button class="btn danger" id="btnManualWipe" title="Firestore에 저장된 수동 입력값(초기 엑셀 시드 포함)을 전 종목에서 지웁니다. 지운 뒤에는 모든 칸이 자동조회값 기준으로 동작합니다. 종목·캐시·거래기록은 건드리지 않습니다">수동값 전체 초기화</button><button class="btn" id="btnSetReset" title="가중치와 갱신 주기를 처음 값으로 되돌립니다. 커스텀 프록시는 그대로 둡니다 — 지우면 시세·재무 조회가 끊깁니다. 저장을 눌러야 실제로 적용됩니다">기본값</button><button class="btn" data-close>닫기</button><button class="btn primary" id="btnSetSave">저장</button></div>
+  </div>
+</div>
+
+<!-- 로그인 -->
+<div class="mask" id="loginMask">
+  <div class="modal" style="max-width:400px;text-align:center">
+    <h2 style="margin-bottom:6px">Quant Stock Board</h2><p class="login-tagline">가족의 투자 기록, 각자의 안전한 공간.</p>
+    <div class="note" style="margin-bottom:14px">지정된 구글 계정으로만 접근할 수 있는 개인 보드입니다.</div>
+    <button class="btn primary" id="btnGoogleLogin" style="width:100%">Google 계정으로 로그인</button>
+  </div>
+</div>
+
+<nav class="mobile-nav" aria-label="모바일 주요 메뉴"><button data-mobile-view="board">관심종목</button><button data-mobile-view="ledger">거래·자산</button><button id="mobileAdd">+ 기록</button></nav>
+<div class="mask" id="maskInvestment"><div class="modal investment-modal"><h2>투자정책 · 시나리오 · 검증</h2><p id="investmentStatus" role="status" aria-live="polite"></p><div id="investmentBody"></div><div class="foot"><button class="btn" data-close>닫기</button></div></div></div>
+<div id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+
+<!-- (v5.5) Firebase compat 10.14.1을 같은 출처(vendor/)에서 싣는다. 파일은 npm firebase@10.14.1과
+     바이트 단위로 같고, integrity(SRI)와 CSP 해시는 빌드가 계산해 넣는다(scripts/build.cjs). -->
+<script src="vendor/firebase-10.14.1/firebase-app-compat.js" integrity="BUILD:SRI:firebase-app-compat.js"></script>
+<script src="vendor/firebase-10.14.1/firebase-auth-compat.js" integrity="BUILD:SRI:firebase-auth-compat.js"></script>
+<script src="vendor/firebase-10.14.1/firebase-firestore-compat.js" integrity="BUILD:SRI:firebase-firestore-compat.js"></script>
+<script>/* BUILD:DOMAIN */</script>
+<script>/* BUILD:INVESTMENT */</script>
+<script>/* BUILD:APP */</script>
+<script>/* BUILD:INVESTMENT_UI */</script>
+<script>/* BUILD:UX */</script>
+</body>
+</html>
+

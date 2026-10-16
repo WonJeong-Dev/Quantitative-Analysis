@@ -1,0 +1,14 @@
+node_modules/
+artifacts/
+.firebase/
+*-debug.log
+.env
+dist/
+.DS_Store
+Thumbs.db
+
+# 작업 중 백업·임시본 — 저장소에 올리지 않는다
+*.bak
+*.orig
+*.rej
+*.v[0-9]*

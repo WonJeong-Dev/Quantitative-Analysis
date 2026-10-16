@@ -1,0 +1,142 @@
+rules_version = '2';
+
+// ======================================================================
+// ⚠ 공개 저장소용 사본입니다 — 허용 이메일 명단이 자리표시자로 치환돼 있습니다. Firebase 콘솔에 붙이기 전 실제 주소로 교체하세요.
+// ======================================================================
+
+// =====================================================================
+// QA Stock Board — Firestore 보안 규칙 (v5.5 · 앱 v5.5)
+//
+// v5.5 (2026-09-30) — 판정 로그와 사전 고정 검증 보관본을 **규칙 차원에서** 불변으로 만든다.
+//   v5.1~v5.4는 users/{uid}/** 한 줄이 모든 쓰기를 허용해, 앱의 create-once 트랜잭션은
+//   '정직한 클라이언트'만 막았다. 편집한 백업 파일·기기 시계 조작으로 과거 판정을 고치거나
+//   백데이팅할 수 있었다.
+//   · qa_gradelog  생성: 문서 id = '<규칙버전>_<YYYY-MM-DD>', d가 그 날짜, sat == 서버 시각,
+//                        서버 시각이 그 날짜의 KST 하루(+1시간 유예) 안
+//                  수정: fwd(전방수익률) 필드만 · 삭제: 불가
+//   · qa_prereg    생성만(완료된 사전 고정 검증 보관본) · 수정·삭제 불가
+//   ★ 규칙은 OR로 합쳐진다 — {document=**} 전체 허용을 컬렉션 변수로 바꾸고 두 컬렉션을
+//     그 허용에서 명시적으로 뺀다. 빼지 않으면 아래의 제한이 아무것도 막지 못한다.
+//   관리 삭제·복구는 Firebase 콘솔에서 한다(콘솔은 규칙의 적용을 받지 않는다).
+//
+// (v5.1 기록)
+//
+// 이전 규칙:
+//   match /{document=**} { allow read, write: if isOwner(); }
+// 이 규칙은 "누가 들어올 수 있는가"만 정하고 "누구의 데이터인가"는 나누지
+// 않았다. 명단에 오른 두 계정이 DB 전체에 대한 읽기·쓰기를 함께 가졌고,
+// 앱의 경로가 전역 상수(qa_stocks/…)였기 때문에 같은 문서를 함께 보고
+// 함께 고쳤다. "로그인은 되는데 개인화는 안 되는" 상태의 원인이다.
+//
+// v5.1은 두 축을 분리한다.
+//   · 입장 허가 = 이메일 명단 (isBoardUser)   — 모르는 계정의 진입을 막는다
+//   · 데이터 소유 = UID (uid == auth.uid)     — 들어온 뒤 공간을 나눈다
+//
+// 배포 순서: 이관 → 새 HTML → 이 규칙.
+// 이 규칙을 먼저 배포하면 루트의 qa_* 를 읽지 못해 이관 도구가 멈춘다.
+// =====================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------- 입장 허가 ----------------
+    // 보드를 쓸 수 있는 계정. 사용자를 늘릴 때 손대는 곳은 여기 한 곳뿐이다.
+    // 데이터 분리는 아래 UID 조건이 자동으로 처리하므로, 명단에 이메일을
+    // 추가해도 기존 사용자의 데이터에는 영향이 없다.
+    function allowedEmails() {
+      return [
+        'ALLOWED_EMAIL_1@example.com',
+        'ALLOWED_EMAIL_2@example.com'
+      ];
+    }
+
+    function isBoardUser() {
+      return request.auth != null
+        // 구글 로그인만 허용. 이 프로젝트에 익명·이메일 로그인을 켜더라도
+        // 그 경로로는 보드에 들어올 수 없다.
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in allowedEmails();
+    }
+
+    function isOwner(uid) { return isBoardUser() && request.auth.uid == uid; }
+
+    // ---------------- 사용자별 데이터 ----------------
+    // users/{uid}/ 아래에 qa_stocks · qa_settings · qa_trades · qa_fx · qa_splits · qa_rights ·
+    // qa_shrs · qa_cache · qa_bench · qa_gradelog · qa_prereg 11개 컬렉션이 들어온다.
+    // 명단에 있어도 자기 uid 아래가 아니면 읽지도 쓰지도 못한다.
+    match /users/{uid}/{coll}/{rest=**} {
+      allow read: if isOwner(uid);
+      allow write: if isOwner(uid) && !(coll in ['qa_gradelog', 'qa_prereg']);
+    }
+
+    // ---------------- 판정 로그 (v5.5) ----------------
+    function kstStart(day) {   // 'YYYY-MM-DD'의 KST 0시
+      return timestamp.date(int(day[0:4]), int(day[5:7]), int(day[8:10])) - duration.value(9, 'h');
+    }
+    function inDayWindow(day) {
+      return request.time >= kstStart(day)
+          && request.time <  kstStart(day) + duration.value(25, 'h');   // 자정 넘김 1시간 유예
+    }
+    function validLog(id) {
+      let d = request.resource.data;
+      return id.matches('^v[0-9]+_[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && d.keys().hasAll(['schema', 'd', 'at', 'rv', 'cols', 'rows', 'sat'])
+          && d.d is string && id.split('_')[1] == d.d
+          && d.sat == request.time
+          && inDayWindow(d.d);
+    }
+    match /users/{uid}/qa_gradelog/{id} {
+      allow read:   if isOwner(uid);
+      allow create: if isOwner(uid) && validLog(id);
+      allow update: if isOwner(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fwd']);
+      allow delete: if false;
+    }
+
+    // ---------------- 사전 고정 검증 보관본 (v5.5) — 생성만 ----------------
+    match /users/{uid}/qa_prereg/{id} {
+      allow read:   if isOwner(uid);
+      allow create: if isOwner(uid) && request.resource.data.keys().hasAll(['id', 'at', 'rows', 'outcomes']);
+      allow update, delete: if false;
+    }
+
+    // ---------------- 루트의 구버전 데이터 ----------------
+    // qa_stocks/…, qa_trades/… 등 이관 전 경로에는 허용 규칙을 두지 않는다.
+    // Firestore는 허용 규칙이 없는 경로를 기본 거부하므로 이것으로 충분하다.
+    //
+    // (참고) 끝에 match /{document=**} { allow read, write: if false; } 를
+    // 붙이는 방식은 실제로 아무것도 막지 못한다. 규칙은 OR로 합쳐지므로
+    // 다른 match가 이미 허용한 것을 거부 규칙이 되돌리지 않는다. 기본 거부에
+    // 기대는 편이 정확하다.
+    //
+    // 이관이 끝난 뒤 루트 문서를 지울 때는 Firebase 콘솔에서 지운다.
+    // 콘솔은 보안 규칙의 적용을 받지 않는다.
+
+    // ---------------- 이관 중에만 임시로 여는 창 ----------------
+    // 평소에는 주석 상태로 둔다. 실수로 이 규칙을 먼저 배포해 이관 도구가
+    // 루트를 못 읽을 때만 아래 블록의 주석을 풀고, 이관이 끝나면 반드시
+    // 다시 주석 처리한 뒤 재배포한다. 읽기 전용이고 명단 계정에만 열린다.
+    //
+    // match /qa_stocks/{d}   { allow read: if isBoardUser(); }
+    // match /qa_settings/{d} { allow read: if isBoardUser(); }
+    // match /qa_trades/{d}   { allow read: if isBoardUser(); }
+    // match /qa_fx/{d}       { allow read: if isBoardUser(); }
+    // match /qa_splits/{d}   { allow read: if isBoardUser(); }
+    // match /qa_rights/{d}   { allow read: if isBoardUser(); }
+    // match /qa_shrs/{d}     { allow read: if isBoardUser(); }
+    // match /qa_cache/{d}    { allow read: if isBoardUser(); }
+
+    // ---------------- 나중에 시세 캐시를 공용으로 돌릴 때 ----------------
+    // qa_cache는 야후에서 받아온 시세·재무 사본이라 개인 데이터가 아니다.
+    // 지금은 사용자가 둘뿐이라 복제 비용이 무시할 만하지만, 사용자가 늘면
+    // 아래처럼 빼서 읽기는 전원·쓰기는 한 계정으로 좁히는 편이 낫다.
+    // 그때 앱에서도 캐시 경로만 C()·D()를 거치지 않도록 바꿔야 한다.
+    //
+    // match /shared/qa_cache/{d} {
+    //   allow read:  if isBoardUser();
+    //   allow write: if isBoardUser()
+    //                && request.auth.token.email.lower() == 'ALLOWED_EMAIL_1@example.com';
+    // }
+  }
+}
