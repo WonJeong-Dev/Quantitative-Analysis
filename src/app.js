@@ -3999,7 +3999,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.6.2 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.6.3 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -5816,6 +5816,28 @@ function lgShadowHTML(hz){
     return g+'<div class="lgcard" style="margin-top:8px"><b>로그가 아직 2일 미만입니다</b>'
       +'<div style="margin-top:5px;font-size:12px">진입은 <b>전이</b>(직전 문서에서 거짓→참)로만 셉니다. '
       +'하루치로는 전이를 정의할 수 없습니다.</div></div>';
+  }
+  /* (v5.6.3) 성숙 관측 0건과 '차이 없음'은 다른 상태다. 그런데 arm 표는 둘 다 0건/—으로
+   * 똑같이 그려진다. 같은 모양으로 그리면 정상(아직 측정 전)을 결함(효과 없음)으로 읽는다(§22-㉖).
+   * 지평이 경과하지 않아 전방수익률이 확정되지 않은 구간에서는 표를 **그리지 않고** 이유를 쓴다.
+   * 남은 거래일은 **벤치마크 캔들**로 센다 — 휴장일 표를 새로 만들지 않는다(새 상수 0개). */
+  const matN=glObs(hz).obs.length;
+  if(!matN){
+    const d0=docs.map(d=>d.d).sort()[0];
+    const b=(S.bench&&(S.bench.KR||S.bench.US))||null;
+    let el=null;
+    if(b&&Array.isArray(b.t)){ const lo=Date.parse(d0+'T00:00:00Z')/1000; el=b.t.filter(t=>t>=lo).length; }
+    const shorter=GL_HORIZ.filter(h=>h<hz);
+    return g+'<div class="lgcard" style="margin-top:8px"><b>성숙 관측 없음 — 지평 '+hz+'거래일이 아직 경과하지 않았습니다</b>'
+      +'<div style="margin-top:5px;font-size:12px">전방수익률은 기록일로부터 '+hz+'거래일이 지나야 확정됩니다. '
+      +'가장 이른 기록은 '+esc(d0)+'이고, '
+      +(el!=null
+        ? '그 날을 포함해 벤치마크 거래일이 '+el+'일 지났습니다 — <b>약 '+Math.max(0,hz-el+1)+'거래일</b> 남았습니다.'
+        : '벤치마크 캔들이 이 구간을 덮지 않아 남은 일수를 셀 수 없습니다.')
+      +'<br>그래서 arm 표를 그리지 않습니다. 전부 0건인 표는 「규칙 간 차이가 없다」로 오독되는데, '
+      +'실제 상태는 <b>측정 장치가 아니라 측정 대상이 아직 생기지 않은 것</b>입니다.'
+      +(shorter.length?'<br>더 짧은 지평('+shorter.join('·')+'일)이 먼저 성숙합니다.':'')
+      +'</div></div>';
   }
   const out=QADomain.shadowRun(docs,{h:hz,iters:300,bench:S.bench,regimeH:120});
   lgShadowCause(out,hz);        // (v5.6) 귀속 — 체결 단위

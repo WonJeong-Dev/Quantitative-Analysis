@@ -189,6 +189,36 @@ console.log('\n[8] glEstSrc — 로그 스키마를 늘리지 않고 inputs에�
   ok('inputs 없으면 null (구버전 문서)', M.glEstSrc({},'X')===null);
 }
 
+console.log('\n[9] 성숙 관측 0건 — 「차이 없음」처럼 그리지 않는다 (v5.6.3)');
+{
+  /* 실제 운영 상태의 재현: 로그는 여러 날 쌓였지만 지평이 아직 경과하지 않아
+   * 전방수익률이 하나도 확정되지 않았다. 이때 arm 표는 전부 0건/—이 되는데
+   * 그 화면은 '규칙 간 차이가 없다'로 오독된다. */
+  build(14); M.setPrereg({state:'frozen',id:'v5.5_shadow_v1',stored:'1',now:'1'});
+  for(const k in S.glog)for(const sid in S.glog[k].fwd)S.glog[k].fwd[sid]={};   // 성숙 결과 제거
+  const h9=M.lgShadowHTML(60);
+  ok('성숙 관측 없음을 명시', /성숙 관측 없음/.test(h9));
+  ok('지평 미경과가 이유로 적힌다', /지평 60거래일이 아직 경과하지 않았습니다/.test(h9));
+  ok('남은 거래일을 센다', /약 \d+거래일<\/b> 남았습니다/.test(h9), (h9.match(/약[^<]*<\/b>[^<]*/)||[''])[0]);
+  ok('arm 표를 그리지 않는다', !/무작위|플라시보 차이/.test(h9));
+  ok('장치 고장이 아님을 구분해 적는다', /측정 대상이 아직 생기지 않은 것/.test(h9));
+  ok('더 짧은 지평을 안내한다', /더 짧은 지평\(20일\)/.test(h9));
+  ok('커버리지는 여전히 보인다', /로그 커버리지/.test(h9));
+  /* 120일 지평에서는 20·60 둘 다 더 짧다 */
+  const h120=M.lgShadowHTML(120);
+  ok('120일에서 짧은 지평 2개 안내', /더 짧은 지평\(20·60일\)/.test(h120));
+  /* 벤치가 구간을 안 덮으면 남은 일수를 세지 않고 그렇게 적는다 */
+  const keep=S.bench; S.bench={};
+  const hNB=M.lgShadowHTML(60);
+  ok('벤치 없으면 남은 일수를 꾸며내지 않는다',
+     /남은 일수를 셀 수 없습니다/.test(hNB)&&!/약 \d+거래일/.test(hNB));
+  S.bench=keep;
+  /* 결과가 돌아오면 다시 표를 그린다 — 안내문이 영구히 붙어버리지 않는지 확인 */
+  build(14);
+  const hBack=M.lgShadowHTML(60);
+  ok('결과가 있으면 안내문이 사라지고 표가 돌아온다', !/성숙 관측 없음/.test(hBack)&&/무작위/.test(hBack));
+}
+
 console.log('\n────────────────────────────');
 console.log(pass+' passed · '+fail+' failed');
 process.exit(fail?1:0);
