@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-XoVj0Q5KwB50av+Wyxa0ymWLZ3CH+AltT4RSJRIb1lI=' 'sha256-QaHw5DnCs0SwhqloT4E/kHw55DX5k2TfYtI1oGC72Gk=' 'sha256-v+eF2w/FDvYG1vIXa6Fe/U2/yUrfgPK5vE06Y0G95IE=' 'sha256-YWL6TyR1oCBJgRzcakdgA8gjxnrHmrwg6WTQJ9pTJEs=' 'sha256-H6T51eksi26N2geQmuN2lDqN1180YhYOXQdd4oNq9do=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-XoVj0Q5KwB50av+Wyxa0ymWLZ3CH+AltT4RSJRIb1lI=' 'sha256-QaHw5DnCs0SwhqloT4E/kHw55DX5k2TfYtI1oGC72Gk=' 'sha256-Sr+0V8FefJxPXosX17Yz0l3X6FAjjfrQaqDB1XvINj8=' 'sha256-YWL6TyR1oCBJgRzcakdgA8gjxnrHmrwg6WTQJ9pTJEs=' 'sha256-H6T51eksi26N2geQmuN2lDqN1180YhYOXQdd4oNq9do=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quant Stock Board — KR·US</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3ClinearGradient%20id='bg'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%234c1d95'/%3E%3Cstop%20offset='.5'%20stop-color='%230e7490'/%3E%3Cstop%20offset='1'%20stop-color='%230f9d8a'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='pk'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fde68a'/%3E%3Cstop%20offset='1'%20stop-color='%23fb5f57'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='gl'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fff'%20stop-opacity='.20'/%3E%3Cstop%20offset='.55'%20stop-color='%23fff'%20stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23bg)'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-opacity='.20'%20stroke-width='13'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-width='8.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='51'%20cy='18'%20r='8'%20fill='url(%23pk)'/%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23gl)'/%3E%3C/svg%3E">
@@ -5088,7 +5088,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.6.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.6.2 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -6697,9 +6697,10 @@ function glEstSrc(doc,id){
   if(!es)return null;
   return es.ey1!=null?1:(es.ey0!=null?0:null);
 }
-/* (v5.6) opt.hz — 지평. 개정 건수 채널의 창 판정에 쓴다. 넘기지 않으면 종전과 같이 동작한다. */
-function revCause(o,later,opt){
-  const hz=(opt&&opt.hz!=null)?+opt.hz:null;
+/* 야후 epsRevisions의 창 길이. u30/d30이 '최근 30일'이라는 것은 **데이터 공급자의 정의**이지
+ * 우리가 고른 값이 아니다(§20 (a) 외부 사실). */
+const REV_WIN_MS=30*86400000;
+function revCause(o,later){
   const A=[];
   const bB=o.basisB, has=b=>(bB!=null&&!!(bB&b));
   const srcN=(bB==null)?null:(((bB&1)?1:0)+((bB&2)?1:0)+((bB&4)?1:0));
@@ -6721,10 +6722,18 @@ function revCause(o,later,opt){
     if(o.estE!=null&&later.estE!=null&&estMatch)        put(REV_DIR[1],later.estE-o.estE);
     if(o.estR!=null&&later.estR!=null)                 put(REV_DIR[2],later.estR-o.estR);
     if(o.ugdD!=null&&later.ugdD!=null&&later.ugdD>o.ugdD&&later.ugdAct) put(REV_DIR[3],later.ugdAct);
-    /* (v5.6) revNet은 **최근 30일** 순상향 건수다. 지평이 30일 미만이면 두 시점의 창이
-     * 판정일을 가로질러 겹치므로, 그 차이는 '판정 이후의 개정'을 뜻하지 않는다 —
-     * 해석할 수 없는 값을 0이나 신호로 쓰지 않고 **관측 없음**으로 둔다(§22-⑫). */
-    if(o.revNet!=null&&later.revNet!=null&&(hz==null||hz>=30)) put(REV_DIR[4],later.revNet-o.revNet);
+    /* (v5.6.2) ★ revNet은 **유량**이다 — 수준이 아니라 '최근 30일 동안 몇 건'이다.
+     * 유량을 차분하면(later−o) o가 판정 **이전** 30일 창이므로 판정 전 정보가 신호에 섞인다.
+     * 예: 판정 전 하향이 10건(o=−10), 판정 후 평상(later=0) → 차분 +10 → '상향이 있었다'로
+     * 읽힌다. 실제로는 판정 후에 아무 일도 없었다. **수준을 그대로 쓴다.**
+     *   · anaTgt·estE·estR = 수준 → 차분이 맞다
+     *   · ugdAct           = 사건 → 레벨 + 신선도 게이트(위)
+     *   · revNet           = 유량 → **레벨 + 창 게이트**(여기)
+     * 종목별 기저(늘 상향이 많은 종목)는 차분이 아니라 **플라시보**가 상쇄한다 — 그게 플라시보의 일이다.
+     * 창 게이트: later의 30일 창이 판정일 **이후**에 완전히 들어와야 한다. 겹치면 판정 전
+     * 개정이 섞이므로 0도 신호도 아닌 **관측 없음**으로 둔다(§22-⑫). */
+    if(later.revNet!=null&&later.at!=null&&o.observedAt!=null&&(later.at-o.observedAt)>REV_WIN_MS)
+      put(REV_DIR[4],later.revNet);
     /* 실적 발표는 양향성이다 — 부호 일치를 (B)의 근거로 쓰지 않는다.
      * 대신 **불일치**만 본다: beat했는데 빠졌다면 시장이 EPS가 아닌 다른 축(가이던스·CapEx)을
      * 봤다는 뜻이고, 그것이 (B*)의 정의다. */
@@ -6750,7 +6759,7 @@ function glLaterRow(id,day,hz){
   }
   if(!best||end*1000-best.at>7*86400000)return null;
   const G=n=>glGet(best,best.rows[id],n);
-  return {day:best.d,estSrc:glEstSrc(best,id),surpD:G('surpD'),surpPct:G('surpPct'),ugdD:G('ugdD'),ugdAct:G('ugdAct'),revNet:G('revNet'),anaTgt:G('anaTgt'),estE:G('estE'),estR:G('estR'),capexQ:G('capexQ'),capexY:G('capexY'),tier:G('tier')};
+  return {day:best.d,at:best.at,estSrc:glEstSrc(best,id),surpD:G('surpD'),surpPct:G('surpPct'),ugdD:G('ugdD'),ugdAct:G('ugdAct'),revNet:G('revNet'),anaTgt:G('anaTgt'),estE:G('estE'),estR:G('estR'),capexQ:G('capexQ'),capexY:G('capexY'),tier:G('tier')};
 }
 /* (v5.5) 플라시보 — 판정 **이전** 같은 길이 창의 행. 애널 목표가·추정치 개정은 가격을 **뒤따라** 움직이므로
  * (역인과) 판정 후 채널 변화와 결과의 부호 일치만 보면 판별력처럼 보인다. 판정 전 창에서도 같은 만큼
@@ -6765,7 +6774,19 @@ function glEarlierRow(id,day,hz){
   }
   if(!best||Math.abs(best.at-target)>7*86400000)return null;
   const G=n=>glGet(best,best.rows[id],n);
-  return {estSrc:glEstSrc(best,id),anaTgt:G('anaTgt'),estE:G('estE'),estR:G('estR'),ugdD:G('ugdD'),ugdAct:G('ugdAct'),revNet:G('revNet'),surpD:G('surpD'),surpPct:G('surpPct')};
+  return {at:best.at,estSrc:glEstSrc(best,id),anaTgt:G('anaTgt'),estE:G('estE'),estR:G('estR'),ugdD:G('ugdD'),ugdAct:G('ugdAct'),revNet:G('revNet'),surpD:G('surpD'),surpPct:G('surpPct')};
+}
+/* (v5.6.2) 플라시보 쌍 — 호출부가 둘이라 한 곳에 모은다. 갈라지면 한쪽만 고쳐진다.
+ * ★ 역할을 **바꿔** 넣는다: o ← 판정 **이전** 행, later ← 판정 시점 행.
+ *   방향을 거꾸로 넣으면(o←판정, later←이전) 차분의 부호가 뒤집혀 dir/opp가 통째로 맞바뀌고,
+ *   창 게이트도 음수 간격이라 항상 닫힌다. v5.6.0의 그림자 장부 귀속이 그 상태였다.
+ * ★ pre에는 판정 시점의 산출 상태(qm·basisB·tgtW…)가 없다. 그래서 플라시보는 **(A)를 만들 수
+ *   없다** — (A)는 판정 시점 입력에 대한 것이므로 시점을 옮기면 뜻이 없다. 화면에 '—'로 적는다. */
+function glPlaceboArgs(o,pre){
+  if(!pre||!o)return null;
+  return [Object.assign({},pre,{observedAt:pre.at,x:o.x}),
+          {at:o.observedAt,anaTgt:o.anaTgt,estE:o.estE,estR:o.estR,estSrc:o.estSrc,
+           ugdD:o.ugdD,ugdAct:o.ugdAct,revNet:o.revNet,surpD:o.surpD,surpPct:o.surpPct}];
 }
 /* 종목명 — 로그에는 id만 있으므로 현재 마스터에서 찾는다. 없으면 id를 그대로 쓴다. */
 function glName(id){ const st=S.stocks[id];
@@ -6817,16 +6838,39 @@ function lgShadowCause(out,hz){
   const idx={};
   for(const o of glObs(hz).obs)idx[o.logId+'|'+o.id]=o;
   for(const a of out.arms){
-    const tally={A:0,B:0,'B*':0,C:0,U:0},pl={A:0,B:0,'B*':0,C:0,U:0};let matched=0;
+    const tally={A:0,B:0,'B*':0,C:0,U:0},pl={A:0,B:0,'B*':0,C:0,U:0};let matched=0,pmatched=0;
     for(const e of a.events){
       const o=idx[e.docId+'|'+e.id];
       if(!o)continue;                       // 성분 결측 등으로 분리된 관측 — 섞지 않는다
       matched++;
-      e.cause=revCause(o,glLaterRow(e.id,e.docId,hz),{hz}).cause;      tally[e.cause]=(tally[e.cause]||0)+1;
-      e.causeP=revCause(o,glEarlierRow(e.id,e.docId,hz),{hz}).cause;   pl[e.causeP]=(pl[e.causeP]||0)+1;
+      e.cause=revCause(o,glLaterRow(e.id,e.docId,hz)).cause;  tally[e.cause]=(tally[e.cause]||0)+1;
+      const pa=glPlaceboArgs(o,glEarlierRow(e.id,e.docId,hz));
+      e.causeP=pa?revCause(pa[0],pa[1]).cause:null;
+      if(e.causeP){pl[e.causeP]=(pl[e.causeP]||0)+1;pmatched++;}
     }
-    a.cause=tally;a.causeP=pl;a.causeN=matched;
+    a.cause=tally;a.causeP=pl;a.causeN=matched;a.causePN=pmatched;
   }
+}
+/* (v5.6.2) 로그 커버리지 — 공백은 전이를 놓치고 m 모집단을 줄인다. 비용이 오염이 아니라
+ * **표본 손실**이라 조용히 진행되고, 2027년까지 기다리는 설계에서 표본 손실은 치명적이다.
+ * 그래서 상시 노출한다(§22-㉕).
+ * 기대 거래일은 **벤치마크 캔들**에서 센다 — 휴장일 표를 새로 만들지 않는다(새 상수 0개).
+ * ★ 날짜를 짝짓지 않고 **개수만** 비교한다. 캔들 시각의 시간대와 로그 날짜(KST)를 맞추려
+ *   들면 경계에서 조용히 틀린다. 개수 비교는 그 함정이 없고, 100%를 넘으면 '휴장일에도
+ *   접속했다'는 뜻이라 그대로 읽힌다. */
+function glCoverage(){
+  const days=glShadowDocs().map(d=>d.d).sort();
+  if(!days.length)return null;
+  const out={n:days.length,from:days[0],to:days[days.length-1],exp:null,pct:null};
+  const b=(S.bench&&(S.bench.KR||S.bench.US))||null;
+  if(b&&Array.isArray(b.t)){
+    const lo=Date.parse(out.from+'T00:00:00Z')/1000,hi=Date.parse(out.to+'T00:00:00Z')/1000+86400;
+    out.exp=b.t.filter(t=>t>=lo&&t<hi).length;
+    /* exp=0은 '커버리지 0%'가 아니라 '벤치마크가 이 구간을 덮지 않는다'는 뜻이다.
+     * 둘을 같은 모양으로 그리면 정상을 결함으로 읽게 된다(§22-㉖). */
+    if(out.exp>0)out.pct=Math.round(out.n/out.exp*100); else out.exp=null;
+  }
+  return out;
 }
 function lgShadowHTML(hz){
   const docs=glShadowDocs();
@@ -6847,6 +6891,15 @@ function lgShadowHTML(hz){
         : '<br>진입·청산·arm·승급 조건이 Firestore에 쓰기 금지로 굳어 있습니다. 숫자를 본 뒤 정의를 바꿀 수 없습니다.')
       +'</div>';
   }
+
+  { const cv=glCoverage();
+    if(cv)g+='<div class="lgnote"><b>로그 커버리지</b> — 기록 '+cv.n+'일'
+      +(cv.exp!=null?(' / 같은 구간 거래일 '+cv.exp+'일 <b>('+cv.pct+'%)</b>')
+                    :' <span style="color:var(--muted)">(벤치마크가 이 구간을 덮지 않아 비율 산출 불가)</span>')
+      +' · '+esc(cv.from)+' ~ '+esc(cv.to)
+      +'<br><span style="color:var(--muted)">로그는 접속한 날에만 기록됩니다. 공백은 오염이 아니라 '
+      +'<b>표본 손실</b>이라 조용히 진행됩니다 — 진입 전이를 놓치고 횡단면 분모의 모집단이 줄어듭니다. '
+      +'100%를 넘으면 휴장일에도 접속했다는 뜻입니다.</span></div>'; }
 
   if(docs.length<2){
     return g+'<div class="lgcard" style="margin-top:8px"><b>로그가 아직 2일 미만입니다</b>'
@@ -6909,15 +6962,18 @@ function lgShadowHTML(hz){
    +CK.map(k=>'<th style="text-align:right">'+esc(CLBL[k])+'</th>').join('')+'</tr>';
   for(const a of out.arms){
     if(!a.causeN)continue;
-    const row=(lbl,t,cls)=>'<tr'+(cls||'')+'><td>'+lbl+'</td><td style="text-align:right">'+a.causeN+'</td>'
-      +CK.map(k=>'<td style="text-align:right">'+(t[k]||0)+'</td>').join('')+'</tr>';
-    g+=row('<b>'+esc(a.key)+'</b> '+esc(a.label)+' <small class="muted">관측</small>',a.cause,'');
-    g+=row('<small class="muted">　같은 arm · 플라시보(판정 이전 창)</small>',a.causeP,' style="color:var(--muted)"');
+    /* 플라시보의 o는 판정 **이전** 행이라 산출 상태(qm·basisB·tgtW…)가 없다.
+     * (A)는 판정 시점 입력에 대한 판정이므로 시점을 옮기면 뜻이 없다 → '—'로 적는다. */
+    const row=(lbl,t,n,naA,cls)=>'<tr'+(cls||'')+'><td>'+lbl+'</td><td style="text-align:right">'+n+'</td>'
+      +CK.map(k=>'<td style="text-align:right">'+((naA&&k==='A')?'—':(t[k]||0))+'</td>').join('')+'</tr>';
+    g+=row('<b>'+esc(a.key)+'</b> '+esc(a.label)+' <small class="muted">관측</small>',a.cause,a.causeN,false,'');
+    g+=row('<small class="muted">　같은 arm · 플라시보(판정 이전 창)</small>',a.causeP,a.causePN,true,' style="color:var(--muted)"');
   }
   g+='</table>';
   g+='<div class="lgnote"><b>(C) 비율 자체는 뜻이 없습니다.</b> 방향성 채널이 5개라 아무 정보가 없어도 우연히 하나쯤 부호가 맞습니다. '
    +'의미가 있는 것은 <b>관측 행과 플라시보 행의 차이</b>뿐입니다 — 판정 <b>이전</b> 창에서도 같은 만큼 일치한다면 '
    +'그 채널은 결과를 예고한 것이 아니라 가격을 뒤따른 것입니다(역인과).<br>'
+   +'플라시보의 (A)는 <b>—</b>입니다. (A)는 판정 시점 입력에 대한 판정이라 시점을 옮기면 뜻이 없습니다.<br>'
    +'외부 충격을 "참작"하는 예외 규칙은 두지 않습니다. 그것은 어떤 실패든 사후 정당화할 수 있는 자유 파라미터가 됩니다. '
    +'시장 전체를 미는 충격은 위의 <b>m</b>(횡단면 중앙값 대비)에서 이미 분모로 상쇄됩니다.</div>';
 
@@ -7124,7 +7180,7 @@ function lgAuditPanel(obs,hz){
   const aCount={}, chAgree={}, chOppo={}, pAgree={}, pOppo={}, cases=[];
   for(const o of use){
     const later=glLaterRow(o.id,o.logId,hz);
-    const rc=revCause(o,later,{hz});
+    const rc=revCause(o,later);
     o._rc=rc; o._later=later;
     const b=bandOf(o); cz[b][rc.cause]++; cz[b].n++;
     for(const a of rc.A)aCount[a]=(aCount[a]||0)+1;
@@ -7134,7 +7190,7 @@ function lgAuditPanel(obs,hz){
     if(b!=='중간50%'&&pre){
       for(const d of rc.dir){ chAgree[d]=chAgree[d]||{'하위25%':0,'상위25%':0}; chAgree[d][b]++; }
       for(const d of rc.opp){ chOppo[d]=chOppo[d]||{'하위25%':0,'상위25%':0}; chOppo[d][b]++; }
-      { const rp=revCause(Object.assign({},pre,{x:o.x}),{anaTgt:o.anaTgt,estE:o.estE,estR:o.estR,estSrc:o.estSrc,ugdD:o.ugdD,ugdAct:o.ugdAct,revNet:o.revNet,surpD:o.surpD,surpPct:o.surpPct},{hz});
+      { const pa=glPlaceboArgs(o,pre), rp=pa?revCause(pa[0],pa[1]):{dir:[],opp:[]};
         for(const d of rp.dir)pAgree[d]=(pAgree[d]||0)+1;
         for(const d of rp.opp)pOppo[d]=(pOppo[d]||0)+1; }
     }
