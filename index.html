@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-XoVj0Q5KwB50av+Wyxa0ymWLZ3CH+AltT4RSJRIb1lI=' 'sha256-QaHw5DnCs0SwhqloT4E/kHw55DX5k2TfYtI1oGC72Gk=' 'sha256-EtH+OR9h4j4s5uDpb2nCEH5HoRGTjF1DUdZbT05DrRo=' 'sha256-YWL6TyR1oCBJgRzcakdgA8gjxnrHmrwg6WTQJ9pTJEs=' 'sha256-H6T51eksi26N2geQmuN2lDqN1180YhYOXQdd4oNq9do=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-XoVj0Q5KwB50av+Wyxa0ymWLZ3CH+AltT4RSJRIb1lI=' 'sha256-QaHw5DnCs0SwhqloT4E/kHw55DX5k2TfYtI1oGC72Gk=' 'sha256-v+eF2w/FDvYG1vIXa6Fe/U2/yUrfgPK5vE06Y0G95IE=' 'sha256-YWL6TyR1oCBJgRzcakdgA8gjxnrHmrwg6WTQJ9pTJEs=' 'sha256-H6T51eksi26N2geQmuN2lDqN1180YhYOXQdd4oNq9do=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quant Stock Board — KR·US</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3ClinearGradient%20id='bg'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%234c1d95'/%3E%3Cstop%20offset='.5'%20stop-color='%230e7490'/%3E%3Cstop%20offset='1'%20stop-color='%230f9d8a'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='pk'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fde68a'/%3E%3Cstop%20offset='1'%20stop-color='%23fb5f57'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='gl'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fff'%20stop-opacity='.20'/%3E%3Cstop%20offset='.55'%20stop-color='%23fff'%20stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23bg)'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-opacity='.20'%20stroke-width='13'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-width='8.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='51'%20cy='18'%20r='8'%20fill='url(%23pk)'/%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23gl)'/%3E%3C/svg%3E">
@@ -5088,7 +5088,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.6.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.6.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -6621,6 +6621,7 @@ function glObs(hz){
         dataAnomN:glGet(doc,row,'dataAnomN'), tgtSpread:glGet(doc,row,'tgtSpread'),
         surpD:glGet(doc,row,'surpD'), surpPct:glGet(doc,row,'surpPct'),
         ugdD:glGet(doc,row,'ugdD'), ugdAct:glGet(doc,row,'ugdAct'), revNet:glGet(doc,row,'revNet'),
+        estSrc:glEstSrc(doc,id),            // (v5.6) 로그에 없는 파생값 — inputs에서 복원
         estE:glGet(doc,row,'estE'), estR:glGet(doc,row,'estR'),
         capexQ:glGet(doc,row,'capexQ'), capexY:glGet(doc,row,'capexY'), fcf:glGet(doc,row,'fcf'),
         x:(x!=null?x:null), r:(r!=null?r:null)};
@@ -6685,7 +6686,20 @@ const REV_DIR=['애널 목표가 개정','컨센 EPS 추정(가이던스)','컨�
  * 실적 발표는 '부호 불일치' 감지에만 쓰고(그것이 곧 해석 분기의 증거),
  * CapEx는 분류에 전혀 쓰지 않고 사건 카드 표시와 (B*) 집단의 특성 기술에만 쓴다. */
 const REV_AMB=['실적 발표','CapEx'];
-function revCause(o,later){
+/* (v5.6) 컨센 EPS 추정이 **내년(ey1)**에서 왔는지 **올해(ey0)**에서 왔는지.
+ * k.estE는 ey1이 없으면 ey0로 폴백하므로, 두 시점의 출처가 다르면 서로 다른 회계연도를
+ * 비교하게 된다 — 값이 아니라 **출처가 바뀐 것**을 개정으로 읽으면 조용히 틀린다(감사 §3-2).
+ * ★ 로그 스키마를 늘리지 않는다. inputs[id].ana.est가 이미 저장돼 있어 읽을 때 복원된다
+ *   (횡단면 분모 m{h}와 같은 방식 — 파생값은 저장하지 않고 계산한다).
+ * 구버전 문서에는 inputs가 없어 null이 되고, 그때는 이 채널을 쓰지 않는다 = 보수적. */
+function glEstSrc(doc,id){
+  const es=((((doc||{}).inputs||{})[id]||{}).ana||{}).est;
+  if(!es)return null;
+  return es.ey1!=null?1:(es.ey0!=null?0:null);
+}
+/* (v5.6) opt.hz — 지평. 개정 건수 채널의 창 판정에 쓴다. 넘기지 않으면 종전과 같이 동작한다. */
+function revCause(o,later,opt){
+  const hz=(opt&&opt.hz!=null)?+opt.hz:null;
   const A=[];
   const bB=o.basisB, has=b=>(bB!=null&&!!(bB&b));
   const srcN=(bB==null)?null:(((bB&1)?1:0)+((bB&2)?1:0)+((bB&4)?1:0));
@@ -6696,16 +6710,21 @@ function revCause(o,later){
   if(srcN===1&&has(16))                               A.push(REV_A[4][0]);
   if(o.anaN!=null&&o.anaN<ANA_MIN&&has(1))            A.push(REV_A[5][0]);
 
+  const estMatch=!!(o&&later&&o.estSrc!=null&&later.estSrc!=null&&o.estSrc===later.estSrc);
   const dir=[], opp=[]; let surpOpp=false, earnIn=false;
   const x=o.x;
   if(later&&x!=null&&x!==0){
     const sx=x>0?1:-1;
     const put=(nm,d)=>{ if(d==null||d===0)return; ((d>0?1:-1)===sx?dir:opp).push(nm); };
     if(o.anaTgt!=null&&later.anaTgt!=null&&o.anaTgt>0) put(REV_DIR[0],later.anaTgt-o.anaTgt);
-    if(o.estE!=null&&later.estE!=null)                 put(REV_DIR[1],later.estE-o.estE);
+    /* (v5.6) 출처가 같을 때만 비교한다. ey1↔ey0가 섞이면 회계연도 전환이 '개정'으로 둔갑한다. */
+    if(o.estE!=null&&later.estE!=null&&estMatch)        put(REV_DIR[1],later.estE-o.estE);
     if(o.estR!=null&&later.estR!=null)                 put(REV_DIR[2],later.estR-o.estR);
     if(o.ugdD!=null&&later.ugdD!=null&&later.ugdD>o.ugdD&&later.ugdAct) put(REV_DIR[3],later.ugdAct);
-    if(o.revNet!=null&&later.revNet!=null) put(REV_DIR[4],later.revNet-o.revNet);
+    /* (v5.6) revNet은 **최근 30일** 순상향 건수다. 지평이 30일 미만이면 두 시점의 창이
+     * 판정일을 가로질러 겹치므로, 그 차이는 '판정 이후의 개정'을 뜻하지 않는다 —
+     * 해석할 수 없는 값을 0이나 신호로 쓰지 않고 **관측 없음**으로 둔다(§22-⑫). */
+    if(o.revNet!=null&&later.revNet!=null&&(hz==null||hz>=30)) put(REV_DIR[4],later.revNet-o.revNet);
     /* 실적 발표는 양향성이다 — 부호 일치를 (B)의 근거로 쓰지 않는다.
      * 대신 **불일치**만 본다: beat했는데 빠졌다면 시장이 EPS가 아닌 다른 축(가이던스·CapEx)을
      * 봤다는 뜻이고, 그것이 (B*)의 정의다. */
@@ -6713,7 +6732,9 @@ function revCause(o,later){
     surpOpp=!!(earnIn&&later.surpPct!=null&&later.surpPct!==0&&(later.surpPct>0?1:-1)!==sx);
   }
   const net=dir.length-opp.length;
-  const coverage=!!(later&&o.anaTgt!=null&&later.anaTgt!=null&&o.estE!=null&&later.estE!=null&&o.estR!=null&&later.estR!=null);
+  /* 가이던스 축을 못 쓰면 '관측 없음'이지 '변화 없음'이 아니다 — 후자로 읽으면 (C)가 부풀고,
+   * 관측 가능했던 신호를 노이즈로 지우게 된다(§22-㉒). 출처 불일치도 같은 취급이다. */
+  const coverage=!!(later&&o.anaTgt!=null&&later.anaTgt!=null&&o.estE!=null&&later.estE!=null&&estMatch&&o.estR!=null&&later.estR!=null);
   const cause=A.length?'A':(!coverage?'U':(net>0?'B':((net<0||surpOpp)?'B*':'C')));
   return {A,dir,opp,net,surpOpp,earnIn,cause};
 }
@@ -6729,7 +6750,7 @@ function glLaterRow(id,day,hz){
   }
   if(!best||end*1000-best.at>7*86400000)return null;
   const G=n=>glGet(best,best.rows[id],n);
-  return {day:best.d,surpD:G('surpD'),surpPct:G('surpPct'),ugdD:G('ugdD'),ugdAct:G('ugdAct'),revNet:G('revNet'),anaTgt:G('anaTgt'),estE:G('estE'),estR:G('estR'),capexQ:G('capexQ'),capexY:G('capexY'),tier:G('tier')};
+  return {day:best.d,estSrc:glEstSrc(best,id),surpD:G('surpD'),surpPct:G('surpPct'),ugdD:G('ugdD'),ugdAct:G('ugdAct'),revNet:G('revNet'),anaTgt:G('anaTgt'),estE:G('estE'),estR:G('estR'),capexQ:G('capexQ'),capexY:G('capexY'),tier:G('tier')};
 }
 /* (v5.5) 플라시보 — 판정 **이전** 같은 길이 창의 행. 애널 목표가·추정치 개정은 가격을 **뒤따라** 움직이므로
  * (역인과) 판정 후 채널 변화와 결과의 부호 일치만 보면 판별력처럼 보인다. 판정 전 창에서도 같은 만큼
@@ -6744,7 +6765,7 @@ function glEarlierRow(id,day,hz){
   }
   if(!best||Math.abs(best.at-target)>7*86400000)return null;
   const G=n=>glGet(best,best.rows[id],n);
-  return {anaTgt:G('anaTgt'),estE:G('estE'),estR:G('estR'),ugdD:G('ugdD'),ugdAct:G('ugdAct'),revNet:G('revNet'),surpD:G('surpD'),surpPct:G('surpPct')};
+  return {estSrc:glEstSrc(best,id),anaTgt:G('anaTgt'),estE:G('estE'),estR:G('estR'),ugdD:G('ugdD'),ugdAct:G('ugdAct'),revNet:G('revNet'),surpD:G('surpD'),surpPct:G('surpPct')};
 }
 /* 종목명 — 로그에는 id만 있으므로 현재 마스터에서 찾는다. 없으면 id를 그대로 쓴다. */
 function glName(id){ const st=S.stocks[id];
@@ -6801,8 +6822,8 @@ function lgShadowCause(out,hz){
       const o=idx[e.docId+'|'+e.id];
       if(!o)continue;                       // 성분 결측 등으로 분리된 관측 — 섞지 않는다
       matched++;
-      e.cause=revCause(o,glLaterRow(e.id,e.docId,hz)).cause;      tally[e.cause]=(tally[e.cause]||0)+1;
-      e.causeP=revCause(o,glEarlierRow(e.id,e.docId,hz)).cause;   pl[e.causeP]=(pl[e.causeP]||0)+1;
+      e.cause=revCause(o,glLaterRow(e.id,e.docId,hz),{hz}).cause;      tally[e.cause]=(tally[e.cause]||0)+1;
+      e.causeP=revCause(o,glEarlierRow(e.id,e.docId,hz),{hz}).cause;   pl[e.causeP]=(pl[e.causeP]||0)+1;
     }
     a.cause=tally;a.causeP=pl;a.causeN=matched;
   }
@@ -7103,7 +7124,7 @@ function lgAuditPanel(obs,hz){
   const aCount={}, chAgree={}, chOppo={}, pAgree={}, pOppo={}, cases=[];
   for(const o of use){
     const later=glLaterRow(o.id,o.logId,hz);
-    const rc=revCause(o,later);
+    const rc=revCause(o,later,{hz});
     o._rc=rc; o._later=later;
     const b=bandOf(o); cz[b][rc.cause]++; cz[b].n++;
     for(const a of rc.A)aCount[a]=(aCount[a]||0)+1;
@@ -7113,7 +7134,7 @@ function lgAuditPanel(obs,hz){
     if(b!=='중간50%'&&pre){
       for(const d of rc.dir){ chAgree[d]=chAgree[d]||{'하위25%':0,'상위25%':0}; chAgree[d][b]++; }
       for(const d of rc.opp){ chOppo[d]=chOppo[d]||{'하위25%':0,'상위25%':0}; chOppo[d][b]++; }
-      { const rp=revCause(Object.assign({},pre,{x:o.x}),{anaTgt:o.anaTgt,estE:o.estE,estR:o.estR,ugdD:o.ugdD,ugdAct:o.ugdAct,revNet:o.revNet,surpD:o.surpD,surpPct:o.surpPct});
+      { const rp=revCause(Object.assign({},pre,{x:o.x}),{anaTgt:o.anaTgt,estE:o.estE,estR:o.estR,estSrc:o.estSrc,ugdD:o.ugdD,ugdAct:o.ugdAct,revNet:o.revNet,surpD:o.surpD,surpPct:o.surpPct},{hz});
         for(const d of rp.dir)pAgree[d]=(pAgree[d]||0)+1;
         for(const d of rp.opp)pOppo[d]=(pOppo[d]||0)+1; }
     }
