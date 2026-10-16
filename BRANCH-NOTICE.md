@@ -3,7 +3,9 @@
 이 브랜치는 **소스 백업 전용**입니다. GitHub Pages는 `main`만 서빙하므로 사이트에는 영향이 없습니다.
 
 - 배포 산출물(`dist/`)은 `main`에 있습니다. 이 브랜치에는 없습니다.
-- `python "INNO Deploy/inno_deploy.py" push qa_src` 로 갱신합니다(E:\\Develop 에서 실행).
+- 갱신: `push qa` 를 하면 **배포 뒤 이 브랜치도 자동으로 따라옵니다**(manifest의 `after` 연계).
+  백업만 따로 올리려면 `push qa_src`. 둘 다 `E:\\Develop` 에서 실행합니다.
+- 배포에 변경이 없어도(문서·테스트만 고친 날) 이 브랜치는 갱신됩니다.
 - 빌드: `node scripts/build.cjs` · 검증: `node scripts/verify.cjs`
 
 ## ⚠ 복구 시 반드시 할 것
