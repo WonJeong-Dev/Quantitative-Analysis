@@ -153,13 +153,48 @@
   .warnpill.crash{background:#f0e9fb;color:var(--violet)}
   .fv .v{font-weight:700;font-size:13.5px}
   .fv .u{font-size:11.5px;font-weight:700}
+  /* (v5.7) 적정목표가 아래 두 줄 — 보수 적정가와 제안 지정가. 150px 열에서 줄바꿈 없이 들어가야 한다. */
+  .cfvmini{margin-top:5px;padding-top:4px;border-top:1px dashed var(--line);font-size:11px;line-height:1.5;white-space:nowrap}
+  .cfvmini .c1{font-weight:700;color:#0e7490}
+  .cfvmini .c2{color:var(--sub);font-weight:600}
+  .cfvmini .c2 .pp{display:inline-block;padding:0 4px;border-radius:5px;background:#e2f1f4;color:#0e7490;font-weight:800}
+  .cfvmini .none{color:var(--muted);font-weight:600;cursor:help}
+  .cfvmini .c2.s-up .pp{background:var(--up-soft);color:var(--up)}
+  .cfvmini .c2.s-dn .pp{background:var(--down-soft);color:var(--down)}
+
+  /* (v5.7) 상세 패널 블록 */
+  .cfvbox{margin:10px 0 4px;padding:11px 13px;border:1px solid #bcdfe4;border-radius:12px;background:#f3fbfc}
+  .cfvhd{font-weight:800;font-size:13px;color:#0b5b66;margin-bottom:8px}
+  .cfvhd small{display:block;font-weight:600;font-size:11px;color:var(--sub);margin-top:2px}
+  .cfvtop{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+  .cfvcell{background:#fff;border:1px solid #d6ecef;border-radius:9px;padding:7px 9px;min-width:0}
+  .cfvcell .l{display:block;font-size:10.5px;font-weight:700;color:var(--sub)}
+  .cfvcell b{display:block;font-size:14.5px;font-weight:800;margin:1px 0 2px;word-break:break-all}
+  .cfvcell b.s-up{color:var(--up)}.cfvcell b.s-dn{color:var(--down)}.cfvcell b.s-mid{color:var(--amber)}
+  .cfvcell em{display:block;font-style:normal;font-size:10.5px;line-height:1.5;color:var(--sub)}
+  .cfvnote{margin-top:8px;font-size:11.5px;line-height:1.65;color:var(--sub)}
+  .cfvnone{font-size:12px;color:var(--amber);font-weight:700}
+  .cfvtbl{width:100%;border-collapse:collapse;margin-top:9px;font-size:11.5px}
+  .cfvtbl th{text-align:left;font-size:10.5px;color:var(--sub);border-bottom:1px solid #d6ecef;padding:3px 4px}
+  .cfvtbl td{padding:4px;border-bottom:1px solid #e8f3f5}
+  .cfvtbl .num{text-align:right}
+  .cfvtbl .hw{color:var(--sub);font-size:10.5px}
+  .cfvskip{margin-top:8px;font-size:11px;color:var(--sub)}
+  .cfvskip ul{margin:3px 0 0;padding-left:16px;line-height:1.6}
+  .cfvassume{margin-top:9px;padding-top:7px;border-top:1px dashed #cde6ea;font-size:10.5px;line-height:1.65;color:var(--sub)}
+  @media (max-width:640px){ .cfvtop{grid-template-columns:1fr} }
   .rsi{font-weight:700;font-size:13.5px;text-align:center}
   .rsi small{display:block;font-size:10px;color:var(--sub);font-weight:600}
   .chev{color:var(--sub);text-align:center;transition:transform .2s;font-size:12px}
   .row.open .chev{transform:rotate(180deg)}
 
   /* position strip */
-  .strip{position:relative;height:30px}
+  /* (v5.7) 위쪽 절반은 기술적 위치(매물대·볼린저·이평), 아래 레일은 **가치 위치**(보수 적정가·제안 지정가).
+   * 두 종류를 같은 높이에 섞으면 어느 눈금이 무슨 뜻인지 사라진다 — 층을 나눈다. */
+  .strip{position:relative;height:40px}
+  .strip .cfvzone{position:absolute;top:30px;height:5px;background:#0e7490;opacity:.3;border-radius:3px}
+  .strip .tick.cfv{background:#0e7490;top:27px;height:11px;width:2.5px}
+  .strip .tick.cfvlim{background:#0e7490;opacity:.55;top:27px;height:11px;width:2.5px}
   .strip .track{position:absolute;left:0;right:0;top:14px;height:3px;border-radius:2px;background:#e6eaf2}
   .strip .zone{position:absolute;top:9px;height:13px;background:var(--violet-soft);border:1px solid #d9c9f2;border-radius:3px;opacity:.9}
   .strip .bb{position:absolute;top:13px;height:5px;background:var(--accent-soft);border-radius:2px}

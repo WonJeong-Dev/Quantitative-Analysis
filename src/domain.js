@@ -357,7 +357,145 @@
     return Object.assign({},body,{hash:String(hashStr(settingsKey(body)))});
   }
 
+
+  /* ==========================================================================
+   * (v5.7) 보수 적정가 + 개연성 하락가 — **표시 전용**. 판정·게이트·그림자장부와 분리된다.
+   *
+   * 왜 기존 fvNow와 따로 두는가. 기존 엔진은 애널 목표가가 주 앵커다(목표가 0.90·신뢰도 대
+   * 펀더멘털 0.18). 즉 '재무제표 기준 가격'이 아니라 '전문가 전망에 펀더멘털을 조금 섞은 값'이다.
+   * 여기서 만드는 값은 **애널 입력을 한 방울도 쓰지 않는다** — 그래서 기존 값과 독립 정보가 되고,
+   * 둘이 어긋날 때 그 어긋남 자체가 읽을 거리가 된다.
+   *
+   * 새 상수를 만들지 않는다(§20). 정당 멀티플 곡선은 app.js의 fairPER/fairPSR에 **성장 0**을
+   * 넣어 호출한 결과를 숫자로 주입받는다 — 곡선을 여기에 다시 적지 않는다(§22-⑲ 로직 복제 금지).
+   * 천장도 기존 FUND_CEIL_N을 주입받는다.
+   * ========================================================================== */
+
+  /* 표준정규 누적분포. Abramowitz & Stegun 7.1.26의 erf 근사(|오차| < 1.5e-7) —
+   * 외부 수식이고 계수는 그 문헌 값이다(§20 외부사실). 자체 튜닝한 상수가 아니다. */
+  function normCdf(z){
+    if(z==null||!Number.isFinite(z))return null;
+    const sgn=z<0?-1:1, x=Math.abs(z)/Math.SQRT2;
+    const t=1/(1+0.3275911*x);
+    const y=1-((((1.061405429*t-1.453152027)*t+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);
+    return 0.5*(1+sgn*y);
+  }
+  /* P(H거래일 안에 수준 L에 한 번이라도 닿는다) — 무드리프트 기하브라운운동 최저값 분포.
+   * 반사원리: P(min_{t≤T} logS ≤ log L) = 2Φ(ln(L/P)/σ_H).  L≥P면 이미 닿아 있으므로 1.
+   * ★ 드리프트를 0으로 둔다. 기대수익률을 넣으면 그것이 곧 전망이고, 전망은 이 값이 피하려는 것이다.
+   *   0은 중립 가정이며 '보수적'이라는 주장은 하지 않는다 — 상승 추세주에서는 과대, 하락주에서는 과소다. */
+  function touchProb(price,level,annVol,h){
+    if(!(price>0)||!(level>0)||!(annVol>0)||!(h>0))return null;
+    if(level>=price)return 1;
+    const sH=annVol*Math.sqrt(h/252);
+    if(!(sH>0))return null;
+    const p=2*normCdf(Math.log(level/price)/sH);
+    return p==null?null:Math.min(1,Math.max(0,p));
+  }
+  /* 도달확률이 정확히 p가 되는 수준. touchProb의 역함수.
+   * p=0.5면 z=Φ⁻¹(0.75)=0.6744897…(중앙값 — 절반의 경우에 닿는 가격). */
+  const Z75=0.6744897501960817;      // Φ⁻¹(0.75). 통계 상수이지 조정 손잡이가 아니다.
+  function probFloor(price,annVol,h,p){
+    if(!(price>0)||!(annVol>0)||!(h>0))return null;
+    const z=(p===0.5)?Z75:invPhi(1-p/2);
+    if(z==null)return null;
+    return price*Math.exp(-z*annVol*Math.sqrt(h/252));
+  }
+  /* Φ⁻¹ — Acklam의 유리함수 근사(|오차| < 1.15e-9). 계수는 그 문헌 값이다(§20 외부사실). */
+  function invPhi(q){
+    if(!(q>0&&q<1))return null;
+    const a=[-3.969683028665376e+01,2.209460984245205e+02,-2.759285104469687e+02,1.383577518672690e+02,-3.066479806614716e+01,2.506628277459239e+00];
+    const b=[-5.447609879822406e+01,1.615858368580409e+02,-1.556989798598866e+02,6.680131188771972e+01,-1.328068155288572e+01];
+    const c=[-7.784894002430293e-03,-3.223964580411365e-01,-2.400758277161838e+00,-2.549732539343734e+00,4.374664141464968e+00,2.938163982698783e+00];
+    const d=[7.784695709041462e-03,3.224671290700398e-01,2.445134137142996e+00,3.754408661907416e+00];
+    const pl=0.02425, ph=1-pl; let x;
+    if(q<pl){const u=Math.sqrt(-2*Math.log(q));
+      x=(((((c[0]*u+c[1])*u+c[2])*u+c[3])*u+c[4])*u+c[5])/((((d[0]*u+d[1])*u+d[2])*u+d[3])*u+1);}
+    else if(q<=ph){const u=q-0.5,r=u*u;
+      x=(((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*u/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);}
+    else{const u=Math.sqrt(-2*Math.log(1-q));
+      x=-(((((c[0]*u+c[1])*u+c[2])*u+c[3])*u+c[4])*u+c[5])/((((d[0]*u+d[1])*u+d[2])*u+d[3])*u+1);}
+    return x;
+  }
+
+  /* 방법별 주당가치. 모든 입력은 **시세통화 기준으로 이미 정합된 멀티플**이다 —
+   * 주당값을 price/멀티플로 되돌려 쓰기 때문에 통화 환산을 여기서 다시 하지 않는다(§22-⑲).
+   * 못 쓰는 방법은 값 대신 **이유**를 남긴다 — 빈 칸과 '0'은 다른 뜻이다(§22-⑫·㉕). */
+  function conservativeFV(inp){
+    inp=inp||{};
+    const price=num(inp.price), q=num(inp.quality);
+    const vm=inp.vm||{}, ceil=num(inp.ceil);
+    const fPer=num(inp.fairPerNow), fPsr=num(inp.fairPsrNow);
+    const perT=num(inp.perTtm), perF=num(inp.perFwd), psr=num(inp.psr), pbr=num(inp.pbr);
+    const fcfPS=num(inp.fcfPS);
+    const used=[],skipped=[];
+    const add=(key,label,value,how)=>{
+      if(value==null||!Number.isFinite(value)||!(value>0)){skipped.push({key,label,why:how||'입력 결측'});return;}
+      if(ceil!=null&&price>0&&value>price*ceil){skipped.push({key,label,why:'현재가 '+ceil+'배 초과 — 이상치 배제'});return;}
+      used.push({key,label,value,how:how||''});
+    };
+    /* ① 이익력 — 후행·선행 EPS 중 **낮은 쪽**에 성장 0의 정당 PER. 낮은 쪽을 쓰는 것이 보수다.
+     *   EPS는 price/PER로 되돌린다. 적자면 PER이 null이라 이 방법이 자동으로 빠진다. */
+    const perMax=(perT!=null&&perF!=null)?Math.max(perT,perF):(perT!=null?perT:perF);
+    if(!(price>0))                 skipped.push({key:'eps',label:'이익력(EPS)',why:'현재가 없음'});
+    else if(fPer==null)            skipped.push({key:'eps',label:'이익력(EPS)',why:'정당 PER 산출 불가(종합점수 결측)'});
+    else if(perMax==null)          skipped.push({key:'eps',label:'이익력(EPS)',why:'흑자 EPS 없음'});
+    else if(vm.per===0)            skipped.push({key:'eps',label:'이익력(EPS)',why:'이 종목은 PER 판별력 없음(지표신뢰 0)'});
+    else add('eps','이익력(EPS)',price/perMax*fPer,'낮은 EPS × 정당PER '+fPer.toFixed(1)+'배');
+    /* ② 매출 — **흑자면 쓰지 않는다.** PSR은 이익이 없을 때의 대체이고, 기존 엔진도 같은 분기다.
+     *   흑자인데 PSR을 median에 섞으면 마진을 전혀 못 보는 값이 추정치를 끌어당긴다. */
+    if(!(price>0))                 skipped.push({key:'rev',label:'매출(PSR)',why:'현재가 없음'});
+    else if(perMax!=null)          skipped.push({key:'rev',label:'매출(PSR)',why:'흑자 — 이익력으로 판단(PSR은 적자 대체)'});
+    else if(psr==null||fPsr==null) skipped.push({key:'rev',label:'매출(PSR)',why:'주당매출 결측'});
+    else if(vm.psr===0)            skipped.push({key:'rev',label:'매출(PSR)',why:'이 종목은 PSR 판별력 없음(지표신뢰 0)'});
+    else add('rev','매출(PSR)',price/psr*fPsr,'주당매출 × 정당PSR '+fPsr.toFixed(1)+'배');
+    /* ③ 현금흐름 — 주당 FCF를 이익력으로 보고 **같은** 정당 PER을 쓴다. 새 할인율을 만들지 않는다.
+     *   FCF는 회계이익보다 손대기 어려워 독립 정보가 되고, 종종 EPS 기준보다 낮게 나온다. */
+    if(fcfPS==null)                skipped.push({key:'fcf',label:'현금흐름(FCF)',why:'FCF 또는 주식수 미확인'});
+    else if(!(fcfPS>0))            skipped.push({key:'fcf',label:'현금흐름(FCF)',why:'FCF 음수 — 가치 산출 불가'});
+    else if(fPer==null)            skipped.push({key:'fcf',label:'현금흐름(FCF)',why:'정당 PER 산출 불가'});
+    else add('fcf','현금흐름(FCF)',fcfPS*fPer,'주당FCF × 정당PER '+fPer.toFixed(1)+'배');
+    /* ④ 자산 — 장부가(PBR 1.0배). 전통적 하한선이고 배수를 1로 고정하므로 자유 파라미터가 없다.
+     *   무형자산 중심 기업은 PBR이 상시 수십 배라 판별력이 없다 — VM_META가 0으로 표시한 종목은 뺀다. */
+    if(!(price>0))                 skipped.push({key:'book',label:'자산(장부가)',why:'현재가 없음'});
+    else if(pbr==null)             skipped.push({key:'book',label:'자산(장부가)',why:'PBR 결측 — 주당순자산 역산 불가'});
+    else if(vm.pbr===0)            skipped.push({key:'book',label:'자산(장부가)',why:'이 종목은 PBR 판별력 없음(무형·자산경량)'});
+    else add('book','자산(장부가)',price/pbr,'주당순자산 × 1.0배');
+
+    const fv=used.length?median(used.map(m=>m.value)):null;
+    return {fv,n:used.length,used,skipped};
+  }
+
+  /* 보수 적정가(가치 축)와 개연성 하락가(확률 축)를 **곱하지 않고 교차**시킨다.
+   * 둘은 다른 종류의 양이다 — 하나로 뭉개면 어느 쪽이 제약인지 사라진다(§22-⑫).
+   * 제안 지정가 = min(두 값): '가치로 정당하고(≤보수적정가) 닿을 만한(≤중앙도달가) 가장 높은 가격'.
+   * 상태 셋을 구분한다:
+   *   at   현재가 ≤ 보수적정가            이미 가치 이하
+   *   wait 중앙도달가 ≤ 보수적정가 < 현재가  기다리면 절반의 확률로 가치 이하 도달
+   *   far  보수적정가 < 중앙도달가 < 현재가  개연성 있는 하락으로도 가치에 못 미친다 */
+  function buyPlan(inp){
+    inp=inp||{};
+    const price=num(inp.price), annVol=num(inp.annVol), h=num(inp.h);
+    const c=conservativeFV(inp);
+    const out={fv:c.fv,n:c.n,used:c.used,skipped:c.skipped,h:h,annVol:annVol,
+               sigmaH:null,probFloor:null,limit:null,limitProb:null,bind:null,state:null,why:null};
+    if(annVol!=null&&annVol>0&&h>0&&price>0){
+      out.sigmaH=annVol*Math.sqrt(h/252);
+      out.probFloor=probFloor(price,annVol,h,0.5);
+    }else{
+      out.why='변동성 미확보 — 도달확률을 낼 수 없습니다(일간 수익률 21봉 이상 필요)';
+    }
+    if(c.fv==null){ out.why=(out.why?out.why+' / ':'')+'보수 적정가 산출 불가 — 쓸 수 있는 방법이 없습니다'; return out; }
+    if(out.probFloor==null)return out;
+    out.limit=Math.min(c.fv,out.probFloor);
+    out.bind=(c.fv<=out.probFloor)?'value':'prob';
+    out.limitProb=touchProb(price,out.limit,annVol,h);
+    out.state=(price<=c.fv)?'at':((out.probFloor<=c.fv)?'wait':'far');
+    return out;
+  }
+
   return {num,isYMD,accountKind,normCode,instrument,positionKey,debtRatio,tradeError,fingerprint,importPlan,positions,lastIndex,forward,forwardTaint,settingsKey,BACKUP_COLLECTIONS,RESTORE_SKIP,validateBackup,
     hashStr,rngFrom,sampleK,quantile,median,rowOf,crossMedianExcess,SHADOW_ARMS,
-    shadowEvents,regimeOf,blockBootstrap,shadowStats,shadowRun,PROMOTE,promoteCheck,preregBody};
+    shadowEvents,regimeOf,blockBootstrap,shadowStats,shadowRun,PROMOTE,promoteCheck,preregBody,
+    normCdf,invPhi,touchProb,probFloor,conservativeFV,buyPlan};
 });

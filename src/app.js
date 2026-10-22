@@ -2512,9 +2512,102 @@ function catBadge(t,near,isETF){
   if(cls)return '<span class="badge '+cls+'">'+(t==='상'||t==='중'||t==='하'?'후보 '+t:t)+m+'</span>';
   return '<span class="badge b-none">'+(isETF?'대기':'범위 밖')+m+'</span>';
 }
-function stripHTML(k){
+/* ==========================================================================
+ * (v5.7) 보수 적정가 — 재무제표만으로 만든 '지금 정당한 가격' + 개연성 있는 하락 도달가.
+ *
+ * ★ compute() **바깥**에 둔다. 판정 영역에 한 줄이라도 넣으면 판정 해시가 바뀌고,
+ *   RULE_VER을 올리는 순간 쌓인 판정 로그가 rv 불일치로 집계에서 전부 빠진다 —
+ *   250거래일 승급 시계가 0으로 돌아간다. 이 값은 표시·해석 전용이므로 그 대가를 치를 이유가 없다.
+ * ★ 애널 목표가를 한 방울도 쓰지 않는다. 기존 fvNow/fvTarget은 목표가가 주 앵커라
+ *   (목표가 0.90·신뢰도 대 펀더 0.18) 사실상 전망의 함수다. 둘을 독립으로 두어야
+ *   어긋남 자체가 정보가 된다.
+ * ★ 주당값은 전부 price/멀티플로 되돌려 쓴다 — 멀티플은 이미 fxq로 통화 정합된 값이라
+ *   환산 로직을 다시 쓰지 않는다(§22-⑲).
+ * ========================================================================== */
+const CFV_H=GL_HORIZ[1];        // 60거래일 ≈ 1분기. 새 상수가 아니라 지평 목록(GL_HORIZ) 재사용.
+function cfvOf(id){
+  const k=S.calc[id]; if(!k||k.assetType==='etf')return null;
+  const rb=k.revenueBasis;
+  /* 주식수는 **시가총액과 맞춰진 것만** 쓴다(워커 reconcileShares). 맞지 않는 주식수로
+   * 주당 FCF를 내면 조용히 몇 배 틀린다 — 그때는 이 방법을 빼는 것이 맞다(§22-㉕). */
+  const shares=(rb&&rb.status==='reconciled'&&rb.shares>0)?rb.shares:null;
+  const fcfPS=(k.fcf!=null&&isFinite(k.fcf)&&shares&&k.fxq>0)?k.fcf*k.fxq/shares:null;
+  return QADomain.buyPlan({
+    price:k.price, quality:k.quality, annVol:k.annVol, h:CFV_H, ceil:FUND_CEIL_N,
+    fairPerNow:fairPER(0,k.quality), fairPsrNow:fairPSR(0),
+    perTtm:k.perAuto, perFwd:k.perFwdAuto, psr:k.psrAuto, pbr:k.pbrAuto, fcfPS:fcfPS,
+    vm:effVM(id)
+  });
+}
+const CFV_STATE={
+  at:  {lab:'이미 가치 이하', cls:'up',   tip:'현재가가 보수 적정가보다 낮습니다 — 재무제표 기준으로는 지금 가격이 정당 범위 아래입니다.'},
+  wait:{lab:'기다릴 만함',   cls:'mid',  tip:'60거래일 안에 절반의 확률로 닿는 가격이 보수 적정가보다 더 아래입니다 — 지정가를 걸어두면 가치 이하에서 체결될 개연성이 있습니다.'},
+  far: {lab:'가치가 제약',   cls:'dn',   tip:'개연성 있는 하락폭으로도 보수 적정가까지 내려오지 않습니다 — 지금은 비싸다는 뜻입니다.'}
+};
+
+/* 목록 한 줄용 축약. ★ 산출 불가일 때 **빈 칸으로 두지 않는다** — 목록에서 조용히 사라지면
+ * 기능이 없는 것으로 읽힌다. '—'와 이유(툴팁)를 남긴다(§22-㉕). */
+function cfvMiniHTML(k,cfv){
+  if(!k||k.assetType==='etf')return '';
+  if(!cfv||cfv.fv==null)
+    return '<div class="cfvmini"><div class="c1 none" title="'+esc('보수 적정가 산출 불가 — '+((cfv&&cfv.why)||'재무 입력 미수신')+' (상세를 열면 방법별 사유가 나옵니다)')+'">보수 —</div></div>';
+  const st=CFV_STATE[cfv.state]||null;
+  const gap=(k.price>0)?(cfv.fv/k.price-1)*100:null;
+  let g='<div class="cfvmini"><div class="c1" title="'+esc('보수 적정가 — 재무제표만으로 낸 지금 정당한 가격. 방법 '+cfv.n+'종의 중앙값이고 애널 목표가는 쓰지 않습니다.'+(st?' ['+st.lab+'] '+st.tip:''))+'">'
+    +'보수 '+fmtP(cfv.fv,k.currency)+(gap!=null?' <span class="'+chgCls(gap)+'">'+fmtPct(gap)+'</span>':'')+'</div>';
+  if(cfv.limit!=null&&cfv.limitProb!=null)
+    g+='<div class="c2'+(st?' s-'+st.cls:'')+'" title="'+esc('제안 지정가 — 가치로도 정당하고(보수 적정가 이하) '+CFV_H+'거래일 안에 닿을 개연성도 있는 가장 높은 가격. 괄호는 그 가격의 도달확률(실현변동성·무드리프트 가정)입니다. 제약: '+(cfv.bind==='value'?'가치':'확률'))+'">'
+      +'지정 '+fmtP(cfv.limit,k.currency)+' <span class="pp">'+Math.round(cfv.limitProb*100)+'%</span></div>';
+  else
+    g+='<div class="c2 none" title="'+esc(cfv.why||'도달확률 산출 불가')+'">지정 —</div>';
+  return g+'</div>';
+}
+/* 상세 패널용 — 방법별 내역과 **배제 사유**, 그리고 가정을 전부 적는다.
+ * 중앙값만 보여주면 어느 방법이 끌어내렸는지 알 수 없고, 그러면 숫자를 믿을 근거도 없다. */
+function cfvDetailHTML(id,k){
+  const cfv=cfvOf(id); if(!cfv)return '';
+  const C=k.currency, money=v=>curSym(C)+fmtP(v,C);
+  let g='<div class="cfvbox"><div class="cfvhd">보수 적정가 <small>재무제표만 · 애널 목표가 미사용 · 표시 전용(판정에 쓰이지 않음)</small></div>';
+  if(cfv.fv==null){
+    g+='<div class="cfvnone">산출 불가 — '+esc(cfv.why||'쓸 수 있는 방법이 없습니다')+'</div>';
+  }else{
+    const st=CFV_STATE[cfv.state]||{lab:'—',cls:'',tip:''};
+    const gap=(k.price>0)?(cfv.fv/k.price-1)*100:null;
+    g+='<div class="cfvtop">'
+      +'<div class="cfvcell"><span class="l">보수 적정가</span><b>'+money(cfv.fv)+'</b>'
+        +'<em>'+cfv.n+'종 중앙값'+(gap!=null?' · 현재가 대비 <span class="'+chgCls(gap)+'">'+fmtPct(gap)+'</span>':'')+'</em></div>'
+      +'<div class="cfvcell"><span class="l">제안 지정가</span><b>'+(cfv.limit!=null?money(cfv.limit):'—')+'</b>'
+        +'<em>'+(cfv.limitProb!=null?(CFV_H+'거래일 내 도달확률 '+(cfv.limitProb*100).toFixed(0)+'% · 제약 '+(cfv.bind==='value'?'가치':'확률')):esc(cfv.why||'—'))+'</em></div>'
+      +'<div class="cfvcell"><span class="l">판독</span><b class="s-'+st.cls+'">'+st.lab+'</b><em>'+esc(st.tip)+'</em></div>'
+      +'</div>';
+    if(cfv.probFloor!=null)
+      g+='<div class="cfvnote">같은 가정에서 '+CFV_H+'거래일 안에 <b>절반의 확률</b>로 닿는 가격은 '+money(cfv.probFloor)
+        +' 입니다(현재가 '+money(k.price)+' 대비 '+fmtPct((cfv.probFloor/k.price-1)*100)+'). '
+        +'제안 지정가는 이 값과 보수 적정가 중 <b>낮은 쪽</b>입니다 — 두 조건을 동시에 만족하는 가장 높은 가격.</div>';
+    g+='<table class="cfvtbl"><tr><th>방법</th><th class="num">주당가치</th><th>산출</th></tr>';
+    for(const m of cfv.used)
+      g+='<tr><td>'+esc(m.label)+'</td><td class="num"><b>'+money(m.value)+'</b></td><td class="hw">'+esc(m.how)+'</td></tr>';
+    g+='</table>';
+  }
+  if(cfv.skipped&&cfv.skipped.length){
+    g+='<div class="cfvskip"><b>쓰지 않은 방법</b><ul>';
+    for(const sk of cfv.skipped)g+='<li>'+esc(sk.label)+' — '+esc(sk.why)+'</li>';
+    g+='</ul></div>';
+  }
+  g+='<div class="cfvassume"><b>가정</b> · 정당 PER·PSR은 <b>성장률 0</b>을 넣은 기존 곡선'
+    +(k.quality!=null?'(종합점수 '+k.quality.toFixed(0)+' 반영 → PER '+fairPER(0,k.quality).toFixed(1)+'배)':'')+'입니다 — 성장을 값에 넣지 않는 것이 보수의 정의입니다. '
+    +'자산 기준은 장부가(PBR 1.0배), 흑자 종목은 PSR을 쓰지 않습니다(PSR은 적자 대체). '
+    +'도달확률은 실현변동성 '+(cfv.annVol!=null?'(연율 '+(cfv.annVol*100).toFixed(0)+'%, 최근 120봉)':'(미확보)')
+    +'과 <b>드리프트 0</b> 가정의 최저값 분포입니다 — 기대수익률을 넣으면 그것이 곧 전망이고, 이 값은 전망을 피하려고 만든 것입니다. '
+    +'<b>상승 추세 종목에서는 도달확률이 과대평가됩니다.</b></div>';
+  return g+'</div>';
+}
+function stripHTML(k,cfv){
   if(!k)return '<div class="strip"></div>';
   const xs=[k.lo52,k.hi52,k.bbL,k.bbU,k.price,k.s200,k.s50,k.e20];
+  /* (v5.7) 보수 적정가·제안 지정가도 축 범위에 넣는다. 넣지 않으면 밴드가 축 밖으로
+   * 밀려 0% 또는 100%에 붙어 **눈금 끝에 걸린 것처럼** 보인다(§22-⑯과 같은 종류의 함정). */
+  if(cfv){ if(cfv.fv!=null)xs.push(cfv.fv); if(cfv.limit!=null)xs.push(cfv.limit); }
   if(k.vp1){xs.push(k.vp1.val,k.vp1.vah);}
   const valid=xs.filter(x=>x!=null&&isFinite(x));
   if(valid.length<2)return '<div class="strip"></div>';
@@ -2525,6 +2618,12 @@ function stripHTML(k){
   if(k.vp1)out+='<div class="zone" style="left:'+P(k.vp1.val).toFixed(2)+'%;width:'+(P(k.vp1.vah)-P(k.vp1.val)).toFixed(2)+'%" title="매물대 VA(1Y) '+fmtP(k.vp1.val,k.currency)+' ~ '+fmtP(k.vp1.vah,k.currency)+'"></div>';
   if(k.bbL!=null)out+='<div class="bb" style="left:'+P(k.bbL).toFixed(2)+'%;width:'+(P(k.bbU)-P(k.bbL)).toFixed(2)+'%" title="볼린저(20,2) '+fmtP(k.bbL,k.currency)+' ~ '+fmtP(k.bbU,k.currency)+'"></div>';
   const tick=(x,cls,label)=>x==null?'':'<div class="tick '+cls+'" style="left:'+P(x).toFixed(2)+'%" title="'+label+' '+fmtP(x,k.currency)+'"></div>';
+  /* (v5.7) 가치 구간 — 제안 지정가 ~ 보수 적정가. 현재가 점과의 위치 관계가 곧 판독이다. */
+  if(cfv&&cfv.fv!=null&&cfv.limit!=null&&cfv.limit<=cfv.fv){
+    out+='<div class="cfvzone" style="left:'+P(cfv.limit).toFixed(2)+'%;width:'+Math.max(P(cfv.fv)-P(cfv.limit),0.4).toFixed(2)+'%" title="제안 지정가 '+fmtP(cfv.limit,k.currency)+' ~ 보수 적정가 '+fmtP(cfv.fv,k.currency)+'"></div>';
+  }
+  if(cfv&&cfv.fv!=null)out+=tick(cfv.fv,'cfv','보수 적정가');
+  if(cfv&&cfv.limit!=null)out+=tick(cfv.limit,'cfvlim','제안 지정가');
   if(k.vp1)out+=tick(k.vp1.poc,'poc','POC(1Y)');
   out+=tick(k.bbM,'bbm','BB중단(MA20)');
   out+=tick(k.e20,'e20','EMA20');
@@ -2578,6 +2677,7 @@ function render(){
     let main='<div class="main">'
       +'<div class="rank g-rk '+(goldTop?'top':'')+'">'+(i+1)+'</div>'
       +'<div class="nm g-nm"><div class="k">'+esc(st.name)+hdBadge+'</div><div class="t"><span class="mono">'+esc(st.market==='KR'?(st.code||st.symbol):st.symbol)+'</span><span class="sec">'+esc(st.sector||'')+'</span></div></div>';
+    const CFV=k?cfvOf(id):null;       // (v5.7) 행 안에서 두 번 쓰므로 한 번만 만든다
     if(k){
       const fi=freshInfo(k);
       const qv=k.quality, av=k.attract;
@@ -2613,12 +2713,13 @@ function render(){
         +'</div>'
         +(isETF?''
           :'<div class="fv g-fv num"><div class="v">'+(k.fv!=null?curSym(k.currency)+fmtP(k.fv,k.currency):'—')+'</div>'
-           +'<div class="u '+chgCls(k.upside)+'">'+(k.upside!=null?'여력 '+fmtPct(k.upside):'')+'</div></div>'
+           +'<div class="u '+chgCls(k.upside)+'">'+(k.upside!=null?'여력 '+fmtPct(k.upside):'')+'</div>'
+           +cfvMiniHTML(k,CFV)+'</div>'
            +'<div class="gradecell g-gr"><div style="display:flex;flex-direction:column;gap:4px;align-items:center">'+catBadge(k.tier,!!(k.grd&&k.grd.nearBoundary),false)
            +(warn.length?'<div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">'+warn.join('')+'</div>':'')+'</div></div>')
         +'<div class="rsi g-rs num" style="color:'+(k.rsi!=null?(k.rsi<30?'var(--up)':(k.rsi>70?'var(--down)':'inherit')):'inherit')+'">'+(k.rsi!=null?k.rsi.toFixed(1):'—')
         +'<small>'+(k.rsi==null?'':(k.rsi<30?'과매도':(k.rsi>70?'과매수':'중립')))+'</small></div>'
-        +'<div class="g-st">'+stripHTML(k)+'</div>';
+        +'<div class="g-st">'+stripHTML(k,CFV)+'</div>';
     }else{
       main+='<div class="price g-pr"><div class="p" style="color:var(--sub)">'+(err?'조회 실패':'로딩…')+'</div>'
         +(err?'<div class="stale" title="'+esc(err)+'">'+esc(err.slice(0,26))+'</div>':'')+'</div>'
@@ -2706,6 +2807,7 @@ function detailHTML(id){
     (k.downside!=null?'<span class="'+chgCls(k.downside)+'">하방여유 '+fmtPct(k.downside)+'</span> · 지금 실적 기준':'—'));
   g+=stat('적정 목표가 ★ (상방)',k.fvTarget!=null?curSym(C)+fmtP(k.fvTarget,C):'—',
     '<span class="'+chgCls(k.upside)+'">상승여력 '+fmtPct(k.upside)+'</span> · 성장반영 · 근거: '+esc(fvBasisLbl));
+  g+=cfvDetailHTML(id,k);     /* (v5.7) 재무제표 기준 보수 적정가 — 위 두 값과 독립 */
   if(k.fundFV){
     const ff=k.fundFV;
     g+=stat('펀더멘털 밸류 ('+ff.basis+')',
@@ -3160,7 +3262,17 @@ const CONST_LOG=[
   {k:'RATIO_P',      v:0.1587, from:'2026-09-30', ver:'v5.5', cls:'유도값 Φ(−DT_Z) — 새 상수 아님(통계 경로 판정 축이 z→경험적 분위)'},
   {k:'SHRS_SIG_K',   v:3,      from:'2026-09-30', ver:'v5.5', cls:'통계 관례(3σ) — 원장 전용(KRX 주식수 판정), 등급 판정 미반영'},
   {k:'FUND_W',       v:'0.18/0.22·0.85', from:'2026-09-30', ver:'v5.5', cls:'판정 변경 — 값 불변, 분기 기준만 tw>0 → 원시 목표가 존재로(절벽 제거)'},
-  {k:'TGT_W',        v:'0.90·conf / 0.50·conf', from:'2026-09-30', ver:'v5.5', cls:'판정 변경 — 절편(0.10/0.05)을 기울기에 합침(conf=1 값 불변, conf→0 연속)'}
+  {k:'TGT_W',        v:'0.90·conf / 0.50·conf', from:'2026-09-30', ver:'v5.5', cls:'판정 변경 — 절편(0.10/0.05)을 기울기에 합침(conf=1 값 불변, conf→0 연속)'},
+  /* (v5.7) 보수 적정가 — 전부 **표시 전용**이다. 판정·게이트·그림자장부 어디에도 들어가지 않으므로
+   * RULE_VER을 올리지 않는다(올리면 판정 로그가 rv 불일치로 전부 빠지고 250일 시계가 0으로 돌아간다). */
+  {k:'CFV_H',        v:60,     from:'2026-10-22', ver:'v5.7', cls:'기존 상수 재사용 — GL_HORIZ[1](60거래일≈1분기). 표시 전용'},
+  {k:'CFV_GROWTH',   v:0,      from:'2026-10-22', ver:'v5.7', cls:'구조적 필연 — 보수의 정의가 「성장을 값에 넣지 않는다」. 기존 fairPER/fairPSR 곡선에 0을 넣은 결과만 쓴다'},
+  {k:'CFV_PBR',      v:1.0,    from:'2026-10-22', ver:'v5.7', cls:'외부 사실 — 장부가 기준선(PBR 1배)은 전통적 하한 관례. 배수를 1로 고정해 자유 파라미터 0개'},
+  {k:'CFV_DRIFT',    v:0,      from:'2026-10-22', ver:'v5.7', cls:'구조적 필연 — 드리프트를 넣으면 그것이 곧 전망이다. 중립 가정이며 보수성 주장은 하지 않는다'},
+  {k:'CFV_P',        v:0.5,    from:'2026-10-22', ver:'v5.7', cls:'통계 관례 — 중앙값(절반의 확률로 닿는 가격). 임계가 아니라 보고 기준점'},
+  {k:'Z75',          v:0.6744897502, from:'2026-10-22', ver:'v5.7', cls:'유도값 Φ⁻¹(0.75) — 새 상수 아님(CFV_P=0.5의 반사원리 해)'},
+  {k:'ERF_AS',       v:'A&S 7.1.26', from:'2026-10-22', ver:'v5.7', cls:'외부 사실 — Abramowitz & Stegun erf 근사 계수(|오차|<1.5e-7). 문헌값, 자체 튜닝 아님'},
+  {k:'IPHI_ACKLAM',  v:'Acklam', from:'2026-10-22', ver:'v5.7', cls:'외부 사실 — Φ⁻¹ 유리함수 근사 계수(|오차|<1.15e-9). 문헌값, 자체 튜닝 아님'}
 ];
 /* 같은 키의 마지막 행 = 현재 유효한 값. 자기점검·검증 리포트가 이걸 쓴다. */
 function constNow(){ const m={}; for(const r of CONST_LOG)m[r.k]=r; return m; }
@@ -3999,7 +4111,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.6.3 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.7.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
