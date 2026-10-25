@@ -159,6 +159,31 @@ console.log('\n[8] 수집하고 안 그리면 없는 항목이다 (§22-㉕ · �
   ok('적자는 결함이 아니라고 못 박는다', /적자 종목은 PER이 없는 것이 정상/.test(H));
   ok('판정이 폴백을 안 쓴다는 사실을 적는다', /판정\(perAuto\)은 아직 폴백을 쓰지 않습니다/.test(H));
   ok('복구원 셋을 모두 적는다', /야후 PER/.test(H)&&/분기실적 합/.test(H)&&/복구 불가/.test(H));
+  ok('EPS 정합이 그려진다', /EPS 정합/.test(H));
+  ok('판정에 개입하지 않는다고 적는다', /판정에 개입하지 않습니다/.test(H));
+}
+
+console.log('\n[9] EPS 정합 — 순이익이 매출보다 클 수 없다 (v5.9.11)');
+{
+  /* 검증 주당매출로 나눈 내재 순마진. 100% 초과는 회계 항등식 위반이라 임계가 아니라 선이다. */
+  const d3=M.diagCollect(), E=d3.EPS정합;
+  ok('항목이 생긴다', E&&Array.isArray(E.불가능)&&Array.isArray(E.확인));
+  ok('비교 분모는 검증 주당매출이라고 적는다', /검증 주당매출/.test(E.주의));
+  ok('100% 초과의 뜻을 적는다', /순이익>매출/.test(E.주의));
+  ok('판정 미개입을 명시한다', /판정에 개입하지 않습니다/.test(E.주의));
+  /* 분류가 실제로 작동하는가 — 주당매출 100에 선행 EPS 180이면 180%다. */
+  const id0=Object.keys(S.stocks).find(x=>S.calc[x]&&S.calc[x].assetType!=='etf');
+  ok('주식 종목을 하나 고른다 (검사 전제)', !!id0, id0);
+  const save={rp:S.calc[id0].revPSq, ef:S.calc[id0].epsFwdEff, pa:S.calc[id0].perAuto};
+  S.calc[id0].revPSq=100; S.calc[id0].epsFwdEff=180; S.calc[id0].perAuto=null;
+  ok('순마진 180%는 불가능으로 분류', M.diagCollect().EPS정합.불가능.some(x=>/180%/.test(x)),
+     JSON.stringify(M.diagCollect().EPS정합.불가능).slice(0,200));
+  S.calc[id0].epsFwdEff=75;
+  ok('순마진 75%는 확인 띠로 분류', M.diagCollect().EPS정합.확인.some(x=>/75%/.test(x)));
+  S.calc[id0].epsFwdEff=12;
+  ok('순마진 12%는 정상 (경고를 남발하지 않는다)',
+     !M.diagCollect().EPS정합.불가능.length&&!M.diagCollect().EPS정합.확인.some(x=>/12%/.test(x)));
+  S.calc[id0].revPSq=save.rp; S.calc[id0].epsFwdEff=save.ef; S.calc[id0].perAuto=save.pa;
 }
 
 console.log('\n────────────────────────────');

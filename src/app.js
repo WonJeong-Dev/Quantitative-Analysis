@@ -4438,7 +4438,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.10 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.11 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -4577,6 +4577,49 @@ function diagCollect(){
               설명필요종목:other.map(r=>r.nm+' (EPS '+epsOf(r)+')'),
               주의:'적자는 결함이 아닙니다. 판정(perAuto)은 아직 폴백을 쓰지 않습니다 — 보수 적정가만 복구 경로가 있습니다'};
     })(),
+    /* (v5.9.11) ★ EPS 정합 — 「순이익이 매출보다 클 수 있는가」.
+     * 후행 EPS 결측을 쫓다가 **더 큰 것**이 나왔다. 분기 epsActual 합으로 후행 PER을 복원해
+     * 선행 PER과 비교했더니 두 배수가 3~60배씩 어긋났다. 어느 쪽이 틀렸는지 가리려고
+     * **주당매출로 나눠** 내재 순마진을 냈다 — 주당매출은 워커 reconcileShares가 시가총액과
+     * 대사해 검증한 값이라(§주당매출검증 reconciled) 이 비교의 분모로 쓸 수 있다.
+     *
+     * 순마진 100% 초과 = 순이익 > 매출. 지분법이익이 큰 지주회사가 아니면 **입력이 틀린 것**이다.
+     * 임계를 눈대중으로 고른 것이 아니라(§22-⑤), 회계 항등식이 주는 구조적 선이다(§20 구조적 필연).
+     * 60~100%는 단정하지 않고 '확인' 띠로 둔다 — 로열티·라이선스 구조에서는 가능하다.
+     *
+     * ★ 이 계측은 **판정에 개입하지 않는다.** 여기서 걸린 종목도 지금까지와 똑같이 계산된다.
+     *   무엇을 할지는 원인을 본 다음 정한다 — 선행 EPS는 이미 판정이 쓰는 값이라, 모르고
+     *   끄면 그 종목들의 적정가가 통째로 바뀐다. */
+    EPS정합:(function(){
+      const out={불가능:[],확인:[],정상:0,비교불가:0};
+      rows.forEach(r=>{
+        const k=r.k; if(!k||k.assetType==='etf')return;
+        const rp=k.revPSq;                      // 검증된 주당매출(시세 통화)
+        if(!(rp>0)){out.비교불가++;return;}
+        const f=(S.cache[r.id]&&S.cache[r.id].fund)||null;
+        const a=(S.cache[r.id]&&S.cache[r.id].ana)||null;
+        const src=(f&&f.epsFwdSrc)||'태그없음';
+        const epsT=(k.perAuto!=null&&k.price>0)?k.price/k.perAuto:null;
+        const q=Array.isArray(a&&a.surp)?a.surp.slice(0,4):null;
+        const q4=(q&&q.length===4&&q.every(x=>x&&x.act!=null&&isFinite(x.act)))
+          ? q.reduce((t,x)=>t+(+x.act),0) : null;
+        const m=v=>v==null?null:+(v/rp*100).toFixed(1);
+        const cand=[['선행',k.epsFwdEff,src],['후행',epsT,'야후 trailingEps'],['분기합',q4,'earningsHistory 4분기']];
+        let worst=null;
+        cand.forEach(([lbl,v,sr])=>{const mm=m(v); if(mm==null)return;
+          if(worst==null||Math.abs(mm)>Math.abs(worst.mm))worst={lbl,v,sr,mm};});
+        if(!worst){out.비교불가++;return;}
+        const line=r.nm+' — '+cand.filter(c=>m(c[1])!=null)
+            .map(c=>c[0]+' '+m(c[1])+'%').join(' · ')
+          +' (주당매출 '+Math.round(rp).toLocaleString('ko-KR')+' · 선행출처 '+src+')';
+        if(Math.abs(worst.mm)>100)out.불가능.push(line);
+        else if(Math.abs(worst.mm)>60)out.확인.push(line);
+        else out.정상++;
+      });
+      out.주의='내재 순마진 = EPS ÷ 검증 주당매출. 100% 초과는 순이익>매출이라는 뜻입니다 — '
+        +'지분법이익이 큰 지주회사가 아니면 입력 오류입니다. 이 계측은 판정에 개입하지 않습니다.';
+      return out;
+    })(),
     통화불일치:rows.filter(r=>r.k.curMismatch).map(r=>r.nm+' '+r.k.fcur+'→'+r.k.qcur
       +(r.k.fxq!=null?(' @'+r.k.fxq.toFixed(6)+'['+(r.k.fxSrc||'?')+']'):' @환율미확보')
       +(r.k.psrNoFx!=null?(' · PSR 환산전 '+r.k.psrNoFx.toFixed(2)):'')
@@ -4694,6 +4737,13 @@ function diagRender(){
         +'판정(perAuto)은 아직 폴백을 쓰지 않습니다(보수 적정가만 복구 경로가 있습니다). '
         +'적자: '+(e.적자종목.length?esc2(e.적자종목.join(' · ')):'없음')+'</div>';
     })(), d.후행EPS결측.진짜결측>0||d.후행EPS결측.설명필요>0);
+  g+=row('EPS 정합',(function(){const e=d.EPS정합;
+      const li=(t,a,col)=>a.length?('<div style="color:'+col+';margin-top:2px"><b>'+t+' '+a.length+'</b> — '+a.map(esc2).join('<br>')+'</div>'):'';
+      return '정상 '+e.정상+' · <b style="color:var(--down)">불가능 '+e.불가능.length+'</b> · 확인 '+e.확인.length+' · 비교불가 '+e.비교불가
+        +li('순이익 > 매출',e.불가능,'var(--down)')
+        +li('순마진 60% 초과',e.확인,'var(--amber)')
+        +'<div style="color:var(--muted);margin-top:2px">'+esc2(e.주의)+'</div>';
+    })(), d.EPS정합.불가능.length>0);
   g+=row('통화 불일치',list(d.통화불일치));
   g+=row('환율 출처',esc2(typeof d.환율출처==='string'?d.환율출처:JSON.stringify(d.환율출처)));
   g+=row('환율 미확보',list(d.환율미확보),bad(d.환율미확보));
