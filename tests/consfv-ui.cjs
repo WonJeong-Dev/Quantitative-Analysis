@@ -125,13 +125,27 @@ console.log('\n[5] 실행 칸 — 지정가 하나 + 닿을 확률');
 put('US_E');
 { const h=M.exHTML(S.calc['US_E'],M.cfvOf('US_E'));
   ok('지정가가 하나만 크게', (h.match(/class="p"/g)||[]).length===1, h);
-  ok('확률은 가격과 같은 줄의 칩', /<span class="prob"[^>]*>\d+%<\/span>/.test(h), h);
-  ok('그 %가 무엇인지 캡션이 한 번 말한다', /60거래일 내 도달 확률/.test(h), h);
-  ok('가격과 칩이 한 줄(pline) 안에 있다', /<div class="pline">[\s\S]*?<\/div>/.test(h), h);
+  /* (v5.9.9) 칩은 없앴다 — 바로 왼쪽 현재가 칸이 '가격 + 등락%'라서 같은 모양이 등락률로 읽혔다.
+   * 숫자는 자기 이름을 단 캡션 한 줄 안에만 있어야 한다. 칩이 돌아오면 이 검사가 깨진다. */
+  ok('가격 옆에 이름 없는 % 칩을 두지 않는다', !/class="prob"/.test(h), h);
+  ok('확률은 이름을 달고 캡션 줄 안에 있다', /60거래일 내 도달 확률 <b>\d+%<\/b>/.test(h), h);
+  ok('가격 줄(pline)에는 %가 없다', !/%/.test((h.match(/<div class="pline">[\s\S]*?<\/div>/)||[''])[0]), h);
   ok('"제약" 같은 내부 용어를 쓰지 않는다', !/제약/.test(h)&&!/중앙 도달가/.test(h), h); }
 { put('US_E2',{annVol:null});
   const h=M.exHTML(S.calc['US_E2'],M.cfvOf('US_E2'));
   ok('변동성이 없으면 지정가를 꾸며내지 않고 보수 적정가를 보인다', /도달 확률 산출 불가/.test(h)&&!/class="prob"/.test(h), h); }
+/* (v5.9.9) 반올림과 흐림 — 0%는 '０이다'로 읽히는데 실제로는 '1% 미만'이다(§22-⑫와 같은 종류). */
+{ put('US_P0',{annVol:0.02,perAuto:40,perFwdAuto:40,pbrAuto:null,fcf:null});
+  const c=M.cfvOf('US_P0'), h=M.exHTML(S.calc['US_P0'],c);
+  const pp=c.limitProb*100;
+  ok('표본이 1% 미만 확률을 만든다 (검사 전제)', pp<1, pp);
+  ok("1% 미만은 '0%'가 아니라 '<1%'", /&lt;1%|<b>&lt;1%<\/b>/.test(h)||/<b>&lt;1%<\/b>/.test(h)||h.indexOf('<b>&lt;1%</b>')>=0||h.indexOf('<b><1%</b>')>=0, h);
+  ok('10% 미만이면 지정가를 흐리게 (숨기지는 않는다)', /class="p faint"/.test(h)&&/\$/.test(h), h);
+  ok('흐린 이유를 title에 적는다', /미만이라 흐리게/.test(h), h); }
+{ put('US_P1',{annVol:0.60,perAuto:9,perFwdAuto:9,pbrAuto:null,fcf:null});
+  const c=M.cfvOf('US_P1'), h=M.exHTML(S.calc['US_P1'],c);
+  ok('확률이 충분하면 흐리게 하지 않는다 (검사 전제: '+Math.round(c.limitProb*100)+'%)',
+     c.limitProb>=0.10 ? !/faint/.test(h) : true, h.slice(0,120)); }
 { put('US_E3',{assetType:'etf',tier:'중립'});
   const h=M.exHTML(S.calc['US_E3'],null);
   ok('ETF는 구조적 이유를 적는다', /지정가 없음 \(ETF\)/.test(h)&&/결함이 아니라 구조/.test(h), h); }
@@ -143,7 +157,7 @@ put('US_E');
   ok('같은 사유를 두 번 쓰지 않는다', (h.match(/산출 불가/g)||[]).length===1, h);
   ok('그 사유는 판정 칸이 말한다', M.verdictOf('US_E4').why==='값을 매길 수 없음'); }
 
-console.log('\n[6] 근거 칸 — 결측을 뒤집어 상시 품질 수치로');
+console.log('\n[6] 신뢰도 칸 — 결측을 뒤집어 상시 품질 수치로');
 put('US_V1',{qMissW:0,aMissW:0});
 ok('결측 0이면 100%', M.evidenceOf(S.calc['US_V1']).dens===100);
 put('US_V2',{qMissW:23,aMissW:9,qMiss:['ROE','마진'],aMiss:['매물대']});
@@ -152,7 +166,23 @@ put('US_V2',{qMissW:23,aMissW:9,qMiss:['ROE','마진'],aMiss:['매물대']});
   const h=M.evHTML(S.calc['US_V2']);
   ok('비어 있는 성분 이름이 툴팁에 담긴다', /ROE · 마진/.test(h), h.slice(0,200));
   ok('막대 5칸 중 4칸', (h.match(/<i class="on">/g)||[]).length===4, h);
-  ok('캡션 한 줄을 없애 두 줄로 줄였다', !/>근거 밀도</.test(h), h); }
+  ok('캡션 한 줄을 없애 두 줄로 줄였다', !/>근거 밀도</.test(h), h);
+  /* (v5.9.9) 한 행에 뜻이 다른 %가 둘(도달확률·신뢰도) 있다. 숫자가 이름을 안 달고 있으면
+   * 둘 다 읽히지 않는다 — 실제로 "작은 %랑 큰 %가 각각 뭐냐"는 질문을 받았다. */
+  ok('숫자가 이름표를 달고 있다', /<span class="lbl">신뢰도<\/span> 77%/.test(h), h.slice(0,200));
+  /* 이름은 바꿨지만 뜻은 안 바꿨다. 100%를 '확실하다'로 읽히게 두지 않는다. */
+  ok("툴팁이 '판정이 맞을 확률이 아님'을 못 박는다", /판정이 맞을 확률이 아닙니다/.test(h), h.slice(0,300));
+  ok('무엇을 재는지 툴팁에 남아 있다', /받아야 할 입력 중 도착한 비율/.test(h)); }
+{ /* 편재는 이 숫자에 들어가 있지 않다 — 합치면 둘 다 안 보인다. 그 사실을 툴팁이 말한다. */
+  put('US_V2b',{qMissW:0,aMissW:0,aParts:{up:60,rsi:null,bb:null,vp:null,prox:null}});
+  const h=M.evHTML(S.calc['US_V2b']);
+  ok('결측 0이면 신뢰도 100%', /<span class="lbl">신뢰도<\/span> 100%/.test(h), h.slice(0,160));
+  ok('그래도 편재 경고는 따로 뜬다 (100%가 「확실」이 아니다)', /⚠ 단일 100%/.test(h), h);
+  ok('편재가 이 숫자에 반영돼 있지 않다고 적는다', /반영돼 있지 않습니다/.test(h)); }
+
+{ /* 머리글과 범례가 같은 이름을 쓰는가 — 칸 이름이 둘로 갈리면 질문이 되돌아온다. */
+  ok('목록 머리글이 「신뢰도」', /<div style="text-align:right">신뢰도<\/div>/.test(T), 'listhead');
+  ok('범례가 세 가지 %를 구분해 적는다', /등락률/.test(T)&&/도달 확률/.test(T)&&/판정이 맞을 확률이 아님/.test(T)); }
 
 console.log('\n[6b] 편재 — 받은 근거 중 한 성분의 최대 비중 (v5.8.1)');
 ok('임계는 과반', M.LOP_WARN===50);

@@ -2712,6 +2712,10 @@ function reviewOf(id,hd){
  *   목록이 반영하는 상한은 **금액으로 바로 환산되는 둘**뿐이다: 종목 비중 한도 · 최소 현금.
  *   그 둘이 exposure의 규칙과 같은 식인지는 tests/possize-ui.cjs가 교차검사한다.
  * ========================================================================== */
+/* (v5.9.9) 도달확률 흐림 임계 — **표시 전용**이며 판정·수량에 쓰이지 않는다.
+ * 10%는 통계적 경계가 아니라 '열 번에 한 번도 안 온다'는 읽기 쉬운 기준으로 고른 값이다(§20 통계관례).
+ * 임계를 넘고 못 넘고로 종목이 걸러지지 않는다 — 글자 색만 바뀐다. */
+const PROB_FAINT=0.10;
 const CFV_STOP_H=GL_HORIZ[0];   // 20거래일(≈1개월). 새 상수가 아니라 지평 목록 재사용.
 let _rcCache=null, _rcKey=null;
 function riskCtx(){
@@ -2782,12 +2786,20 @@ function exHTML(k,cfv,sz){
   if(cfv.limit==null||cfv.limitProb==null)
     return '<div class="p">'+curSym(k.currency)+fmtP(cfv.fv,k.currency)+'</div>'
       +'<div class="pr" title="'+esc(cfv.why||'')+'">도달 확률 산출 불가 — 변동성 미확보</div>';
-  /* (v5.8.1) 확률을 칩으로 올려 가격과 **같은 줄**에 둔다 — 문장으로 쓰면 좁은 칸에서 두 줄로 접힌다.
-   * 아래 캡션이 그 %가 무엇인지 한 번만 말한다. */
-  return '<div class="pline"><span class="p">'+curSym(k.currency)+fmtP(cfv.limit,k.currency)+'</span>'
-    +'<span class="prob" title="'+esc(CFV_H+'거래일 안에 이 가격에 한 번이라도 닿을 확률 — 실현변동성·드리프트 0 가정')+'">'
-    +Math.round(cfv.limitProb*100)+'%</span></div>'
-    +'<div class="pr">'+CFV_H+'거래일 내 도달 확률</div>'
+  /* (v5.9.9) 칩을 없앴다. 바로 왼쪽 「현재가」 칸이 **가격 다음 줄에 등락률**을 그리는데,
+   * 같은 모양(가격 + 작은 % 칩)을 여기에 쓰면 도달확률이 등락률로 읽힌다 — 캡션을 붙여도
+   * 생김새가 먼저 거짓말을 한다. 숫자는 **자기 이름을 데리고 다니는 한 줄**로 내린다.
+   * ★ 1% 미만을 '0%'로 반올림하지 않는다. 0으로 찍으면 '못 온다'가 아니라 '０이다'로 읽히는데
+   *   그 둘은 다른 뜻이다(§22-⑫와 같은 종류의 실패). 0.4%는 '<1%'다.
+   * ★ 10% 미만이면 지정가를 흐리게 둔다 — 값은 맞지만 60거래일 안에 **실행될 일이 거의 없는**
+   *   가격이다. 또렷한 숫자로 두면 실행 가능한 계획처럼 보인다. 숨기지는 않는다(§22-⑯). */
+  const pp=cfv.limitProb*100, faint=pp<PROB_FAINT*100;
+  const ptxt=pp<1?'<1%':(Math.round(pp)+'%');
+  return '<div class="pline"><span class="p'+(faint?' faint':'')+'">'
+    +curSym(k.currency)+fmtP(cfv.limit,k.currency)+'</span></div>'
+    +'<div class="pr'+(faint?' faint':'')+'" title="'+esc(CFV_H+'거래일 안에 이 가격에 한 번이라도 닿을 확률 — 실현변동성·드리프트 0 가정'
+      +(faint?(' · '+Math.round(PROB_FAINT*100)+'% 미만이라 흐리게 뒀습니다: 값은 맞지만 이 기간 안에 실행될 일이 거의 없습니다'):''))+'">'
+    +CFV_H+'거래일 내 도달 확률 <b>'+ptxt+'</b></div>'
     +qtyHTML(k,sz);
 }
 /* 수량 줄 — 「틀렸을 때 얼마를 잃기로 했는가」가 먼저다. 수량은 그 결과일 뿐이다. */
@@ -2808,19 +2820,27 @@ function qtyHTML(k,sz){
 function evHTML(k){
   const e=evidenceOf(k);
   if(!e)return '';
-  if(e.dens==null)return '<div class="n" style="color:var(--muted)">—</div><div class="s" title="'+esc(e.why)+'">ETF</div>';
+  if(e.dens==null)return '<div class="n" style="color:var(--muted)"><span class="lbl">신뢰도</span> —</div><div class="s" title="'+esc(e.why)+'">ETF</div>';
   const on=Math.round(e.dens/20), low=e.dens<60;
   let b='<div class="bars" aria-hidden="true">';
   for(let i=0;i<5;i++)b+='<i class="'+(i<on?(low?'lo':'on'):'')+'"></i>';
   b+='</div>';
   const lop=e.lop;
-  const tip='근거 밀도 '+e.dens+'% — 중립값 50으로 대체되지 않은 비율. 비어 있는 성분: '+e.why
-    +(lop?(' / 최대 단일 근거: '+lop.src+'의 '+lop.label+' '+lop.share+'%'):'');
+  /* (v5.9.9) 이름은 '신뢰도'로 바꾸되 **무엇을 재는지는 바꾸지 않는다.**
+   * 이 수치는 '받아야 할 입력 중 도착한 비율'이지 '판정이 맞을 확률'이 아니다.
+   * 이름만 바꾸고 뜻을 흘리면 100%를 '확실하다'로 읽게 만든다 — 툴팁이 매번 그 선을 긋는다.
+   * ★ 편재(단일 근거 쏠림)는 이 숫자에 **들어가 있지 않다.** 결측 0이어도 한 값이 70%를
+   *   차지할 수 있다. 그래서 편재는 아래 별도 줄로 계속 경고한다(합치면 둘 다 안 보인다). */
+  const tip='신뢰도 '+e.dens+'% — 받아야 할 입력 중 도착한 비율(중립값 50으로 대체되지 않은 비율)입니다. '
+    +'판정이 맞을 확률이 아닙니다. 비어 있는 성분: '+e.why
+    +(lop?(' / 최대 단일 근거: '+lop.src+'의 '+lop.label+' '+lop.share+'% — 이 비율은 위 숫자에 반영돼 있지 않습니다'):'');
   /* 편재는 **경고일 때만** 적는다. 늘 띄우면 또 한 줄이 늘고, 과반이 아니면 읽을 이유가 없다. */
   const warn=(lop&&lop.share>LOP_WARN)
     ? '<div class="s lop" title="'+esc(lop.src+'의 '+lop.label+'이 받은 근거의 '+lop.share+'%를 혼자 차지합니다 — 이 판정은 사실상 그 한 값의 함수입니다')+'">⚠ 단일 '+lop.share+'%</div>'
     : '';
-  return '<div class="n"'+(low?' style="color:var(--amber)"':'')+' title="'+esc(tip)+'">'+e.dens+'%</div>'+b+warn;
+  /* 숫자 앞에 이름표를 붙인다 — 한 행에 성격이 다른 %가 둘 있으면 둘 다 뜻을 잃는다. */
+  return '<div class="n"'+(low?' style="color:var(--amber)"':'')+' title="'+esc(tip)+'">'
+    +'<span class="lbl">신뢰도</span> '+e.dens+'%</div>'+b+warn;
 }
 /* (v5.9.2) 상세 — 보유 재심사. 보유 중일 때만 그린다. */
 function reviewDetailHTML(id){
@@ -4418,7 +4438,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.8 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.9 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -4522,16 +4542,40 @@ function diagCollect(){
      * 보수 적정가는 이미 price/perT 폴백을 쓰므로(표시 전용) 여기 숫자와 무관하게 복구돼 있다. */
     후행EPS결측:(function(){
       const st=rows.filter(r=>r.k&&r.k.assetType!=='etf');
-      const miss=st.filter(r=>r.k.perAuto==null);
+      /* ★ 실측(v5.9.8 보고서)이 드러낸 두 가지 — 둘 다 이 계측기 자신의 결함이었다.
+       *  ① `surp`는 fund가 아니라 **ana**에 저장된다. 이전 판은 fund에서 찾아 0을 보고했는데,
+       *     같은 보고서의 `이벤트채널.실적`은 59였다. 관측 장치가 거짓 음성을 냈다(§22-㉒).
+       *  ② 'perAuto 없음'을 전부 결측으로 셌다. 그런데 **적자 종목은 PER이 없는 것이 맞다** —
+       *     음수 EPS에 배수를 곱할 수 없다. 결함이 아닌 것을 결함으로 세면 고칠 범위가 부풀고,
+       *     RULE_VER을 올릴지 같은 비싼 결정이 틀린 숫자 위에서 내려진다. 갈라서 센다(§22-㉖). */
       const F=r=>(S.cache[r.id]&&S.cache[r.id].fund)||null;
+      const A=r=>(S.cache[r.id]&&S.cache[r.id].ana)||null;
+      const epsOf=r=>{const f=F(r);return f&&f.epsTtm!=null&&isFinite(f.epsTtm)?+f.epsTtm:null;};
+      const noPer=st.filter(r=>r.k.perAuto==null);
+      const loss=noPer.filter(r=>{const e=epsOf(r);return e!=null&&e<=0;});   // 적자 — 정상
+      const miss=noPer.filter(r=>epsOf(r)==null);                            // 진짜 결측
+      const other=noPer.filter(r=>!loss.includes(r)&&!miss.includes(r));     // EPS는 양수인데 PER이 없다 = 설명 필요
       const byPer=miss.filter(r=>{const f=F(r);return f&&f.perT!=null&&isFinite(f.perT)&&f.perT>0;});
-      const byQ=miss.filter(r=>{const f=F(r),s4=f&&f.surp;
-        return Array.isArray(s4)&&s4.length>=4&&s4.every(x=>x&&x.act!=null&&isFinite(x.act));});
-      return {주식수:st.length, 결측:miss.length,
-              야후PER로복구가능:byPer.length, 분기실적합으로복구가능:byQ.length,
+      const qrows=r=>{const a=A(r);return Array.isArray(a&&a.surp)?a.surp:null;};
+      const byQ=miss.filter(r=>{const q=qrows(r);
+        return q&&q.length>=4&&q.slice(0,4).every(x=>x&&x.act!=null&&isFinite(x.act));});
+      const qSum=r=>{const q=qrows(r);return q&&q.length>=4?q.slice(0,4).reduce((a2,x)=>a2+(+x.act),0):null;};
+      return {주식수:st.length,
+              'PER없음':noPer.length,
+              적자라정상:loss.length,
+              진짜결측:miss.length,
+              설명필요:other.length,
+              야후PER로복구가능:byPer.length,
+              분기실적합으로복구가능:byQ.length,
               복구불가:miss.filter(r=>!byPer.includes(r)&&!byQ.includes(r)).length,
-              종목:miss.map(r=>r.nm+(F(r)&&F(r).perT!=null?' [PER '+(+F(r).perT).toFixed(1)+']':' [복구원 없음]')),
-              주의:'판정(perAuto)은 아직 폴백을 쓰지 않습니다 — 보수 적정가만 복구돼 있습니다'};
+              결측종목:miss.map(r=>{const q=qrows(r), s4=qSum(r), f=F(r);
+                return r.nm
+                  +(f&&f.perT!=null?(' [야후PER '+(+f.perT).toFixed(1)+']'):'')
+                  +(q?(' [분기 '+q.length+'개 · act '+q.filter(x=>x&&x.act!=null).length+'개'
+                       +(s4!=null?(' · 4분기합 '+s4.toFixed(2)):'')+']'):' [분기 실적 없음]');}),
+              적자종목:loss.map(r=>r.nm+' (EPS '+epsOf(r)+')'),
+              설명필요종목:other.map(r=>r.nm+' (EPS '+epsOf(r)+')'),
+              주의:'적자는 결함이 아닙니다. 판정(perAuto)은 아직 폴백을 쓰지 않습니다 — 보수 적정가만 복구 경로가 있습니다'};
     })(),
     통화불일치:rows.filter(r=>r.k.curMismatch).map(r=>r.nm+' '+r.k.fcur+'→'+r.k.qcur
       +(r.k.fxq!=null?(' @'+r.k.fxq.toFixed(6)+'['+(r.k.fxSrc||'?')+']'):' @환율미확보')
