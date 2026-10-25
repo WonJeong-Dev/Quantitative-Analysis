@@ -194,6 +194,26 @@
   .ex .q .capped{display:inline-block;padding:0 4px;border-radius:5px;background:var(--amber-soft,#fdf3e0);
                  color:var(--amber);font-weight:700;font-size:10px}
 
+  /* (v5.9.2) 보유 재심사 — 보유 배지가 판정을 함께 말한다. */
+  .holdbadge.bad{background:#fae9eb;color:#a32d3c;border-color:#e6b4bb}
+  .warnpill.stopx{background:#fae9eb;color:#a32d3c;border:1px solid #e6b4bb}
+  .rvbox{margin:10px 0 4px;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+  .rvbox.hit{border-color:#d99aa4;background:#fdf4f5}
+  .rvhd{font-weight:800;font-size:13px;margin-bottom:8px}
+  .rvhd small{display:block;font-weight:600;font-size:11px;color:var(--sub);margin-top:2px}
+  .rvrow{display:grid;grid-template-columns:minmax(76px,auto) 1fr;gap:4px 10px;align-items:baseline;
+         padding:6px 0;border-top:1px solid var(--line)}
+  .rvrow .l{font-size:10.5px;font-weight:700;color:var(--sub)}
+  .rvrow b{font-size:14px;font-weight:800;white-space:nowrap}
+  .rvrow b.vd{display:inline;font-size:14px}
+  .rvrow em{grid-column:1/-1;font-style:normal;font-size:11px;line-height:1.55;color:var(--sub);
+            word-break:keep-all;overflow-wrap:anywhere}
+  .rvalert{margin-top:8px;padding:8px 10px;border-radius:8px;background:#fae9eb;color:#8f2733;
+           font-size:11.5px;font-weight:700;line-height:1.55;word-break:keep-all}
+  .rvnote{margin-top:8px;font-size:10.5px;line-height:1.6;color:var(--sub);word-break:keep-all}
+  @media (min-width:460px){ .rvrow{grid-template-columns:96px minmax(0,1fr) minmax(0,1.4fr)}
+    .rvrow em{grid-column:auto} }
+
   /* (v5.8) 근거 — 판정이 얼마나 얇은 근거 위에 서 있는가. 판정을 바꾸지 않는다.
    * (v5.8.1) 편재(최대 단일 근거)는 **과반일 때만** 적는다 — 아니면 읽을 이유가 없고 줄만 는다. */
   .g-ev{text-align:right}

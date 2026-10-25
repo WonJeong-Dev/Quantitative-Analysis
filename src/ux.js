@@ -81,6 +81,18 @@ observer.observe(document.querySelector('#list'),{childList:true,subtree:true});
 observer.observe(document.querySelector('#lgBody'),{childList:true,subtree:true});
 document.querySelector('#clearSearch').addEventListener('click',()=>{const el=document.querySelector('#searchIn');el.value='';el.dispatchEvent(new Event('input',{bubbles:true}));el.focus();});
 document.querySelector('#onlyHeld').addEventListener('change',e=>{S.ui.onlyHeld=e.target.checked;render();});
+/* (v5.9.2) 진입가 가림 — 기기별 보기 설정이라 localStorage에 둔다(판정·로그와 무관).
+ * 저장이 막힌 환경(사생활 보호 창 등)에서도 토글 자체는 동작해야 하므로 전부 try로 감싼다. */
+(function(){
+  const el=document.querySelector('#maskEntry'); if(!el)return;
+  try{ S.ui.maskEntry=localStorage.getItem('qa.maskEntry')==='1'; }catch(e){}
+  el.checked=!!S.ui.maskEntry;
+  el.addEventListener('change',e=>{
+    S.ui.maskEntry=e.target.checked;
+    try{ localStorage.setItem('qa.maskEntry',e.target.checked?'1':'0'); }catch(err){}
+    render();
+  });
+})();
 document.querySelector('#list').addEventListener('keydown',e=>{
  if(e.target.matches('.row .main')&&['Enter',' '].includes(e.key)){e.preventDefault();e.target.click();}
 });

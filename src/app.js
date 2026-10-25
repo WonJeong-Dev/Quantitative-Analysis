@@ -2637,6 +2637,49 @@ function evidenceOf(k){
           why:parts.join(' / ')||'결측 없음'};
 }
 /* ==========================================================================
+ * (v5.9.2) 보유 재심사 — 매몰비용에 직접 듣는 장치.
+ *
+ * 판정은 원래 진입가를 입력으로 쓰지 않는다. 그래서 "재심사"는 사실 이미 일어나고 있다 —
+ * 바뀌는 것은 **무엇을 보여주는가**다. 두 가지를 더한다.
+ *   ① 진입가·손익률을 **가릴 수 있게** 한다. 판정값은 그대로다. 바뀌는 것은 당신이
+ *      무엇에 닻을 내리는지다 — "−23%니까 조금만 더"는 진입가가 보일 때만 나오는 문장이다.
+ *   ② 보유 중인데 판정이 **탈락**이면 그 사실을 배지로 못 박는다:
+ *      「지금이라면 사지 않을 종목을 들고 있다」.
+ * 별도 판정 단어를 만들지 않는다 — 세 단어는 그대로다(추천·관망·탈락).
+ * ========================================================================== */
+function maskEntry(){ return !!S.ui.maskEntry; }
+/* 포지션의 무효화선 = **가장 최근 매수**의 스냅샷에 굳어 있는 값.
+ * 추가 매수는 "지금 가격에서도 산다"는 새 판단이므로, 그 시점의 약속이 현재 유효한 약속이다.
+ * 스냅샷이 없는 매수(과거 소급 입력 등)는 선을 만들지 않는다 — 지어내지 않는다(§22-⑫). */
+function stopOf(id){
+  const st=S.stocks[id]; if(!st)return null;
+  const key=QADomain.instrument(st);
+  let best=null;
+  for(const t of (S.trades||[])){
+    if(t.side!=='buy')continue;
+    let k2=null; try{k2=QADomain.instrument(t);}catch(e){k2=null;}
+    if(k2!==key)continue;
+    const at=(t.snap&&t.snap.at)||Date.parse((t.date||'')+'T00:00:00Z')||0;
+    if(!best||at>best.at)best={at:at,t:t};
+  }
+  if(!best)return null;
+  const sn=best.t.snap||null;
+  if(!sn)return {stop:null,why:'가장 최근 매수에 판정 스냅샷이 없습니다(과거 소급 입력)'};
+  if(sn.stop==null)return {stop:null,why:'매수 시점에 변동성이 확보되지 않아 무효화선을 굳히지 못했습니다'};
+  return {stop:sn.stop,entry:sn.entry,d:sn.stopD,h:sn.stopH,at:sn.at,date:best.t.date,why:null};
+}
+/* 보유 종목의 재심사 결과. 「지금 신규라면 사는가」 + 「사전 약속을 깼는가」 둘뿐이다. */
+function reviewOf(id,hd){
+  if(!hd)return null;
+  const k=S.calc[id]||{}, so=stopOf(id);
+  const failed=!k.tier;                                  // 관문 미통과 = 지금이라면 안 산다
+  const breach=!!(so&&so.stop!=null&&k.price!=null&&k.price<=so.stop);
+  return {held:true,qty:hd.qty,failed:failed,stop:so,breach:breach,
+          hit:failed||breach,
+          why:failed?'지금 신규라면 관문을 통과하지 못합니다'
+             :(breach?'매수 때 적어 둔 무효화선 아래로 내려왔습니다':null)};
+}
+/* ==========================================================================
  * (v5.9) 위험예산과 수량 — 손실 통제.
  *
  * ★ 새 설정 블록을 만들지 않는다. 이미 있는 **투자정책**(S.settings.investmentPolicy)에
@@ -2756,6 +2799,28 @@ function evHTML(k){
     : '';
   return '<div class="n"'+(low?' style="color:var(--amber)"':'')+' title="'+esc(tip)+'">'+e.dens+'%</div>'+b+warn;
 }
+/* (v5.9.2) 상세 — 보유 재심사. 보유 중일 때만 그린다. */
+function reviewDetailHTML(id){
+  const hd=holdMap()[id]; if(!hd)return '';
+  const k=S.calc[id]||{}, RV=reviewOf(id,hd), VD=verdictOf(id), C=k.currency;
+  const money=v=>v==null?'—':curSym(C)+fmtP(v,C);
+  const so=RV&&RV.stop;
+  let g='<div class="rvbox'+(RV&&RV.hit?' hit':'')+'"><div class="rvhd">보유 재심사 '
+    +'<small>진입가를 쓰지 않는 판정 — 「지금 신규라면 사는가」</small></div>';
+  g+='<div class="rvrow"><span class="l">지금 판정</span><b class="'+(VD?('vd '+VD.cls):'')+'">'
+    +(VD?esc(VD.w):'—')+'</b><em>'+(VD?esc(VD.why):'')+'</em></div>';
+  g+='<div class="rvrow"><span class="l">사전 무효화선</span><b>'+(so&&so.stop!=null?money(so.stop):'—')+'</b><em>'
+    +(so&&so.stop!=null
+      ? ('매수가 '+money(so.entry)+'에서 −'+(so.d*100).toFixed(1)+'% ('+so.h+'거래일 1σ) · '+esc(so.date||'')+' 기록 · 수정 불가')
+      : esc((so&&so.why)||'이 종목의 매수 기록에 무효화선이 없습니다'))
+    +'</em></div>';
+  if(RV&&RV.hit)
+    g+='<div class="rvalert">'+esc(RV.why)+' — 진입가가 얼마였든 이 판단은 달라지지 않습니다.</div>';
+  g+='<div class="rvnote">이 블록의 어떤 값도 평균단가·손익률을 입력으로 쓰지 않습니다. '
+    +'목록 상단의 <b>진입가 가림</b>을 켜면 화면에서도 숨길 수 있습니다 — 숫자는 그대로이고, 바뀌는 것은 '
+    +'무엇에 닻을 내리는지입니다.</div></div>';
+  return g;
+}
 /* 상세 패널용 — 방법별 내역과 **배제 사유**, 그리고 가정을 전부 적는다.
  * 중앙값만 보여주면 어느 방법이 끌어내렸는지 알 수 없고, 그러면 숫자를 믿을 근거도 없다. */
 function cfvDetailHTML(id,k){
@@ -2863,10 +2928,18 @@ function render(){
     // 골드 강조: 등급순일 땐 '실제 등급받은' 상위만, 그 외 점수순일 땐 상위 3
     const goldTop=gradeSort?(graded&&i<3):(i<3&&topSort);
     const hd=HOLD[id];
-    const hdBadge=hd?('<span class="holdbadge '+(hd.rate==null?'':(hd.rate>=0?'up':'dn'))+'" title="'
-      +'평균단가 '+esc(lgFmt(hd.avg,st.market))+(hd.accs>1?' · 계좌 '+hd.accs+'곳 합산':'')
-      +' — 거래기록 탭에서 매도할 수 있습니다">보유 '+lgQty(hd.qty)
-      +(hd.rate!=null?' '+(hd.rate>=0?'+':'−')+Math.abs(hd.rate).toFixed(1)+'%':'')+'</span>'):'';
+    /* (v5.9.2) 보유 배지는 두 가지를 말한다: 얼마나 들고 있나 · 지금이라면 사는가.
+     * 진입가 가림이 켜지면 평균단가·손익률을 숨긴다 — 판정값은 바뀌지 않는다. */
+    const RV=hd?reviewOf(id,hd):null;
+    const masked=maskEntry();
+    const hdBadge=hd?('<span class="holdbadge '+(RV&&RV.hit?'bad':(masked||hd.rate==null?'':(hd.rate>=0?'up':'dn')))+'" title="'
+      +esc((masked?'진입가 가림 — 해제하려면 상단 「진입가 가림」 체크를 끄세요'
+                  :('평균단가 '+lgFmt(hd.avg,st.market)))
+        +(hd.accs>1?' · 계좌 '+hd.accs+'곳 합산':'')
+        +(RV&&RV.hit?(' · '+RV.why):'')
+        +' — 거래기록 탭에서 매도할 수 있습니다')+'">보유 '+lgQty(hd.qty)
+      +(masked?' · 진입가 가림':(hd.rate!=null?' '+(hd.rate>=0?'+':'−')+Math.abs(hd.rate).toFixed(1)+'%':''))
+      +(RV&&RV.failed?' · 지금이라면 안 삼':'')+'</span>'):'';
     let main='<div class="main">'
       +'<div class="rank g-rk '+(goldTop?'top':'')+'">'+(i+1)+'</div>'
       +'<div class="nm g-nm"><div class="k">'+esc(st.name)+hdBadge+'</div><div class="t"><span class="mono">'+esc(st.market==='KR'?(st.code||st.symbol):st.symbol)+'</span><span class="sec">'+esc(st.sector||'')+'</span></div></div>';
@@ -2904,6 +2977,10 @@ function render(){
                 +'</div>'
                 +'<div class="vdwhy" title="'+esc(VD.tip||VD.why)+'">'+esc(VD.why)+'</div>')
               :'<div class="vdline"><span class="vd out"><span class="vmk" aria-hidden="true">○</span>판정 대기</span></div>')
+          +((RV&&RV.breach)?('<div class="vdwarn"><span class="warnpill stopx" title="'
+              +esc('매수 때 적어 둔 무효화선 '+curSym(k.currency)+fmtP(RV.stop.stop,k.currency)
+                   +' (매수가 '+curSym(k.currency)+fmtP(RV.stop.entry,k.currency)+'에서 −'+(RV.stop.d*100).toFixed(1)+'%, '
+                   +RV.stop.h+'거래일 1σ · '+(RV.stop.date||'')+' 기록) 아래로 내려왔습니다')+'">⚠ 무효화 도달</span></div>'):'')
           +(warn.length?'<div class="vdwarn">'+warn.join('')+'</div>':'')
         +'</div>'
         +'<div class="ex g-ex num">'+exHTML(k,CFV,k?sizeOf(id,CFV,RC):null)+'</div>'
@@ -2996,6 +3073,7 @@ function detailHTML(id){
     (k.downside!=null?'<span class="'+chgCls(k.downside)+'">하방여유 '+fmtPct(k.downside)+'</span> · 지금 실적 기준':'—'));
   g+=stat('적정 목표가 ★ (상방)',k.fvTarget!=null?curSym(C)+fmtP(k.fvTarget,C):'—',
     '<span class="'+chgCls(k.upside)+'">상승여력 '+fmtPct(k.upside)+'</span> · 성장반영 · 근거: '+esc(fvBasisLbl));
+  g+=reviewDetailHTML(id);    /* (v5.9.2) 보유 재심사 — 진입가를 쓰지 않는 판정 + 사전 무효화선 */
   g+=cfvDetailHTML(id,k);     /* (v5.7) 재무제표 기준 보수 적정가 — 위 두 값과 독립 */
   if(k.fundFV){
     const ff=k.fundFV;
@@ -3467,7 +3545,10 @@ const CONST_LOG=[
   /* (v5.9) 수량 — 판정에 쓰이지 않는다. 위험예산은 사용자 설정이며 기본값을 넣지 않는다. */
   {k:'CFV_STOP_H',   v:20,     from:'2026-10-25', ver:'v5.9', cls:'기존 상수 재사용 — GL_HORIZ[0](20거래일≈1개월). 무효화 거리의 지평'},
   {k:'STOP_SIGMA',   v:1,      from:'2026-10-25', ver:'v5.9', cls:'통계 관례(1σ) — 「여기까지는 평범한 흔들림」의 경계. 수익률 임계가 아님'},
-  {k:'RISK_PCT',     v:'설정값', from:'2026-10-25', ver:'v5.9', cls:'구조적 필연 — 위험 선호는 모형이 정할 수 없다. 기본값 없음, 미설정이면 수량을 내지 않는다'}
+  {k:'RISK_PCT',     v:'설정값', from:'2026-10-25', ver:'v5.9', cls:'구조적 필연 — 위험 선호는 모형이 정할 수 없다. 기본값 없음, 미설정이면 수량을 내지 않는다'},
+  /* (v5.9.2) 사전 무효화선 — 매수 시점에 굳고 그 뒤로 바뀌지 않는다. 판정에 쓰이지 않는다. */
+  {k:'STOP_BASIS',   v:'체결가', from:'2026-10-25', ver:'v5.9.2', cls:'구조적 필연 — 「여기까지 밀리면 내 판단이 틀렸다」의 기준은 제안가가 아니라 실제 낸 돈이다'},
+  {k:'STOP_SRC',     v:'최근 매수', from:'2026-10-25', ver:'v5.9.2', cls:'구조적 필연 — 추가 매수는 「지금 가격에서도 산다」는 새 판단이므로 그 시점의 약속이 현재 유효한 약속이다'}
 ];
 /* 같은 키의 마지막 행 = 현재 유효한 값. 자기점검·검증 리포트가 이걸 쓴다. */
 function constNow(){ const m={}; for(const r of CONST_LOG)m[r.k]=r; return m; }
@@ -4306,7 +4387,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.2 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -5384,7 +5465,7 @@ async function lgSaveForm(){
       toast('수정했습니다');
     }else{
       if(v.side==='buy'){
-        v.snap=v.date===lgTodayFor(v.market)?lgSnap(v.market,v.code,v.name):null;
+        v.snap=v.date===lgTodayFor(v.market)?lgSnap(v.market,v.code,v.name,v.side==='buy'?v.price:null):null;
         if(v.snap)Object.assign(v.snap,{observedAt:Date.now(),instrument:QADomain.instrument(v),settings:glSettingsKey()});
         v.snapshotStatus=v.snap?'observed':'historical-unverified';
       }
@@ -5407,10 +5488,18 @@ async function lgSaveForm(){
   }catch(e){ toast('저장 실패: '+(e.message||e),'err'); }
 }
 /* 매수 시점 스냅샷 — §19.3의 검증 데이터가 실거래로 쌓인다. */
-function lgSnap(market,code,name){
+function lgSnap(market,code,name,entryPrice){
   const id=findStockId({market,code,name}); if(!id)return null;
   const k=S.calc[id]; if(!k)return null;
   const d=k.grd||{};
+  /* (v5.9.2) ★ 사전 무효화 조건 — 매수를 기록하는 **그 순간**에 함께 굳힌다.
+   * 손실이 생긴 뒤에 정하면 늦다. 그때는 이미 본전 생각이 판단에 들어가 있다.
+   * 선은 추측이 아니라 그 시점 실현변동성에서 나온다: 매수가 × (1 − σ√(20/252)).
+   * 기준 가격은 **실제 체결가**다 — 제안 지정가가 아니라 내가 실제로 낸 돈이 기준이어야
+   * "여기까지 밀리면 내 판단이 틀린 것"이라는 문장이 참이 된다.
+   * 스냅샷은 쓰기 후 고치지 않는다(기존 규칙 그대로) — 그래서 사후 조정이 불가능하다. */
+  const ep=(entryPrice!=null&&isFinite(entryPrice)&&entryPrice>0)?+entryPrice:null;
+  const sd=(k.annVol!=null&&k.annVol>0)?k.annVol*Math.sqrt(CFV_STOP_H/252):null;
   /* (v4.34) v4.33까지 8필드였고, 그중 어느 것도 "이 판정이 믿을 만한 상태에서 나왔는가"를
    * 말해 주지 않았다. 사후에 왜 맞았고 왜 틀렸는지 분해하려면 최소한 아래가 있어야 한다.
    *  · tierNoCap      캡이 없었으면 받았을 등급 — 캡의 대가를 재는 반사실 짝(§19.8)
@@ -5429,7 +5518,12 @@ function lgSnap(market,code,name){
     ratioNow:k.ratioNow!=null?+k.ratioNow.toFixed(4):null,
     ratioZ:k.ratioZ!=null?+k.ratioZ.toFixed(2):null,
     adx:k.adx!=null?+k.adx.toFixed(1):null, adxZ:k.adxZ!=null?+k.adxZ.toFixed(2):null,
-    diDir:(k.diDir!=null?k.diDir:null), rv:RULE_VER};
+    diDir:(k.diDir!=null?k.diDir:null), rv:RULE_VER,
+    stopD:sd!=null?+sd.toFixed(4):null,
+    stopH:CFV_STOP_H,
+    annVol:k.annVol!=null?+k.annVol.toFixed(4):null,
+    stop:(ep!=null&&sd!=null)?+(ep*(1-sd)).toFixed(4):null,
+    entry:ep};
 }
 
 /* ---------------- 거래내역 ---------------- */
