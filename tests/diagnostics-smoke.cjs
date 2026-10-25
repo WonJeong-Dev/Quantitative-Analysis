@@ -131,6 +131,36 @@ ok('PSR 비율과 내포가가 동일한 환산 기준', asml.includes((+(1745.6
 ok('원천 수집시각 포함', M.diagCollect().수집시각.length===Object.keys(S.stocks).length);
 ok('환산 후 재계산과 대체 표시값 분리', M.diagCollect().통화불일치[0].includes('주당매출 환산 후')&&M.diagCollect().통화불일치[0].includes('표시 PSR'));
 
+console.log('\n[8] 수집하고 안 그리면 없는 항목이다 (§22-㉕ · 구조 검사)');
+/* diagCollect가 값을 만들어도 diagRender가 그리지 않으면 **화면에 존재하지 않는다.**
+ * 이 실패가 세 번 났다 — v4.37(이벤트채널·ADX관측·상수부채·환율출처·환율미확보),
+ * v5.9.8·v5.9.9(후행EPS결측). 매번 "다음부터 주의"로 끝냈으므로 이번엔 검사로 막는다.
+ * 사람이 줄을 하나 더 추가하는 걸 믿지 않고, **키 집합 자체를 대조**한다. */
+{
+  const d2=M.diagCollect();
+  M.diagRender();
+  const H=HTMLOUT;
+  /* JSON에만 두기로 **의도한** 키는 여기에 적는다. 적는 행위가 곧 결정의 기록이다 —
+   * 빠뜨린 것과 뺀 것을 구분할 수 있어야 한다. 이유 없이 늘어나면 그게 신호다. */
+  const JSON_ONLY=new Set([
+    '시각','종목수','요약패스','빌드',        // 머리줄에 합쳐 그린다
+    '점검상태','판정로그','로그상태','등급분포','등급변화',
+    '투자정책',                               // 투자정책 탭이 따로 보여준다
+    'PSR상세',                                // 파생 2줄(주당매출 검증·수동 PSR)로 그린다
+    'PSR정합','MAD척도','관측수min',
+  ]);
+  const keys=Object.keys(d2);
+  ok('수집 키가 비어 있지 않다 (검사 전제)', keys.length>10);
+  const notRef=keys.filter(k=>!JSON_ONLY.has(k)&&src.indexOf('d.'+k)<0&&src.indexOf("d['"+k+"']")<0);
+  ok('수집한 키를 diagRender가 전부 참조한다'+(notRef.length?(' ← 누락: '+notRef.join(', ')):''), notRef.length===0);
+  /* 참조만으로는 부족하다 — 참조해 놓고 빈 문자열을 그릴 수 있다. 실제 출력에 흔적이 있는지 본다. */
+  ok('후행 EPS가 실제로 그려진다', /후행 EPS/.test(H), H.length);
+  ok('적자와 진짜 결측을 갈라 적는다', /적자라 정상/.test(H)&&/진짜 결측/.test(H));
+  ok('적자는 결함이 아니라고 못 박는다', /적자 종목은 PER이 없는 것이 정상/.test(H));
+  ok('판정이 폴백을 안 쓴다는 사실을 적는다', /판정\(perAuto\)은 아직 폴백을 쓰지 않습니다/.test(H));
+  ok('복구원 셋을 모두 적는다', /야후 PER/.test(H)&&/분기실적 합/.test(H)&&/복구 불가/.test(H));
+}
+
 console.log('\n────────────────────────────');
 console.log(pass+' passed · '+fail+' failed');
 process.exit(fail?1:0);
