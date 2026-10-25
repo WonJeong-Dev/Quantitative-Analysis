@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-jZYfmgGH/tBl0qpCn9x7XT1lKn1AQthbkdBY6fZtI7M=' 'sha256-VFiI6ExOyCEXoMRuXTrpSmnuNf2nHVeohvSPx9FXEtE=' 'sha256-J3EyDnQzV7YLBiZIbYA48V0C/QzHTeyRpogWntXTpX4=' 'sha256-okYgrpOYTQn4uF4FDOj+ITyJp8Wpkd+S20zkkP5GeB0=' 'sha256-7gQyP1bcfxqPs7nfQkMDQqIHf6cOzaa9PXyQW4z1h8o=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-RzUisjGtCh/wqNUN4MS2oJ3dzMhNiga4VE+YroVC1m8=' 'sha256-VFiI6ExOyCEXoMRuXTrpSmnuNf2nHVeohvSPx9FXEtE=' 'sha256-n3mDSLjsWAUvkOOjOuFrHIC4Ka9UmdJbqjz51tv4/ns=' 'sha256-okYgrpOYTQn4uF4FDOj+ITyJp8Wpkd+S20zkkP5GeB0=' 'sha256-7gQyP1bcfxqPs7nfQkMDQqIHf6cOzaa9PXyQW4z1h8o=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quant Stock Board — KR·US</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3ClinearGradient%20id='bg'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%234c1d95'/%3E%3Cstop%20offset='.5'%20stop-color='%230e7490'/%3E%3Cstop%20offset='1'%20stop-color='%230f9d8a'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='pk'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fde68a'/%3E%3Cstop%20offset='1'%20stop-color='%23fb5f57'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='gl'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fff'%20stop-opacity='.20'/%3E%3Cstop%20offset='.55'%20stop-color='%23fff'%20stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23bg)'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-opacity='.20'%20stroke-width='13'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-width='8.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='51'%20cy='18'%20r='8'%20fill='url(%23pk)'/%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23gl)'/%3E%3C/svg%3E">
@@ -266,6 +266,9 @@
   .cfvtbl td{padding:4px;border-bottom:1px solid #e8f3f5}
   .cfvtbl .num{text-align:right}
   .cfvtbl .hw{color:var(--sub);font-size:10.5px}
+  .cfvtbl tr.refrow td{opacity:.62}
+  .cfvtbl .refbadge{display:inline-block;padding:0 5px;border-radius:5px;background:#e9efed;
+                    color:var(--sub);font-size:9.5px;font-weight:700;vertical-align:1px;cursor:help}
   .cfvskip{margin-top:8px;font-size:11px;color:var(--sub)}
   .cfvskip ul{margin:3px 0 0;padding-left:16px;line-height:1.6}
   .cfvassume{margin-top:9px;padding-top:7px;border-top:1px dashed #cde6ea;font-size:10.5px;line-height:1.65;color:var(--sub)}
@@ -1154,10 +1157,12 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
     const perT=num(inp.perTtm), perF=num(inp.perFwd), psr=num(inp.psr), pbr=num(inp.pbr);
     const fcfPS=num(inp.fcfPS);
     const used=[],skipped=[];
-    const add=(key,label,value,how)=>{
+    /* ref=true인 방법은 **표에는 보이되 중앙값에 넣지 않는다.** '수집하고 안 그린다'의 반대 —
+     * 그릴 가치는 있지만 대표값을 만들 자격이 없는 값을 위한 자리다. */
+    const add=(key,label,value,how,ref)=>{
       if(value==null||!Number.isFinite(value)||!(value>0)){skipped.push({key,label,why:how||'입력 결측'});return;}
       if(ceil!=null&&price>0&&value>price*ceil){skipped.push({key,label,why:'현재가 '+ceil+'배 초과 — 이상치 배제'});return;}
-      used.push({key,label,value,how:how||''});
+      used.push({key,label,value,how:how||'',ref:!!ref});
     };
     /* ① 이익력 — **정상화 EPS** × 성장 0의 정당 PER.
      *
@@ -1168,22 +1173,25 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
      * 최솟값 EPS × 무성장 배수가 아니다. 실측(매출성장 15% 종목): PER 18.4→11(×0.60)에
      * EPS ×0.87이 겹쳐 기존 펀더멘털 밸류의 0.52배가 됐다.
      *
-     * 정상화 규칙은 **새로 만들지 않고** app.js의 fundamentalFV가 쓰는 eNow 정의를 그대로 쓴다:
-     *   둘 다 있으면 50:50 평균 · 후행만 있으면 그 값 · 선행만 있으면 ×0.92(단독 할인).
-     * 두 곳의 값이 어긋나면 tests/consfv.cjs가 배포본에서 직접 읽어 비교해 실패시킨다(§22-⑲).
+     * 정상화 규칙은 **새로 만들지 않고** app.js의 fundamentalFV가 쓰는 eNow 정의를 따른다:
+     *   둘 다 있으면 50:50 평균 · 하나만 있으면 그 값.
+     * ★ (v5.9.7) 다만 기존 엔진의 '선행 단독 ×0.92' 할인은 **쓰지 않는다.**
+     *   그 0.92는 성장을 반영하는 PER과 짝으로 쓰이는 값이다. 여기서는 이미 성장 0으로
+     *   배수를 깎았으므로 또 깎으면 위에 적은 것과 같은 종류의 이중 적용이 된다.
+     *   실측: 후행 EPS가 없는 국내 종목에서 v5.9.6이 값을 8.7% **낮췄다** — 고치려던 방향과 반대였다.
+     * 50:50 평균이 두 곳에서 어긋나면 tests/consfv.cjs가 배포본을 직접 읽어 실패시킨다(§22-⑲).
      *
      * EPS는 price/PER로 되돌린다. 적자면 PER이 null이라 이 방법이 자동으로 빠진다. */
     const epsT=(price>0&&perT!=null&&perT>0)?price/perT:null;
     const epsF=(price>0&&perF!=null&&perF>0)?price/perF:null;
-    const epsNorm=(epsT!=null&&epsF!=null)?(epsT*0.5+epsF*0.5)
-                 :(epsT!=null?epsT:(epsF!=null?epsF*0.92:null));
+    const epsNorm=(epsT!=null&&epsF!=null)?(epsT*0.5+epsF*0.5):(epsT!=null?epsT:epsF);
     const perMax=(perT!=null||perF!=null)?1:null;   // 가용성 표식 — 아래 분기 조건용
     if(!(price>0))                 skipped.push({key:'eps',label:'이익력(EPS)',why:'현재가 없음'});
     else if(fPer==null)            skipped.push({key:'eps',label:'이익력(EPS)',why:'정당 PER 산출 불가(종합점수 결측)'});
     else if(perMax==null||epsNorm==null) skipped.push({key:'eps',label:'이익력(EPS)',why:'흑자 EPS 없음'});
     else if(vm.per===0)            skipped.push({key:'eps',label:'이익력(EPS)',why:'이 종목은 PER 판별력 없음(지표신뢰 0)'});
     else add('eps','이익력(EPS)',epsNorm*fPer,
-      (epsT!=null&&epsF!=null?'정상화 EPS(후행·선행 평균)':(epsT!=null?'후행 EPS':'선행 EPS×0.92'))
+      (epsT!=null&&epsF!=null?'정상화 EPS(후행·선행 평균)':(epsT!=null?'후행 EPS':'선행 EPS'))
       +' × 정당PER '+fPer.toFixed(1)+'배');
     /* ② 매출 — **흑자면 쓰지 않는다.** PSR은 이익이 없을 때의 대체이고, 기존 엔진도 같은 분기다.
      *   흑자인데 PSR을 median에 섞으면 마진을 전혀 못 보는 값이 추정치를 끌어당긴다. */
@@ -1192,21 +1200,39 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
     else if(psr==null||fPsr==null) skipped.push({key:'rev',label:'매출(PSR)',why:'주당매출 결측'});
     else if(vm.psr===0)            skipped.push({key:'rev',label:'매출(PSR)',why:'이 종목은 PSR 판별력 없음(지표신뢰 0)'});
     else add('rev','매출(PSR)',price/psr*fPsr,'주당매출 × 정당PSR '+fPsr.toFixed(1)+'배');
-    /* ③ 현금흐름 — 주당 FCF를 이익력으로 보고 **같은** 정당 PER을 쓴다. 새 할인율을 만들지 않는다.
-     *   FCF는 회계이익보다 손대기 어려워 독립 정보가 되고, 종종 EPS 기준보다 낮게 나온다. */
+    /* ③ 현금흐름 — 주당 FCF × 같은 정당 PER. **(v5.9.7) 참고값이다. 중앙값에 넣지 않는다.**
+     *
+     * 왜 뺐는가. 단년 TTM FCF에 **이익 멀티플**을 곱하는 것은 범주 오류다. 성장 중이거나
+     * 캐펙스가 큰 기업은 FCF가 순이익보다 작은 것이 정상인데, 그 차이를 "이익력이 낮다"로
+     * 번역해 버린다. 실측 2종목에서 FCF 기준가가 이익력의 46%·37% — 두 종목 다 비슷하게
+     * 낮았다. 우연이 아니라 구조적이고, 그러면 그것은 보수성이 아니라 **편향**이다.
+     * 제대로 쓰려면 FCF 수익률 관점으로 다시 설계해야 하는데 그건 요구수익률이라는
+     * 새 자유 파라미터를 부른다 — 근거 없이 상수를 만들지 않는다. */
     if(fcfPS==null)                skipped.push({key:'fcf',label:'현금흐름(FCF)',why:'FCF 또는 주식수 미확인'});
     else if(!(fcfPS>0))            skipped.push({key:'fcf',label:'현금흐름(FCF)',why:'FCF 음수 — 가치 산출 불가'});
     else if(fPer==null)            skipped.push({key:'fcf',label:'현금흐름(FCF)',why:'정당 PER 산출 불가'});
-    else add('fcf','현금흐름(FCF)',fcfPS*fPer,'주당FCF × 정당PER '+fPer.toFixed(1)+'배');
+    else add('fcf','현금흐름(FCF)',fcfPS*fPer,'주당FCF × 정당PER '+fPer.toFixed(1)+'배',true);
     /* ④ 자산 — 장부가(PBR 1.0배). 전통적 하한선이고 배수를 1로 고정하므로 자유 파라미터가 없다.
-     *   무형자산 중심 기업은 PBR이 상시 수십 배라 판별력이 없다 — VM_META가 0으로 표시한 종목은 뺀다. */
+     *   무형자산 중심 기업은 PBR이 상시 수십 배라 판별력이 없다 — VM_META가 0으로 표시한 종목은 뺀다.
+     *
+     * ★ (v5.9.7) 재무제표 통화 ≠ 시세 통화이면 **쓰지 않는다.**
+     *   PBR은 야후가 준 **비율**이라 분자·분모가 어느 통화인지, ADR 비율이 반영됐는지를
+     *   우리가 확인할 방법이 없다. 주당매출은 reconcileShares가 시가총액과 대사해 검증하지만
+     *   PBR에는 그런 대사가 없다. 실측(TWD 재무·USD 시세 종목): PBR 2601.61 → 주당순자산
+     *   $0.16 → 자산 기준가 $0.16이 화면에 그대로 떴다. 검증할 수 없는 값은 쓰지 않는다. */
     if(!(price>0))                 skipped.push({key:'book',label:'자산(장부가)',why:'현재가 없음'});
+    else if(inp.curMismatch)       skipped.push({key:'book',label:'자산(장부가)',
+                                     why:'재무제표 통화 ≠ 시세 통화 — PBR 비율의 통화·ADR 정합을 확인할 수 없어 제외'});
     else if(pbr==null)             skipped.push({key:'book',label:'자산(장부가)',why:'PBR 결측 — 주당순자산 역산 불가'});
     else if(vm.pbr===0)            skipped.push({key:'book',label:'자산(장부가)',why:'이 종목은 PBR 판별력 없음(무형·자산경량)'});
     else add('book','자산(장부가)',price/pbr,'주당순자산 × 1.0배');
 
-    const fv=used.length?median(used.map(m=>m.value)):null;
-    return {fv,n:used.length,used,skipped};
+    /* 대표값은 **참고가 아닌 방법들**의 중앙값이다. 참고값은 표에만 남는다. */
+    const core=used.filter(m=>!m.ref);
+    const fv=core.length?median(core.map(m=>m.value)):null;
+    return {fv,n:core.length,used,skipped,
+            /* n=1이면 '중앙값'이라는 말이 과장이다 — 어느 방법 하나인지 이름으로 말한다. */
+            basis:core.length===1?core[0].label:(core.length?core.length+'종 중앙값':null)};
   }
 
   /* ==========================================================================
@@ -3959,6 +3985,7 @@ function cfvOf(id){
     price:k.price, quality:k.quality, annVol:k.annVol, h:CFV_H, ceil:FUND_CEIL_N,
     fairPerNow:fairPER(0,k.quality), fairPsrNow:fairPSR(0),
     perTtm:k.perAuto, perFwd:k.perFwdAuto, psr:k.psrAuto, pbr:k.pbrAuto, fcfPS:fcfPS,
+    curMismatch:!!k.curMismatch,   // (v5.9.7) 통화가 섞이면 PBR 비율을 믿을 수 없다
     vm:effVM(id)
   });
 }
@@ -4257,7 +4284,7 @@ function cfvDetailHTML(id,k){
     const gap=(k.price>0)?(cfv.fv/k.price-1)*100:null;
     g+='<div class="cfvtop">'
       +'<div class="cfvcell"><span class="l">보수 적정가</span><b>'+money(cfv.fv)+'</b>'
-        +'<em>'+cfv.n+'종 중앙값'+(gap!=null?' · 현재가 대비 <span class="'+chgCls(gap)+'">'+fmtPct(gap)+'</span>':'')+'</em></div>'
+        +'<em>'+esc(cfv.basis||(cfv.n+'종'))+(gap!=null?' · 현재가 대비 <span class="'+chgCls(gap)+'">'+fmtPct(gap)+'</span>':'')+'</em></div>'
       +'<div class="cfvcell"><span class="l">제안 지정가</span><b>'+(cfv.limit!=null?money(cfv.limit):'—')+'</b>'
         +'<em>'+(cfv.limitProb!=null?(CFV_H+'거래일 내 도달확률 '+(cfv.limitProb*100).toFixed(0)+'%<br>'
             +(cfv.bind==='value'?'가치 기준이 더 낮아 이 값':'중앙 도달가가 더 낮아 이 값')):esc(cfv.why||'—'))+'</em></div>'
@@ -4269,7 +4296,9 @@ function cfvDetailHTML(id,k){
         +'제안 지정가는 이 값과 보수 적정가 중 <b>낮은 쪽</b>입니다 — 두 조건을 동시에 만족하는 가장 높은 가격.</div>';
     g+='<div class="cfvwrap"><table class="cfvtbl"><tr><th>방법</th><th class="num">주당가치</th><th>산출</th></tr>';
     for(const m of cfv.used)
-      g+='<tr><td>'+esc(m.label)+'</td><td class="num"><b>'+money(m.value)+'</b></td><td class="hw">'+esc(m.how)+'</td></tr>';
+      g+='<tr'+(m.ref?' class="refrow"':'')+'><td>'+esc(m.label)
+        +(m.ref?' <span class="refbadge" title="중앙값에 넣지 않습니다 — 이익 멀티플을 현금흐름에 그대로 쓰는 것은 범주 오류입니다">참고</span>':'')
+        +'</td><td class="num"><b>'+money(m.value)+'</b></td><td class="hw">'+esc(m.how)+'</td></tr>';
     g+='</table></div>';
   }
   if(cfv.skipped&&cfv.skipped.length){
@@ -4960,7 +4989,9 @@ const CONST_LOG=[
   {k:'CFV_GROWTH',   v:0,      from:'2026-10-22', ver:'v5.7', cls:'구조적 필연 — 보수의 정의가 「성장을 값에 넣지 않는다」. 기존 fairPER/fairPSR 곡선에 0을 넣은 결과만 쓴다'},
   /* (v5.9.6) 보수 적정가의 EPS 선택 — 낮은 쪽 → 정상화. 중복 보수성 제거. */
   {k:'CFV_EPS',      v:'0.5/0.5', from:'2026-10-25', ver:'v5.9.6', cls:'기존 상수 재사용 — fundamentalFV의 eNow(후행·선행 50:50). 낮은 쪽을 쓰면 성장 0 PER과 보수성이 이중 적용된다'},
-  {k:'CFV_EPS_FWD',  v:0.92,   from:'2026-10-25', ver:'v5.9.6', cls:'기존 상수 재사용 — fundamentalFV의 선행 단독 할인. 두 곳이 어긋나면 테스트가 배포본을 읽어 실패시킨다'},
+  {k:'CFV_EPS_FWD',  v:'미적용', from:'2026-10-25', ver:'v5.9.7', cls:'구조적 필연 — 기존 엔진의 선행 단독 할인 0.92는 성장 반영 PER과 짝이다. 성장 0에 또 곱하면 이중 적용(실측 −8.7%)'},
+  {k:'CFV_FCF',      v:'참고',  from:'2026-10-25', ver:'v5.9.7', cls:'구조적 필연 — 단년 FCF에 이익 멀티플은 범주 오류. 실측 2종목에서 이익력의 46%·37%로 구조적 편향. 중앙값에서 제외'},
+  {k:'CFV_BOOK_CUR', v:'통화일치', from:'2026-10-25', ver:'v5.9.7', cls:'구조적 필연 — PBR은 비율이라 통화·ADR 정합을 대사할 수 없다. 실측: TWD/USD 종목에서 주당순자산 $0.16'},
   {k:'CFV_PBR',      v:1.0,    from:'2026-10-22', ver:'v5.7', cls:'외부 사실 — 장부가 기준선(PBR 1배)은 전통적 하한 관례. 배수를 1로 고정해 자유 파라미터 0개'},
   {k:'CFV_DRIFT',    v:0,      from:'2026-10-22', ver:'v5.7', cls:'구조적 필연 — 드리프트를 넣으면 그것이 곧 전망이다. 중립 가정이며 보수성 주장은 하지 않는다'},
   {k:'CFV_P',        v:0.5,    from:'2026-10-22', ver:'v5.7', cls:'통계 관례 — 중앙값(절반의 확률로 닿는 가격). 임계가 아니라 보고 기준점'},
@@ -5814,7 +5845,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.6 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.7 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
