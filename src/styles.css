@@ -101,13 +101,18 @@
   .spacer{flex:1}
 
   /* list */
-  .listhead,.row .main{display:grid;grid-template-columns:32px minmax(150px,1.35fr) 106px 150px 150px 108px 58px minmax(150px,1.15fr) 26px;
+  /* (v5.8) 한 종목이 답하는 질문을 셋으로 고정한다 — 판정 · 실행 · 근거.
+   * 종합점수·가격매력도·RSI·후보등급 배지는 지워지지 않고 **드릴다운으로 내려갔다**.
+   * ETF 전용 격자도 없앴다: 열을 빼는 대신 같은 칸에 다른 내용을 적는다(§22-㉖과 같은 이유 —
+   * 구조가 다른 두 상태를 다른 모양으로 그리면 열 수가 어긋나 렌더 결함으로 읽힌다). */
+  .listhead,.row .main{display:grid;grid-template-columns:32px minmax(116px,.8fr) 100px 170px 196px 78px minmax(126px,.85fr) 26px;
     gap:9px;align-items:center}
   /* (v4.33) ETF 탭은 '적정목표가 · 여력'과 '매수등급'이 구조적으로 산출되지 않는다(v4.21·v4.26).
    * 빈 칸으로 남기면 고정 헤더와 값이 어긋나 렌더링 결함으로 오인된다 — 컬럼째 뺀다.
    * 남은 폭은 포지션(52주 범위) 바로 돌려준다. */
+  /* (v5.8) ETF도 같은 격자를 쓴다 — 아래 규칙은 호환을 위해 남겨 두되 값이 같다. */
   #boardView.etfcols .listhead,
-  #boardView.etfcols .row .main{grid-template-columns:32px minmax(150px,1.35fr) 106px 150px 58px minmax(210px,1.7fr) 26px}
+  #boardView.etfcols .row .main{grid-template-columns:32px minmax(116px,.8fr) 100px 170px 196px 78px minmax(126px,.85fr) 26px}
   .listhead{padding:4px 16px 8px;font-size:11px;color:var(--sub);font-weight:700}
   .row{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
        margin-bottom:8px;overflow:hidden;transition:border-color .15s}
@@ -153,14 +158,35 @@
   .warnpill.crash{background:#f0e9fb;color:var(--violet)}
   .fv .v{font-weight:700;font-size:13.5px}
   .fv .u{font-size:11.5px;font-weight:700}
-  /* (v5.7) 적정목표가 아래 두 줄 — 보수 적정가와 제안 지정가. 150px 열에서 줄바꿈 없이 들어가야 한다. */
-  .cfvmini{margin-top:5px;padding-top:4px;border-top:1px dashed var(--line);font-size:11px;line-height:1.5;white-space:nowrap}
-  .cfvmini .c1{font-weight:700;color:#0e7490}
-  .cfvmini .c2{color:var(--sub);font-weight:600}
-  .cfvmini .c2 .pp{display:inline-block;padding:0 4px;border-radius:5px;background:#e2f1f4;color:#0e7490;font-weight:800}
-  .cfvmini .none{color:var(--muted);font-weight:600;cursor:help}
-  .cfvmini .c2.s-up .pp{background:var(--up-soft);color:var(--up)}
-  .cfvmini .c2.s-dn .pp{background:var(--down-soft);color:var(--down)}
+  /* (v5.8) 판정 — 세 단어뿐. 색에만 기대지 않도록 앞에 모양 단서를 둔다(● 추천 / ◐ 관망 / ○ 탈락). */
+  .vd{display:flex;align-items:baseline;gap:5px;font-size:15.5px;font-weight:800;letter-spacing:-.015em;line-height:1.25}
+  .vd .vmk{font-size:10.5px;line-height:1}
+  .vd.rec{color:var(--up)}          /* 한국식 — 매수·상승은 빨강 */
+  .vd.watch{color:var(--amber)}
+  .vd.out{color:var(--sub)}
+  .vdgate{font-size:11px;color:var(--sub);margin-top:1px}
+  /* 한글은 글자 단위로 끊으면 '확률'이 '확'+'률'로 갈라진다 — 단어 단위로 끊는다. */
+  .vdwhy,.vdgate,.ex .pr,.ex .q,.ev .s{word-break:keep-all;overflow-wrap:anywhere}
+  .vdwhy{font-size:11px;color:var(--sub);line-height:1.45;margin-top:2px}
+  .vdwarn{display:flex;gap:3px;flex-wrap:wrap;margin-top:4px}
+
+  /* (v5.8) 실행 — 지정가 하나. '무엇이 이 값을 정했는가'는 지웠다:
+   * 지정가 = min(보수 적정가, 중앙 도달가)라 어느 쪽이 정하든 **항상 보수 적정가 이하**이고,
+   * 따라서 실제로 살 가격에 영향이 없다. 남는 정보는 그 가격에 닿을 확률 하나뿐이다. */
+  .ex .p{font-weight:700;font-size:15px;letter-spacing:-.02em;line-height:1.25}
+  .ex .p.none{font-size:12.5px;font-weight:600;color:var(--muted)}
+  .ex .pr{font-size:11px;color:var(--sub);margin-top:2px;line-height:1.45}
+  .ex .pr b{color:var(--text);font-weight:700}
+  .ex .q{font-size:11px;color:var(--sub);margin-top:2px;line-height:1.45}
+
+  /* (v5.8) 근거 — 판정이 얼마나 얇은 근거 위에 서 있는가. 판정을 바꾸지 않는다. */
+  .g-ev{text-align:right}
+  .ev .n{font-weight:800;font-size:15px;line-height:1.25}
+  .ev .s{font-size:10.5px;color:var(--sub);line-height:1.4}
+  .ev .bars{display:flex;gap:2px;margin-top:4px;justify-content:flex-end}
+  .ev .bars i{width:9px;height:5px;border-radius:1px;background:var(--line)}
+  .ev .bars i.on{background:var(--accent)}
+  .ev .bars i.lo{background:var(--amber)}
 
   /* (v5.7) 상세 패널 블록 */
   .cfvbox{margin:10px 0 4px;padding:11px 13px;border:1px solid #bcdfe4;border-radius:12px;background:#f3fbfc}
@@ -189,23 +215,16 @@
   .row.open .chev{transform:rotate(180deg)}
 
   /* position strip */
-  /* (v5.7) 위쪽 절반은 기술적 위치(매물대·볼린저·이평), 아래 레일은 **가치 위치**(보수 적정가·제안 지정가).
-   * 두 종류를 같은 높이에 섞으면 어느 눈금이 무슨 뜻인지 사라진다 — 층을 나눈다. */
-  .strip{position:relative;height:40px}
-  .strip .cfvzone{position:absolute;top:30px;height:5px;background:#0e7490;opacity:.3;border-radius:3px}
-  .strip .tick.cfv{background:#0e7490;top:27px;height:11px;width:2.5px}
-  .strip .tick.cfvlim{background:#0e7490;opacity:.55;top:27px;height:11px;width:2.5px}
-  .strip .track{position:absolute;left:0;right:0;top:14px;height:3px;border-radius:2px;background:#e6eaf2}
-  .strip .zone{position:absolute;top:9px;height:13px;background:var(--violet-soft);border:1px solid #d9c9f2;border-radius:3px;opacity:.9}
-  .strip .bb{position:absolute;top:13px;height:5px;background:var(--accent-soft);border-radius:2px}
-  .strip .tick{position:absolute;top:7px;width:2px;height:17px;border-radius:1px}
-  .strip .tick.poc{background:var(--violet);top:5px;height:21px}
-  .strip .tick.e20{background:var(--green)}
-  .strip .tick.s50{background:var(--amber)}
-  .strip .tick.s200{background:#4a5670}
-  .strip .tick.bbm{background:#9db1e8;top:10px;height:11px}
-  .strip .pricedot{position:absolute;top:9px;width:13px;height:13px;border-radius:50%;border:2.5px solid #fff;
-    box-shadow:0 0 0 1.5px rgba(20,30,60,.35),0 1px 3px rgba(20,30,60,.3);transform:translateX(-50%)}
+  /* (v5.8) 한 층으로 돌아간다 — 눈금이 셋뿐이라 층을 나눌 이유가 없다.
+   * 매물대·볼린저·이평 눈금은 상세 패널의 차트로 내려갔다. */
+  .strip{position:relative;height:26px}
+  .strip .track{position:absolute;left:0;right:0;top:11px;height:4px;border-radius:2px;background:#e6eaf2}
+  .strip .cfvzone{position:absolute;top:11px;height:4px;border-radius:2px;background:#0e7490;opacity:.32}
+  .strip .tick{position:absolute;top:5px;width:2.5px;height:16px;border-radius:1px;transform:translateX(-50%)}
+  .strip .tick.cfv{background:#0e7490}
+  .strip .tick.cfvlim{background:#0e7490;opacity:.55}
+  .strip .pricedot{position:absolute;top:6px;width:13px;height:13px;border-radius:50%;transform:translateX(-50%);
+         border:2.5px solid #fff;box-shadow:0 0 0 1px #c8d2e4}
   .striplegend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--sub);padding:2px 16px 10px}
   .lg{display:inline-flex;align-items:center;gap:5px}
   .lg i{width:9px;height:9px;border-radius:2px;display:inline-block}
@@ -375,16 +394,15 @@
 
   @media (max-width:880px){
     .listhead{display:none}
-    .row .main{grid-template-columns:26px 1fr 108px 30px;
-      grid-template-areas:"rk nm pr ch" "rk sc gr ch" "rk fv rs ch" "rk st st ch";row-gap:8px}
+    .row .main{grid-template-columns:26px 1fr 112px 30px;
+      grid-template-areas:"rk nm pr ch" "rk vd vd ch" "rk ex ev ch" "rk st st ch";row-gap:9px}
     /* (v4.33) #boardView.etfcols 는 ID 선택자라 미디어쿼리 안에서도 데스크톱 규칙을 이긴다.
      * 모바일 열 정의를 여기서 다시 덮어쓰지 않으면 좁은 화면이 7열로 깨진다. */
-    #boardView.etfcols .row .main{grid-template-columns:26px 1fr 108px 30px;
-      grid-template-areas:"rk nm pr ch" "rk sc rs ch" "rk st st ch"}
-    .g-rk{grid-area:rk}.g-nm{grid-area:nm}.g-pr{grid-area:pr;text-align:right}.g-sc{grid-area:sc}
-    .g-gr{grid-area:gr;justify-content:flex-end}
-    .g-fv{grid-area:fv}.g-rs{grid-area:rs;text-align:right}.g-st{grid-area:st}.g-ch{grid-area:ch}
-    .rsi{text-align:right}
+    #boardView.etfcols .row .main{grid-template-columns:26px 1fr 112px 30px;
+      grid-template-areas:"rk nm pr ch" "rk vd vd ch" "rk ex ev ch" "rk st st ch"}
+    .g-rk{grid-area:rk}.g-nm{grid-area:nm}.g-pr{grid-area:pr;text-align:right}
+    .g-vd{grid-area:vd}.g-ex{grid-area:ex}.g-ev{grid-area:ev;text-align:right}
+    .g-st{grid-area:st}.g-ch{grid-area:ch}
   }
 
 /* v5.2: calm desktop workspace, compact touch layout, accessible input states */
@@ -430,7 +448,7 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
  .wrap{padding:14px 12px 35px}.logo small{font-size:10px}.head-right{margin-left:0;width:100%}.head-right #btnDiag{margin-left:auto}header{gap:12px}
  .overview{display:block;padding:22px 20px;border-radius:16px;margin-bottom:16px}.overview h1{font-size:23px}.overview p{font-size:12px}.overview #workspaceStatus{border-left:0;border-top:1px solid #ffffff30;padding:12px 0 0;margin-top:16px;font-size:12px}
  .marketbar .idx{min-width:127px}.controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:12px;gap:10px}.controls .spacer{display:none}.searchbox{grid-column:1/-1;grid-row:1}.searchbox input{width:100%!important}.controls select{width:100%;min-width:0}.controls .btn{padding:9px;font-size:13px}
- input,select,textarea,.lggrid input,.lggrid select,.manual .fld select{font-size:16px!important}.row .main,#boardView.etfcols .row .main{grid-template-columns:18px minmax(0,1fr) 95px 16px;gap:8px;padding:15px 11px}.nm .k{font-size:14px}.nm .t .sec{display:none}.price .p{font-size:15px}.g-fv{font-size:12px}.ts-lab{font-size:10px}.ts-val{font-size:12px}.rank{font-size:11px}
+ input,select,textarea,.lggrid input,.lggrid select,.manual .fld select{font-size:16px!important}.row .main,#boardView.etfcols .row .main{grid-template-columns:18px minmax(0,1fr) 95px 16px;gap:8px;padding:15px 11px}.nm .k{font-size:14px}.nm .t .sec{display:none}.price .p{font-size:15px}.vd{font-size:14.5px}.ex .p{font-size:14px}.rank{font-size:11px}
  .detail{padding:16px 12px!important}.detail .dgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.manual{grid-template-columns:repeat(2,minmax(0,1fr))!important}.dstat{min-width:0}.dstat .v{overflow-wrap:anywhere}.livebox input,.simbox input{max-width:100%}.simbox,.livebox{flex-wrap:wrap}.chart{max-width:100%}
  .modal{width:100%;max-width:100%!important;border-radius:20px 20px 0 0;max-height:92dvh;padding:22px 18px calc(20px + env(safe-area-inset-bottom))}.mask{padding:0!important;align-items:flex-end!important}.modal .foot{bottom:-22px;padding:12px 0 calc(12px + env(safe-area-inset-bottom));gap:8px}.modal .foot .btn{flex-grow:1}.wrow{grid-template-columns:100px minmax(0,1fr) 35px;gap:8px}.lggrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.lgform{padding:16px 12px}.lggrid input,.lggrid select{min-width:0}.btn.sm,.lgchip{min-height:44px}.lgtbl{font-size:12px}.lgtbl td:first-child{min-width:130px}.lgscroll::after{content:'↔ 표를 좌우로 이동하여 확인하세요';display:block;position:sticky;left:0;padding:8px 12px;font-size:11px;color:var(--sub)}
  #lgNew{width:100%}.lgcards{grid-template-columns:repeat(2,minmax(0,1fr))!important}.lgtot .vl{font-size:20px}.lgfoot{font-size:11px;line-height:1.7}.evidence-card{padding:14px}.evidence-card dl{gap:10px}

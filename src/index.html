@@ -57,22 +57,17 @@
   </div>
 
   <details class="legend-panel"><summary>차트 범례와 읽는 법</summary><div class="striplegend">
-    <span class="lg"><i style="background:var(--violet-soft);border:1px solid #d9c9f2"></i>매물대 VA(1Y)</span>
-    <span class="lg"><i style="background:var(--violet)"></i>POC</span>
-    <span class="lg"><i style="background:var(--accent-soft)"></i>볼린저(20,2)</span>
-    <span class="lg"><i style="background:#9db1e8"></i>BB중단</span>
-    <span class="lg"><i style="background:var(--green)"></i>EMA20</span>
-    <span class="lg"><i style="background:var(--amber)"></i>SMA50</span>
-    <span class="lg"><i style="background:#4a5670"></i>SMA200</span>
+    <span class="lg"><i style="background:#0e7490"></i>보수 적정가 <small>(재무제표만으로 낸 지금 정당한 가격)</small></span>
+    <span class="lg"><i style="background:#0e7490;opacity:.55"></i>제안 지정가 <small>(가치 + 도달확률 교차)</small></span>
+    <span class="lg"><i style="background:#0e7490;opacity:.32"></i>가치 구간 <small>(지정가 ~ 보수 적정가)</small></span>
     <span class="lg"><i style="background:#fff;border:2px solid #555;border-radius:50%"></i>현재가</span>
-    <span class="lg"><i style="background:#0e7490"></i>보수 적정가 <small>(재무제표 기준 · 아래 레일)</small></span>
-    <span class="lg"><i style="background:#0e7490;opacity:.55"></i>제안 지정가 <small>(가치+도달확률 교차)</small></span>
-    <span class="lg"><i style="background:#0e7490;opacity:.3"></i>가치 구간 <small>(지정가~보수 적정가)</small></span>
+    <span class="lg" style="opacity:.75">판정 <b>● 추천</b> = 관문 통과 + 현재가가 가치 아래 · <b>◐ 관망</b> = 관문 통과, 가격이 비쌈 · <b>○ 탈락</b> = 관문에서 걸림 또는 값을 못 매김</span>
+    <span class="lg" style="opacity:.75">매물대·볼린저·이평·RSI·종합점수·가격매력도·후보등급은 <b>행을 열면</b> 나옵니다</span>
   </div>
 
   </details>
   <div class="listhead">
-    <div>#</div><div>종목</div><div>현재가</div><div>종합 · 가격매력</div><div>적정목표가 · 여력<br><span style="font-weight:600;opacity:.8">보수 적정가 · 제안 지정가</span></div><div style="text-align:center">규칙 후보등급</div><div style="text-align:center">RSI</div><div>포지션 (52주 범위)<br><span style="font-weight:600;opacity:.8">아래 레일 = 가치 구간</span></div><div></div>
+    <div>#</div><div>종목</div><div>현재가</div><div>판정</div><div>실행 — 지정가 · 닿을 확률</div><div style="text-align:right">근거</div><div>52주 범위 · 가치 구간</div><div></div>
   </div>
   <div id="list"></div>
   </div><!-- /#boardView -->
