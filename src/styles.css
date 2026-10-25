@@ -211,15 +211,21 @@
   .cfvbox{margin:10px 0 4px;padding:11px 13px;border:1px solid #bcdfe4;border-radius:12px;background:#f3fbfc}
   .cfvhd{font-weight:800;font-size:13px;color:#0b5b66;margin-bottom:8px}
   .cfvhd small{display:block;font-weight:600;font-size:11px;color:var(--sub);margin-top:2px}
-  .cfvtop{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+  /* (v5.9.1) 고정 3열 + 뷰포트 미디어쿼리는 **컨테이너 폭을 모른다**. 상세 패널이 좁으면
+   * 열이 40px까지 줄어 '₩119,804'가 한 글자씩 세로로 끊겼다(실측). auto-fit은 컨테이너
+   * 기준으로 스스로 접힌다 — 미디어쿼리가 필요 없다. */
+  .cfvtop{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:9px}
   .cfvcell{background:#fff;border:1px solid #d6ecef;border-radius:9px;padding:7px 9px;min-width:0}
   .cfvcell .l{display:block;font-size:10.5px;font-weight:700;color:var(--sub)}
-  .cfvcell b{display:block;font-size:14.5px;font-weight:800;margin:1px 0 2px;word-break:break-all}
+  /* 금액을 글자 단위로 끊으면 '₩119,804'가 세로로 선다. 숫자는 끊지 않는다. */
+  .cfvcell b{display:block;font-size:14.5px;font-weight:800;margin:1px 0 2px;
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .cfvcell b.s-up{color:var(--up)}.cfvcell b.s-dn{color:var(--down)}.cfvcell b.s-mid{color:var(--amber)}
-  .cfvcell em{display:block;font-style:normal;font-size:10.5px;line-height:1.5;color:var(--sub)}
+  .cfvcell em{display:block;font-style:normal;font-size:10.5px;line-height:1.5;color:var(--sub);word-break:keep-all;overflow-wrap:anywhere}
   .cfvnote{margin-top:8px;font-size:11.5px;line-height:1.65;color:var(--sub)}
   .cfvnone{font-size:12px;color:var(--amber);font-weight:700}
-  .cfvtbl{width:100%;border-collapse:collapse;margin-top:9px;font-size:11.5px}
+  .cfvwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .cfvtbl{width:100%;min-width:264px;border-collapse:collapse;margin-top:9px;font-size:11.5px}
   .cfvtbl th{text-align:left;font-size:10.5px;color:var(--sub);border-bottom:1px solid #d6ecef;padding:3px 4px}
   .cfvtbl td{padding:4px;border-bottom:1px solid #e8f3f5}
   .cfvtbl .num{text-align:right}
@@ -227,7 +233,7 @@
   .cfvskip{margin-top:8px;font-size:11px;color:var(--sub)}
   .cfvskip ul{margin:3px 0 0;padding-left:16px;line-height:1.6}
   .cfvassume{margin-top:9px;padding-top:7px;border-top:1px dashed #cde6ea;font-size:10.5px;line-height:1.65;color:var(--sub)}
-  @media (max-width:640px){ .cfvtop{grid-template-columns:1fr} }
+  /* .cfvtop의 640px 미디어쿼리는 제거했다 — auto-fit이 대신한다. */
   .rsi{font-weight:700;font-size:13.5px;text-align:center}
   .rsi small{display:block;font-size:10px;color:var(--sub);font-weight:600}
   .chev{color:var(--sub);text-align:center;transition:transform .2s;font-size:12px}
@@ -449,7 +455,7 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
 .row{margin-bottom:10px}.row .main{padding:17px 16px}.row.open{box-shadow:0 0 0 1px var(--accent)}.nm .k{line-height:1.4;overflow-wrap:anywhere}.nm .t{margin-top:3px}
 .detail{background:#fbfdfc}.detail .manual{background:#fff}.dsec{margin-top:24px}
 .evidence-card{border:1px solid #cce1da;background:#eef7f3;padding:16px;border-radius:12px;margin-bottom:18px}.evidence-card p{font-size:12px;margin:6px 0;color:var(--sub)}
-.evidence-card dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:12px;font-size:12px}.evidence-card dt{color:var(--sub)}.evidence-card dd{font-weight:600;overflow-wrap:anywhere}
+.evidence-card dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:12px;margin-top:12px;font-size:12px}.evidence-card dt{color:var(--sub)}.evidence-card dd{font-weight:600;overflow-wrap:anywhere}
 .modal{border-radius:20px;max-height:90dvh;overflow-y:auto;padding:26px;overscroll-behavior:contain}.modal h2{font-size:20px}.modal .foot{position:sticky;bottom:-26px;background:#fff;padding:14px 0;margin-bottom:0;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line)}
 .dialog-open{overflow:hidden}.login-tagline{color:var(--accent);font-size:13px;margin:8px 0 16px}.mask{backdrop-filter:blur(5px)}
 .lgform{padding:20px;background:#fff}.lggrid{gap:14px}.lggrid label{font-size:12px}.lggrid input,.lggrid select{min-height:44px}.lgtop{gap:12px;align-items:center}.lgtabs{gap:4px}
@@ -466,7 +472,6 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
  .wrap{padding:16px 14px 50px}header{margin-bottom:18px}.logo{font-size:19px}.head-right{gap:6px}.statuschip{font-size:11px;padding:5px 9px}
  .overview{padding:24px;gap:16px;align-items:flex-start}.overview #workspaceStatus{min-width:165px;padding-left:18px}
  nav.tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;position:sticky;top:0;background:var(--bg);z-index:8;padding-top:8px;margin-bottom:14px}nav.tabs button.tab{flex-shrink:0;padding:10px 12px}.tabs .counts{display:none}
- .evidence-card dl{grid-template-columns:repeat(2,minmax(0,1fr))}
  .lgtop{flex-wrap:wrap}.lgtabs{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:thin}.lgt{flex-shrink:0}
 }
 @media(max-width:560px){
@@ -474,7 +479,7 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
  .overview{display:block;padding:22px 20px;border-radius:16px;margin-bottom:16px}.overview h1{font-size:23px}.overview p{font-size:12px}.overview #workspaceStatus{border-left:0;border-top:1px solid #ffffff30;padding:12px 0 0;margin-top:16px;font-size:12px}
  .marketbar .idx{min-width:127px}.controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:12px;gap:10px}.controls .spacer{display:none}.searchbox{grid-column:1/-1;grid-row:1}.searchbox input{width:100%!important}.controls select{width:100%;min-width:0}.controls .btn{padding:9px;font-size:13px}
  input,select,textarea,.lggrid input,.lggrid select,.manual .fld select{font-size:16px!important}.row .main,#boardView.etfcols .row .main{grid-template-columns:18px minmax(0,1fr) 95px 16px;gap:8px;padding:15px 11px}.nm .k{font-size:14px}.nm .t .sec{display:none}.price .p{font-size:15px}.vd{font-size:14.5px}.ex .p{font-size:14px}.rank{font-size:11px}
- .detail{padding:16px 12px!important}.detail .dgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.manual{grid-template-columns:repeat(2,minmax(0,1fr))!important}.dstat{min-width:0}.dstat .v{overflow-wrap:anywhere}.livebox input,.simbox input{max-width:100%}.simbox,.livebox{flex-wrap:wrap}.chart{max-width:100%}
+ .detail{padding:16px 12px!important}.manual{grid-template-columns:repeat(auto-fit,minmax(132px,1fr))!important}.dstat{min-width:0}.dstat .v{overflow-wrap:anywhere}.livebox input,.simbox input{max-width:100%}.simbox,.livebox{flex-wrap:wrap}.chart{max-width:100%}
  .modal{width:100%;max-width:100%!important;border-radius:20px 20px 0 0;max-height:92dvh;padding:22px 18px calc(20px + env(safe-area-inset-bottom))}.mask{padding:0!important;align-items:flex-end!important}.modal .foot{bottom:-22px;padding:12px 0 calc(12px + env(safe-area-inset-bottom));gap:8px}.modal .foot .btn{flex-grow:1}.wrow{grid-template-columns:100px minmax(0,1fr) 35px;gap:8px}.lggrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.lgform{padding:16px 12px}.lggrid input,.lggrid select{min-width:0}.btn.sm,.lgchip{min-height:44px}.lgtbl{font-size:12px}.lgtbl td:first-child{min-width:130px}.lgscroll::after{content:'↔ 표를 좌우로 이동하여 확인하세요';display:block;position:sticky;left:0;padding:8px 12px;font-size:11px;color:var(--sub)}
  #lgNew{width:100%}.lgcards{grid-template-columns:repeat(2,minmax(0,1fr))!important}.lgtot .vl{font-size:20px}.lgfoot{font-size:11px;line-height:1.7}.evidence-card{padding:14px}.evidence-card dl{gap:10px}
 }
@@ -487,7 +492,7 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
 /* Investment review: stacked controls remain readable on narrow screens. */
 .investment-modal{max-width:1000px;width:calc(100% - 24px);max-height:90dvh;overflow:auto}
 #investmentBody{overflow-wrap:anywhere}.investment-modal details{border-top:1px solid var(--line,#ccc);padding:16px 0}.investment-modal summary{font-weight:700;cursor:pointer;margin-bottom:12px}
-.invest-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.investment-modal label{display:flex;flex-direction:column;gap:6px;font-size:13px;margin:8px 0}
+.invest-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(176px,1fr));gap:12px}.investment-modal label{display:flex;flex-direction:column;gap:6px;font-size:13px;margin:8px 0}
 .investment-modal input,.investment-modal select{width:100%;min-width:0;min-height:42px;box-sizing:border-box;font:inherit;padding:8px;border:1px solid var(--line,#bbb);border-radius:6px;background:var(--panel,#fff);color:var(--text,#222)}
-.invest-cases{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}.invest-cases fieldset{min-width:0;border:1px solid var(--line,#ccc);border-radius:8px;padding:12px}.investment-modal .foot{position:sticky;bottom:0;background:var(--panel,#fff);padding:12px 0}
-@media(max-width:650px){.invest-grid,.invest-cases{grid-template-columns:1fr}.investment-modal{max-height:92dvh}.investment-modal input,.investment-modal select{font-size:16px}.investment-modal .btn{min-height:44px}}
+.invest-cases{display:grid;grid-template-columns:repeat(auto-fit,minmax(192px,1fr));gap:12px;margin:12px 0}.invest-cases fieldset{min-width:0;border:1px solid var(--line,#ccc);border-radius:8px;padding:12px}.investment-modal .foot{position:sticky;bottom:0;background:var(--panel,#fff);padding:12px 0}
+@media(max-width:650px){.investment-modal{max-height:92dvh}.investment-modal input,.investment-modal select{font-size:16px}.investment-modal .btn{min-height:44px}}

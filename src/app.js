@@ -2771,17 +2771,18 @@ function cfvDetailHTML(id,k){
       +'<div class="cfvcell"><span class="l">보수 적정가</span><b>'+money(cfv.fv)+'</b>'
         +'<em>'+cfv.n+'종 중앙값'+(gap!=null?' · 현재가 대비 <span class="'+chgCls(gap)+'">'+fmtPct(gap)+'</span>':'')+'</em></div>'
       +'<div class="cfvcell"><span class="l">제안 지정가</span><b>'+(cfv.limit!=null?money(cfv.limit):'—')+'</b>'
-        +'<em>'+(cfv.limitProb!=null?(CFV_H+'거래일 내 도달확률 '+(cfv.limitProb*100).toFixed(0)+'% · 제약 '+(cfv.bind==='value'?'가치':'확률')):esc(cfv.why||'—'))+'</em></div>'
+        +'<em>'+(cfv.limitProb!=null?(CFV_H+'거래일 내 도달확률 '+(cfv.limitProb*100).toFixed(0)+'%<br>'
+            +(cfv.bind==='value'?'가치 기준이 더 낮아 이 값':'중앙 도달가가 더 낮아 이 값')):esc(cfv.why||'—'))+'</em></div>'
       +'<div class="cfvcell"><span class="l">판독</span><b class="s-'+st.cls+'">'+st.lab+'</b><em>'+esc(st.tip)+'</em></div>'
       +'</div>';
     if(cfv.probFloor!=null)
       g+='<div class="cfvnote">같은 가정에서 '+CFV_H+'거래일 안에 <b>절반의 확률</b>로 닿는 가격은 '+money(cfv.probFloor)
         +' 입니다(현재가 '+money(k.price)+' 대비 '+fmtPct((cfv.probFloor/k.price-1)*100)+'). '
         +'제안 지정가는 이 값과 보수 적정가 중 <b>낮은 쪽</b>입니다 — 두 조건을 동시에 만족하는 가장 높은 가격.</div>';
-    g+='<table class="cfvtbl"><tr><th>방법</th><th class="num">주당가치</th><th>산출</th></tr>';
+    g+='<div class="cfvwrap"><table class="cfvtbl"><tr><th>방법</th><th class="num">주당가치</th><th>산출</th></tr>';
     for(const m of cfv.used)
       g+='<tr><td>'+esc(m.label)+'</td><td class="num"><b>'+money(m.value)+'</b></td><td class="hw">'+esc(m.how)+'</td></tr>';
-    g+='</table>';
+    g+='</table></div>';
   }
   if(cfv.skipped&&cfv.skipped.length){
     g+='<div class="cfvskip"><b>쓰지 않은 방법</b><ul>';
@@ -4305,7 +4306,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
