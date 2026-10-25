@@ -121,7 +121,11 @@
   .row .main{padding:11px 16px;cursor:pointer}
   .rank{font-size:13px;font-weight:800;color:var(--sub);text-align:center}
   .rank.top{color:var(--up)}
-  .nm .k{font-weight:700;font-size:14.5px;letter-spacing:-.2px}
+  /* (v5.9.4) 보유 배지가 길어질 수 있다(「지금이라면 안 삼」). inline-block으로 두면
+   * 좁은 폭에서 **현재가 칸을 침범한다**(실측 360px). 줄바꿈 가능한 flex로 바꾼다. */
+  .g-nm{min-width:0}
+  .nm .k{display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;
+         font-weight:700;font-size:14.5px;letter-spacing:-.2px;min-width:0}
   .nm .t{font-size:11.5px;color:var(--sub)}
   .nm .t .sec{margin-left:6px}
   .price .p{font-weight:700;font-size:15px}
@@ -136,13 +140,9 @@
   .gauge i{position:absolute;left:0;top:0;bottom:0;border-radius:99px}
   .scorev{font-weight:800;font-size:14px;width:44px;text-align:right}
   /* 2점수 셀(리스트) */
-  .twoscore{display:flex;flex-direction:column;gap:5px}
-  .ts-row{display:flex;align-items:center;gap:6px}
-  .ts-lab{font-size:9px;font-weight:800;color:var(--sub);width:26px;letter-spacing:-.3px}
-  .ts-bar{flex:1;min-width:26px;height:6px;border-radius:99px;background:var(--gray-soft);position:relative;overflow:hidden}
-  .ts-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:99px}
-  .ts-val{font-weight:800;font-size:12px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
-  .gradecell{display:flex;align-items:center;justify-content:center}
+  /* (v5.8) 점수 막대·등급 셀·RSI 열·적정가 열의 규칙은 지웠다 — 그 요소들은 목록에서
+   * 드릴다운으로 내려갔고, JS가 더 이상 이 클래스를 내보내지 않는다(전수 확인 0건).
+   * 쓰지 않는 규칙을 남겨 두면 다음 사람이 "이게 어디에 쓰이지"를 매번 다시 묻는다. */
   /* 등급/게이트 상세 칩 */
   .qa-chip{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap;background:var(--gray-soft);color:var(--sub)}
   .qa-chip.qa-q{background:#eaf0ff;color:#3352c9}
@@ -156,8 +156,6 @@
   .warnpill.earn{background:#fff2e0;color:#c1720c}
   .warnpill.hz{background:var(--up-soft);color:var(--up)}
   .warnpill.crash{background:#f0e9fb;color:var(--violet)}
-  .fv .v{font-weight:700;font-size:13.5px}
-  .fv .u{font-size:11.5px;font-weight:700}
   /* (v5.8) 판정 — 세 단어뿐. 색에만 기대지 않도록 앞에 모양 단서를 둔다(● 추천 / ◐ 관망 / ○ 탈락).
    * (v5.8.1) 두 줄로 고정한다: [단어 + 관문 칩] / [짧은 이유]. 긴 문장은 좁은 칸에서
    * 세 줄로 접혀 읽히지 않았다 — 설명은 title로 한 겹 뒤로 보낸다. */
@@ -254,8 +252,6 @@
   .cfvskip ul{margin:3px 0 0;padding-left:16px;line-height:1.6}
   .cfvassume{margin-top:9px;padding-top:7px;border-top:1px dashed #cde6ea;font-size:10.5px;line-height:1.65;color:var(--sub)}
   /* .cfvtop의 640px 미디어쿼리는 제거했다 — auto-fit이 대신한다. */
-  .rsi{font-weight:700;font-size:13.5px;text-align:center}
-  .rsi small{display:block;font-size:10px;color:var(--sub);font-weight:600}
   .chev{color:var(--sub);text-align:center;transition:transform .2s;font-size:12px}
   .row.open .chev{transform:rotate(180deg)}
 
@@ -366,8 +362,8 @@
   .lgcard b{display:block;font-size:12px;margin-bottom:3px}
   .lgcard small{color:var(--muted)}
   .lgpos{color:var(--up)} .lgneg{color:var(--down)}
-  .holdbadge{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:800;padding:1px 7px;
-             border-radius:999px;background:var(--green-soft);color:var(--green);white-space:nowrap;vertical-align:2px}
+  .holdbadge{display:inline-block;max-width:100%;font-size:10.5px;font-weight:800;padding:1px 7px;
+             border-radius:999px;background:var(--green-soft);color:var(--green);white-space:nowrap;vertical-align:2px;white-space:normal;word-break:keep-all;overflow-wrap:anywhere}
   .holdbadge.dn{background:var(--down-soft);color:var(--down)}
   .holdbadge.up{background:var(--up-soft);color:var(--up)}
 

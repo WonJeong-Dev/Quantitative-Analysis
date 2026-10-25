@@ -2793,7 +2793,7 @@ function evHTML(k){
   if(!e)return '';
   if(e.dens==null)return '<div class="n" style="color:var(--muted)">—</div><div class="s" title="'+esc(e.why)+'">ETF</div>';
   const on=Math.round(e.dens/20), low=e.dens<60;
-  let b='<div class="bars">';
+  let b='<div class="bars" aria-hidden="true">';
   for(let i=0;i<5;i++)b+='<i class="'+(i<on?(low?'lo':'on'):'')+'"></i>';
   b+='</div>';
   const lop=e.lop;
@@ -2883,7 +2883,8 @@ function stripHTML(k,cfv){
   const pad=(hi-lo)*0.05||1; lo-=pad; hi+=pad;
   const P=x=>clamp((x-lo)/(hi-lo)*100,0,100);
   const money=v=>fmtP(v,k.currency);
-  let out='<div class="strip"><div class="track"></div>';
+  /* 띠는 전부 장식이다 — 같은 값이 실행 칸과 툴팁에 글자로 있다. 스크린리더에서 뺀다. */
+  let out='<div class="strip" aria-hidden="true"><div class="track"></div>';
   /* 가치 구간 — 제안 지정가 ~ 보수 적정가. 둘이 같은 값이면(가치가 제약) 폭이 0이라 그리지 않는다. */
   if(cfv&&cfv.fv!=null&&cfv.limit!=null&&cfv.limit<cfv.fv)
     out+='<div class="cfvzone" style="left:'+P(cfv.limit).toFixed(2)+'%;width:'+Math.max(P(cfv.fv)-P(cfv.limit),0.4).toFixed(2)
@@ -2944,7 +2945,7 @@ function render(){
         +(hd.accs>1?' · 계좌 '+hd.accs+'곳 합산':'')
         +(RV&&RV.hit?(' · '+RV.why):'')
         +' — 거래기록 탭에서 매도할 수 있습니다')+'">보유 '+lgQty(hd.qty)
-      +(masked?' · 진입가 가림':(hd.rate!=null?' '+(hd.rate>=0?'+':'−')+Math.abs(hd.rate).toFixed(1)+'%':''))
+      +(masked?'':(hd.rate!=null?' '+(hd.rate>=0?'+':'−')+Math.abs(hd.rate).toFixed(1)+'%':''))
       +(RV&&RV.failed?' · 지금이라면 안 삼':'')+'</span>'):'';
     let main='<div class="main">'
       +'<div class="rank g-rk '+(goldTop?'top':'')+'">'+(i+1)+'</div>'
@@ -4393,7 +4394,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.3 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.4 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

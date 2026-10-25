@@ -60,7 +60,15 @@ function enhance(){
   document.querySelectorAll('.row .main').forEach(el=>{
     el.setAttribute('tabindex','0');el.setAttribute('role','button');
     el.setAttribute('aria-expanded',el.closest('.row').classList.contains('open'));
-    el.setAttribute('aria-label',(el.querySelector('.nm .k')?.textContent||'종목')+' 상세 보기');
+    /* (v5.9.4) 이름만 읽어 주면 스크린리더 사용자는 목록을 훑을 수 없다 — 답(판정)과
+     * 그 이유, 지정가까지 한 문장으로 들려준다. 화면에 보이는 것과 같은 정보다. */
+    const nm=el.querySelector('.nm .k')?.textContent||'종목';
+    const vd=el.querySelector('.vd')?.textContent?.trim()||'';
+    const why=el.querySelector('.vdwhy')?.textContent?.trim()||'';
+    const px=el.querySelector('.ex .p')?.textContent?.trim()||'';
+    const q=el.querySelector('.ex .q')?.textContent?.trim()||'';
+    el.setAttribute('aria-label',[nm,vd&&('판정 '+vd),why,px&&('지정가 '+px),q,'상세 보기']
+      .filter(Boolean).join(' · '));
   });
   document.querySelectorAll('input,select,textarea').forEach(el=>{
     if(el.getAttribute('aria-label')||el.labels?.length)return;
