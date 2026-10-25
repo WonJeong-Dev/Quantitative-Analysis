@@ -254,6 +254,9 @@
   .cfvtbl td{padding:4px;border-bottom:1px solid #e8f3f5}
   .cfvtbl .num{text-align:right}
   .cfvtbl .hw{color:var(--sub);font-size:10.5px}
+  .cfvtbl tr.refrow td{opacity:.62}
+  .cfvtbl .refbadge{display:inline-block;padding:0 5px;border-radius:5px;background:#e9efed;
+                    color:var(--sub);font-size:9.5px;font-weight:700;vertical-align:1px;cursor:help}
   .cfvskip{margin-top:8px;font-size:11px;color:var(--sub)}
   .cfvskip ul{margin:3px 0 0;padding-left:16px;line-height:1.6}
   .cfvassume{margin-top:9px;padding-top:7px;border-top:1px dashed #cde6ea;font-size:10.5px;line-height:1.65;color:var(--sub)}

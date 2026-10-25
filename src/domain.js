@@ -451,10 +451,12 @@
     const perT=num(inp.perTtm), perF=num(inp.perFwd), psr=num(inp.psr), pbr=num(inp.pbr);
     const fcfPS=num(inp.fcfPS);
     const used=[],skipped=[];
-    const add=(key,label,value,how)=>{
+    /* ref=true인 방법은 **표에는 보이되 중앙값에 넣지 않는다.** '수집하고 안 그린다'의 반대 —
+     * 그릴 가치는 있지만 대표값을 만들 자격이 없는 값을 위한 자리다. */
+    const add=(key,label,value,how,ref)=>{
       if(value==null||!Number.isFinite(value)||!(value>0)){skipped.push({key,label,why:how||'입력 결측'});return;}
       if(ceil!=null&&price>0&&value>price*ceil){skipped.push({key,label,why:'현재가 '+ceil+'배 초과 — 이상치 배제'});return;}
-      used.push({key,label,value,how:how||''});
+      used.push({key,label,value,how:how||'',ref:!!ref});
     };
     /* ① 이익력 — **정상화 EPS** × 성장 0의 정당 PER.
      *
@@ -465,22 +467,25 @@
      * 최솟값 EPS × 무성장 배수가 아니다. 실측(매출성장 15% 종목): PER 18.4→11(×0.60)에
      * EPS ×0.87이 겹쳐 기존 펀더멘털 밸류의 0.52배가 됐다.
      *
-     * 정상화 규칙은 **새로 만들지 않고** app.js의 fundamentalFV가 쓰는 eNow 정의를 그대로 쓴다:
-     *   둘 다 있으면 50:50 평균 · 후행만 있으면 그 값 · 선행만 있으면 ×0.92(단독 할인).
-     * 두 곳의 값이 어긋나면 tests/consfv.cjs가 배포본에서 직접 읽어 비교해 실패시킨다(§22-⑲).
+     * 정상화 규칙은 **새로 만들지 않고** app.js의 fundamentalFV가 쓰는 eNow 정의를 따른다:
+     *   둘 다 있으면 50:50 평균 · 하나만 있으면 그 값.
+     * ★ (v5.9.7) 다만 기존 엔진의 '선행 단독 ×0.92' 할인은 **쓰지 않는다.**
+     *   그 0.92는 성장을 반영하는 PER과 짝으로 쓰이는 값이다. 여기서는 이미 성장 0으로
+     *   배수를 깎았으므로 또 깎으면 위에 적은 것과 같은 종류의 이중 적용이 된다.
+     *   실측: 후행 EPS가 없는 국내 종목에서 v5.9.6이 값을 8.7% **낮췄다** — 고치려던 방향과 반대였다.
+     * 50:50 평균이 두 곳에서 어긋나면 tests/consfv.cjs가 배포본을 직접 읽어 실패시킨다(§22-⑲).
      *
      * EPS는 price/PER로 되돌린다. 적자면 PER이 null이라 이 방법이 자동으로 빠진다. */
     const epsT=(price>0&&perT!=null&&perT>0)?price/perT:null;
     const epsF=(price>0&&perF!=null&&perF>0)?price/perF:null;
-    const epsNorm=(epsT!=null&&epsF!=null)?(epsT*0.5+epsF*0.5)
-                 :(epsT!=null?epsT:(epsF!=null?epsF*0.92:null));
+    const epsNorm=(epsT!=null&&epsF!=null)?(epsT*0.5+epsF*0.5):(epsT!=null?epsT:epsF);
     const perMax=(perT!=null||perF!=null)?1:null;   // 가용성 표식 — 아래 분기 조건용
     if(!(price>0))                 skipped.push({key:'eps',label:'이익력(EPS)',why:'현재가 없음'});
     else if(fPer==null)            skipped.push({key:'eps',label:'이익력(EPS)',why:'정당 PER 산출 불가(종합점수 결측)'});
     else if(perMax==null||epsNorm==null) skipped.push({key:'eps',label:'이익력(EPS)',why:'흑자 EPS 없음'});
     else if(vm.per===0)            skipped.push({key:'eps',label:'이익력(EPS)',why:'이 종목은 PER 판별력 없음(지표신뢰 0)'});
     else add('eps','이익력(EPS)',epsNorm*fPer,
-      (epsT!=null&&epsF!=null?'정상화 EPS(후행·선행 평균)':(epsT!=null?'후행 EPS':'선행 EPS×0.92'))
+      (epsT!=null&&epsF!=null?'정상화 EPS(후행·선행 평균)':(epsT!=null?'후행 EPS':'선행 EPS'))
       +' × 정당PER '+fPer.toFixed(1)+'배');
     /* ② 매출 — **흑자면 쓰지 않는다.** PSR은 이익이 없을 때의 대체이고, 기존 엔진도 같은 분기다.
      *   흑자인데 PSR을 median에 섞으면 마진을 전혀 못 보는 값이 추정치를 끌어당긴다. */
@@ -489,21 +494,39 @@
     else if(psr==null||fPsr==null) skipped.push({key:'rev',label:'매출(PSR)',why:'주당매출 결측'});
     else if(vm.psr===0)            skipped.push({key:'rev',label:'매출(PSR)',why:'이 종목은 PSR 판별력 없음(지표신뢰 0)'});
     else add('rev','매출(PSR)',price/psr*fPsr,'주당매출 × 정당PSR '+fPsr.toFixed(1)+'배');
-    /* ③ 현금흐름 — 주당 FCF를 이익력으로 보고 **같은** 정당 PER을 쓴다. 새 할인율을 만들지 않는다.
-     *   FCF는 회계이익보다 손대기 어려워 독립 정보가 되고, 종종 EPS 기준보다 낮게 나온다. */
+    /* ③ 현금흐름 — 주당 FCF × 같은 정당 PER. **(v5.9.7) 참고값이다. 중앙값에 넣지 않는다.**
+     *
+     * 왜 뺐는가. 단년 TTM FCF에 **이익 멀티플**을 곱하는 것은 범주 오류다. 성장 중이거나
+     * 캐펙스가 큰 기업은 FCF가 순이익보다 작은 것이 정상인데, 그 차이를 "이익력이 낮다"로
+     * 번역해 버린다. 실측 2종목에서 FCF 기준가가 이익력의 46%·37% — 두 종목 다 비슷하게
+     * 낮았다. 우연이 아니라 구조적이고, 그러면 그것은 보수성이 아니라 **편향**이다.
+     * 제대로 쓰려면 FCF 수익률 관점으로 다시 설계해야 하는데 그건 요구수익률이라는
+     * 새 자유 파라미터를 부른다 — 근거 없이 상수를 만들지 않는다. */
     if(fcfPS==null)                skipped.push({key:'fcf',label:'현금흐름(FCF)',why:'FCF 또는 주식수 미확인'});
     else if(!(fcfPS>0))            skipped.push({key:'fcf',label:'현금흐름(FCF)',why:'FCF 음수 — 가치 산출 불가'});
     else if(fPer==null)            skipped.push({key:'fcf',label:'현금흐름(FCF)',why:'정당 PER 산출 불가'});
-    else add('fcf','현금흐름(FCF)',fcfPS*fPer,'주당FCF × 정당PER '+fPer.toFixed(1)+'배');
+    else add('fcf','현금흐름(FCF)',fcfPS*fPer,'주당FCF × 정당PER '+fPer.toFixed(1)+'배',true);
     /* ④ 자산 — 장부가(PBR 1.0배). 전통적 하한선이고 배수를 1로 고정하므로 자유 파라미터가 없다.
-     *   무형자산 중심 기업은 PBR이 상시 수십 배라 판별력이 없다 — VM_META가 0으로 표시한 종목은 뺀다. */
+     *   무형자산 중심 기업은 PBR이 상시 수십 배라 판별력이 없다 — VM_META가 0으로 표시한 종목은 뺀다.
+     *
+     * ★ (v5.9.7) 재무제표 통화 ≠ 시세 통화이면 **쓰지 않는다.**
+     *   PBR은 야후가 준 **비율**이라 분자·분모가 어느 통화인지, ADR 비율이 반영됐는지를
+     *   우리가 확인할 방법이 없다. 주당매출은 reconcileShares가 시가총액과 대사해 검증하지만
+     *   PBR에는 그런 대사가 없다. 실측(TWD 재무·USD 시세 종목): PBR 2601.61 → 주당순자산
+     *   $0.16 → 자산 기준가 $0.16이 화면에 그대로 떴다. 검증할 수 없는 값은 쓰지 않는다. */
     if(!(price>0))                 skipped.push({key:'book',label:'자산(장부가)',why:'현재가 없음'});
+    else if(inp.curMismatch)       skipped.push({key:'book',label:'자산(장부가)',
+                                     why:'재무제표 통화 ≠ 시세 통화 — PBR 비율의 통화·ADR 정합을 확인할 수 없어 제외'});
     else if(pbr==null)             skipped.push({key:'book',label:'자산(장부가)',why:'PBR 결측 — 주당순자산 역산 불가'});
     else if(vm.pbr===0)            skipped.push({key:'book',label:'자산(장부가)',why:'이 종목은 PBR 판별력 없음(무형·자산경량)'});
     else add('book','자산(장부가)',price/pbr,'주당순자산 × 1.0배');
 
-    const fv=used.length?median(used.map(m=>m.value)):null;
-    return {fv,n:used.length,used,skipped};
+    /* 대표값은 **참고가 아닌 방법들**의 중앙값이다. 참고값은 표에만 남는다. */
+    const core=used.filter(m=>!m.ref);
+    const fv=core.length?median(core.map(m=>m.value)):null;
+    return {fv,n:core.length,used,skipped,
+            /* n=1이면 '중앙값'이라는 말이 과장이다 — 어느 방법 하나인지 이름으로 말한다. */
+            basis:core.length===1?core[0].label:(core.length?core.length+'종 중앙값':null)};
   }
 
   /* ==========================================================================

@@ -2542,6 +2542,7 @@ function cfvOf(id){
     price:k.price, quality:k.quality, annVol:k.annVol, h:CFV_H, ceil:FUND_CEIL_N,
     fairPerNow:fairPER(0,k.quality), fairPsrNow:fairPSR(0),
     perTtm:k.perAuto, perFwd:k.perFwdAuto, psr:k.psrAuto, pbr:k.pbrAuto, fcfPS:fcfPS,
+    curMismatch:!!k.curMismatch,   // (v5.9.7) 통화가 섞이면 PBR 비율을 믿을 수 없다
     vm:effVM(id)
   });
 }
@@ -2840,7 +2841,7 @@ function cfvDetailHTML(id,k){
     const gap=(k.price>0)?(cfv.fv/k.price-1)*100:null;
     g+='<div class="cfvtop">'
       +'<div class="cfvcell"><span class="l">보수 적정가</span><b>'+money(cfv.fv)+'</b>'
-        +'<em>'+cfv.n+'종 중앙값'+(gap!=null?' · 현재가 대비 <span class="'+chgCls(gap)+'">'+fmtPct(gap)+'</span>':'')+'</em></div>'
+        +'<em>'+esc(cfv.basis||(cfv.n+'종'))+(gap!=null?' · 현재가 대비 <span class="'+chgCls(gap)+'">'+fmtPct(gap)+'</span>':'')+'</em></div>'
       +'<div class="cfvcell"><span class="l">제안 지정가</span><b>'+(cfv.limit!=null?money(cfv.limit):'—')+'</b>'
         +'<em>'+(cfv.limitProb!=null?(CFV_H+'거래일 내 도달확률 '+(cfv.limitProb*100).toFixed(0)+'%<br>'
             +(cfv.bind==='value'?'가치 기준이 더 낮아 이 값':'중앙 도달가가 더 낮아 이 값')):esc(cfv.why||'—'))+'</em></div>'
@@ -2852,7 +2853,9 @@ function cfvDetailHTML(id,k){
         +'제안 지정가는 이 값과 보수 적정가 중 <b>낮은 쪽</b>입니다 — 두 조건을 동시에 만족하는 가장 높은 가격.</div>';
     g+='<div class="cfvwrap"><table class="cfvtbl"><tr><th>방법</th><th class="num">주당가치</th><th>산출</th></tr>';
     for(const m of cfv.used)
-      g+='<tr><td>'+esc(m.label)+'</td><td class="num"><b>'+money(m.value)+'</b></td><td class="hw">'+esc(m.how)+'</td></tr>';
+      g+='<tr'+(m.ref?' class="refrow"':'')+'><td>'+esc(m.label)
+        +(m.ref?' <span class="refbadge" title="중앙값에 넣지 않습니다 — 이익 멀티플을 현금흐름에 그대로 쓰는 것은 범주 오류입니다">참고</span>':'')
+        +'</td><td class="num"><b>'+money(m.value)+'</b></td><td class="hw">'+esc(m.how)+'</td></tr>';
     g+='</table></div>';
   }
   if(cfv.skipped&&cfv.skipped.length){
@@ -3543,7 +3546,9 @@ const CONST_LOG=[
   {k:'CFV_GROWTH',   v:0,      from:'2026-10-22', ver:'v5.7', cls:'구조적 필연 — 보수의 정의가 「성장을 값에 넣지 않는다」. 기존 fairPER/fairPSR 곡선에 0을 넣은 결과만 쓴다'},
   /* (v5.9.6) 보수 적정가의 EPS 선택 — 낮은 쪽 → 정상화. 중복 보수성 제거. */
   {k:'CFV_EPS',      v:'0.5/0.5', from:'2026-10-25', ver:'v5.9.6', cls:'기존 상수 재사용 — fundamentalFV의 eNow(후행·선행 50:50). 낮은 쪽을 쓰면 성장 0 PER과 보수성이 이중 적용된다'},
-  {k:'CFV_EPS_FWD',  v:0.92,   from:'2026-10-25', ver:'v5.9.6', cls:'기존 상수 재사용 — fundamentalFV의 선행 단독 할인. 두 곳이 어긋나면 테스트가 배포본을 읽어 실패시킨다'},
+  {k:'CFV_EPS_FWD',  v:'미적용', from:'2026-10-25', ver:'v5.9.7', cls:'구조적 필연 — 기존 엔진의 선행 단독 할인 0.92는 성장 반영 PER과 짝이다. 성장 0에 또 곱하면 이중 적용(실측 −8.7%)'},
+  {k:'CFV_FCF',      v:'참고',  from:'2026-10-25', ver:'v5.9.7', cls:'구조적 필연 — 단년 FCF에 이익 멀티플은 범주 오류. 실측 2종목에서 이익력의 46%·37%로 구조적 편향. 중앙값에서 제외'},
+  {k:'CFV_BOOK_CUR', v:'통화일치', from:'2026-10-25', ver:'v5.9.7', cls:'구조적 필연 — PBR은 비율이라 통화·ADR 정합을 대사할 수 없다. 실측: TWD/USD 종목에서 주당순자산 $0.16'},
   {k:'CFV_PBR',      v:1.0,    from:'2026-10-22', ver:'v5.7', cls:'외부 사실 — 장부가 기준선(PBR 1배)은 전통적 하한 관례. 배수를 1로 고정해 자유 파라미터 0개'},
   {k:'CFV_DRIFT',    v:0,      from:'2026-10-22', ver:'v5.7', cls:'구조적 필연 — 드리프트를 넣으면 그것이 곧 전망이다. 중립 가정이며 보수성 주장은 하지 않는다'},
   {k:'CFV_P',        v:0.5,    from:'2026-10-22', ver:'v5.7', cls:'통계 관례 — 중앙값(절반의 확률로 닿는 가격). 임계가 아니라 보고 기준점'},
@@ -4397,7 +4402,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.6 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.7 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

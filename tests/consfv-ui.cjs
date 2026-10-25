@@ -67,7 +67,9 @@ ok('EPS는 정상화(후행·선행 평균) × 정당PER 12배 = 135', near((r.u
 ok('주당FCF = fcf×fxq÷주식수 = 7 → 7×12 = 84', near((r.used.find(m=>m.key==='fcf')||{}).value,84,1e-9));
 ok('장부가 = 현재가/PBR = 80', near((r.used.find(m=>m.key==='book')||{}).value,80,1e-9));
 ok('흑자라 PSR은 제외', !r.used.some(m=>m.key==='rev'));
-ok('중앙값 84', near(r.fv,84,1e-9), r.fv);
+/* (v5.9.7) FCF(84)는 참고로 빠진다 → 이익력 135 · 장부 80의 2종 중앙값 = 107.5 */
+ok('참고(FCF)를 뺀 2종 중앙값 107.5', near(r.fv,107.5,1e-9), r.fv);
+ok('FCF는 ref 표시', (r.used.find(m=>m.key==='fcf')||{}).ref===true);
 ok('지평은 GL_HORIZ[1]=60을 재사용', M.CFV_H===60&&r.h===60);
 
 console.log('\n[2] 통화·주식수 — 조용히 틀릴 수 있는 자리');
@@ -87,16 +89,18 @@ put('US_EMPTY',{perAuto:null,perFwdAuto:null,psrAuto:null,pbrAuto:null,fcf:null}
 ok('입력이 전부 없으면 fv=null', M.cfvOf('US_EMPTY').fv===null);
 
 console.log('\n[4] 판정 — 세 단어, 겹치지 않는다 (v5.8)');
-put('US_W'); VM={per:2,pbr:2,psr:2};          // fv=84 < price=100 → 관망
+/* 관망 조건: 현재가 > 보수 적정가. perAuto/perFwdAuto 15배 → 이익력 80, 장부 80 → fv 80 < 100 */
+put('US_W',{perAuto:15,perFwdAuto:15}); VM={per:2,pbr:2,psr:2};
 let v=M.verdictOf('US_W');
 ok('관문 통과 + 가격이 가치보다 비쌈 → 관망', v.key==='watch'&&v.w==='관망', v.key);
-ok('이유는 짧은 명사구', v.why==='가치보다 19.0% 비쌈', v.why);
+ok('이유는 짧은 명사구', v.why==='가치보다 25.0% 비쌈', v.why);
 ok('"회사는 통과" 같은 중복을 빼고 긴 설명은 title로', !/회사는 통과/.test(v.why)&&/하드 게이트는 전부 통과/.test(v.tip||''), v.tip);
 ok('관문 통과수를 센다', v.gn===11&&v.gt===11);
-put('US_A',{price:70,perAuto:7,perFwdAuto:7,pbrAuto:0.875,fcf:490});  // fv=84 ≥ price=70 → 추천
+/* 추천 조건: 현재가 ≤ 보수 적정가. 이익력 70/7×12=120 · 장부 70/0.875=80 → fv 100 ≥ 70 */
+put('US_A',{price:70,perAuto:7,perFwdAuto:7,pbrAuto:0.875,fcf:490});
 v=M.verdictOf('US_A');
 ok('현재가가 가치 이하 → 추천', v.key==='rec'&&v.w==='추천', v.key+' fv='+(v.cfv&&v.cfv.fv));
-ok('이유에 가치 금액이 적힌다 (median(120, 58.8, 80)=80)', v.why==='가치 $80 아래', v.why);
+ok('이유에 가치 금액이 적힌다 (2종 중앙값 = (120+80)/2 = 100)', v.why==='가치 $100 아래', v.why);
 put('US_O',{tier:null,grd:grd(9,11,'최소 품질 — 종합점수 ≥ 45')});
 v=M.verdictOf('US_O');
 ok('관문 미통과 → 탈락', v.key==='out'&&v.w==='탈락');
