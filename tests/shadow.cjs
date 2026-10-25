@@ -173,7 +173,10 @@ test('promoteCheck: 국면이 하나뿐이면 통과하지 않는다',()=>{
 test('preregBody: 해시가 안정적이고 정의가 바뀌면 달라진다',()=>{
   const a=D.preregBody('v5.5'),b=D.preregBody('v5.5');
   assert.equal(a.hash,b.hash);
-  assert.equal(a.id,'v5.5_shadow_v1');
+  assert.equal(a.id,'v5.5_shadow_'+D.PREREG_VER);
+  /* (v5.9.3) v2는 v1을 **대체하지 않고 잇는다** — 어느 판을 이어받았는지 본문에 남긴다.
+   * Firestore가 create-only라 v1 문서 자체는 고칠 수 없고, 비교 가능성이 그래서 유지된다. */
+  if(D.PREREG_VER!=='v1')assert.equal(a.supersedes,'v5.5_shadow_v1');
   assert.equal(a.outcomes.primary,'x60');assert.equal(a.outcomes.secondary,'m60');
   assert.equal(a.promote.minEvents,30);assert.equal(a.promote.phases,2);
   const {hash,...body}=a;                                            // 해시가 본문 전체를 덮는가
@@ -181,8 +184,42 @@ test('preregBody: 해시가 안정적이고 정의가 바뀌면 달라진다',()
   assert.notEqual(D.hashStr('x'),D.hashStr('y'));
 });
 
+/* ── 8b. (v5.9.3) 추가 후보 arm ───────────────────────────────────────────── */
+test('A~E의 정의는 그대로다 — 추가만 했다',()=>{
+  const by=Object.fromEntries(D.SHADOW_ARMS.map(a=>[a.key,a]));
+  assert.equal(by.A.note,'tier ∈ {상,중}');
+  assert.equal(by.B.note,'tierNoCap ∈ {상,중}');
+  assert.equal(by.C.note,'tier ∈ {상,중,하}');
+  assert.ok(by.D.sample===true&&by.E.always===true);
+  for(const k of ['F','G','H'])assert.ok(by[k]&&typeof by[k].enter==='function',k+' 미등록');
+});
+test('F 상만 / G 결측 없음 / H 가치 이하만 — 진입 조건',()=>{
+  const by=Object.fromEntries(D.SHADOW_ARMS.map(a=>[a.key,a]));
+  assert.equal(by.F.enter({tier:'상'}),true);
+  assert.equal(by.F.enter({tier:'중'}),false);
+  // G: 결측 0일 때만. **열이 없던 과거 문서(null)는 '결측 없음'이 아니라 '모름'이라 빠진다.**
+  assert.equal(by.G.enter({tier:'중',qMissW:0,aMissW:0}),true);
+  assert.equal(by.G.enter({tier:'중',qMissW:5,aMissW:0}),false);
+  assert.equal(by.G.enter({tier:'중',qMissW:null,aMissW:null}),false,'null을 0으로 치면 안 된다');
+  assert.equal(by.G.enter({tier:'하',qMissW:0,aMissW:0}),false);
+  // H: 보수 적정가 이하. cfvState는 v5.9.3부터 기록되므로 과거 문서는 null → 진입 없음.
+  assert.equal(by.H.enter({tier:'상',cfvState:'at'}),true);
+  assert.equal(by.H.enter({tier:'중',cfvState:'wait'}),false);
+  assert.equal(by.H.enter({tier:'중',cfvState:null}),false,'기록 전 구간은 표본에 들어오지 않는다');
+  assert.equal(by.H.enter({tier:'범위밖',cfvState:'at'}),false);
+});
+test('새 arm은 A의 부분집합이거나(F·G·H) 더 넓지 않다',()=>{
+  const by=Object.fromEntries(D.SHADOW_ARMS.map(a=>[a.key,a]));
+  const rows=[{tier:'상',qMissW:0,aMissW:0,cfvState:'at'},{tier:'상',qMissW:9,aMissW:0,cfvState:'wait'},
+              {tier:'중',qMissW:0,aMissW:0,cfvState:'far'},{tier:'하',qMissW:0,aMissW:0,cfvState:'at'},
+              {tier:'범위밖',qMissW:0,aMissW:0,cfvState:'at'}];
+  for(const k of ['F','G','H'])
+    for(const r of rows)
+      if(by[k].enter(r))assert.ok(by.A.enter(r),k+'가 A 밖의 행을 집었다: '+JSON.stringify(r));
+});
+
 /* ── 9. 통합 ─────────────────────────────────────────────────────────────── */
-test('shadowRun: arm 5개가 나오고 D가 A와 같은 개수다',()=>{
+test('shadowRun: 등록된 arm 전부가 나오고 D가 A와 같은 개수다',()=>{
   const docs=[];
   for(let i=0;i<12;i++){
     const d='2026-04-'+String(i+1).padStart(2,'0'),spec={},fwd={};
@@ -192,7 +229,8 @@ test('shadowRun: arm 5개가 나오고 D가 A와 같은 개수다',()=>{
     docs.push(doc(d,spec,fwd));
   }
   const out=D.shadowRun(docs,{h:60,iters:50});
-  assert.equal(out.arms.length,5);
+  assert.equal(out.arms.length,D.SHADOW_ARMS.length);
+  assert.ok(out.arms.length>=8,'v5.9.3에서 후보 arm 3종을 더했다');
   const by=Object.fromEntries(out.arms.map(a=>[a.key,a]));
   assert.equal(by.D.events.length,by.A.events.length,'D는 A와 같은 개수여야 한다');
   assert.ok(by.E.events.length>=by.A.events.length);

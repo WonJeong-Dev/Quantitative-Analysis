@@ -2211,9 +2211,14 @@ const GL_COLS=['tier','tierNoCap','A','Q','upside','downside','n','gate',
   'estE','estR','capexQ','capexY','fcf',
   /* (v5.5) nRaw = 항목별 충족 수(종전 n 정의) · ratioPct = 이격 경험적 분위(판정 축) ·
    * upEff = 급락 감쇠 후 여력(게이트·등급이 본 값) · dInd = 현재가치 독립 근거 유무 · barApp = 합성 봉 */
-  'nRaw','ratioPct','upEff','dInd','barApp'];
-function glRow(k){
+  'nRaw','ratioPct','upEff','dInd','barApp',
+  /* (v5.9.3) 보수 적정가 3열 — **끝에 붙인다**(가운데 삽입은 과거 문서의 순서를 민다).
+   * 이 값들은 판정에 쓰이지 않지만, 기록해 두지 않으면 2027년에 「보수 적정가가 쓸모 있었는가」를
+   * 영영 물을 수 없다. 수집하고 안 그리는 것이 아니라, 그리려면 먼저 수집해야 한다. */
+  'cfvFv','cfvLimit','cfvState'];
+function glRow(k,id){
   if(!k)return null;
+  const cv=(id!=null)?cfvOf(id):null;
   const d=k.grd||{};
   const r1=x=>(x==null||!isFinite(x))?null:+x.toFixed(1);
   const r2=x=>(x==null||!isFinite(x))?null:+x.toFixed(2);
@@ -2230,7 +2235,8 @@ function glRow(k){
     (k.ugdAct!=null?k.ugdAct:null), (k.ugdUp90!=null?k.ugdUp90:null),
     (k.ugdDn90!=null?k.ugdDn90:null), (k.revNet!=null?k.revNet:null),
     r4(k.estE), r0n(k.estR), r0n(k.capexQ), r0n(k.capexY), r0n(k.fcf),
-    (d.nRaw!=null?d.nRaw:null), r4(k.ratioPct), r1(k.upsideEff), (k.downIndep==null?null:(k.downIndep?1:0)), (k.barApp?1:0)];
+    (d.nRaw!=null?d.nRaw:null), r4(k.ratioPct), r1(k.upsideEff), (k.downIndep==null?null:(k.downIndep?1:0)), (k.barApp?1:0),
+    r4(cv&&cv.fv), r4(cv&&cv.limit), ((cv&&cv.state)||null)];
 }
 /* 문서 자신의 cols로 읽는다 — 스키마가 늘어도 과거 문서가 조용히 밀리지 않는다. */
 function glGet(doc,row,name){
@@ -2260,7 +2266,7 @@ async function glMaybeSave(force){
   const day=lgToday(); if(S.glSaved===day)return false;
   const ids=Object.keys(S.stocks).filter(id=>S.calc[id]);if(!ids.length)return false;
   const rows={},inputs={};
-  for(const id of ids){const k=S.calc[id],c=S.cache[id]||{};rows[id]=glRow(k);inputs[id]={priceAsOf:k.priceTs||null,sym:S.stocks[id].symbol||null,cls:{type:S.stocks[id].type||'stock',sector:S.stocks[id].sector||null},pub:(S.pubData&&S.pubData[id])?1:0,manual:S.stocks[id].manual||{},fund:c.fund||null,ana:c.ana||null};}
+  for(const id of ids){const k=S.calc[id],c=S.cache[id]||{};rows[id]=glRow(k,id);inputs[id]={priceAsOf:k.priceTs||null,sym:S.stocks[id].symbol||null,cls:{type:S.stocks[id].type||'stock',sector:S.stocks[id].sector||null},pub:(S.pubData&&S.pubData[id])?1:0,manual:S.stocks[id].manual||{},fund:c.fund||null,ana:c.ana||null};}
   /* (v5.5) sat = 서버 시각. 규칙(v5.5)이 sat == request.time이고 그 시각이 d의 KST 하루 안일 때만 생성을 허용한다 —
    * 기기 시계로 과거 날짜 문서를 만드는 백데이팅을 서버가 막는다. */
   const doc={schema:2,d:day,at:Date.now(),sat:firebase.firestore.FieldValue.serverTimestamp(),rv:RULE_VER,cols:GL_COLS,rows,inputs,settings:glSettingsKey(),policy:'next-session-open-v1'};
@@ -4387,7 +4393,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.2 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.3 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -6201,6 +6207,11 @@ function lgShadowHTML(hz){
           +')가 다릅니다. 저장본은 수정할 수 없으므로(create-only), <b>아래 수치는 사전등록된 정의의 결과가 아닙니다.</b> '
           +'새 버전으로 다시 동결하거나 코드를 되돌리십시오.'
         : '<br>진입·청산·arm·승급 조건이 Firestore에 쓰기 금지로 굳어 있습니다. 숫자를 본 뒤 정의를 바꿀 수 없습니다.')
+      +((QADomain.PREREG_VER!=='v1')
+        ? ('<br><span style="color:var(--sub)">v2는 후보 arm <b>F 상만 · G 결측 없음 · H 가치 이하만</b>을 '
+           +'<b>추가만</b> 한 판입니다 — A~E의 정의는 v1과 한 글자도 다르지 않고, v1 문서도 그대로 남아 있습니다. '
+           +'H의 입력(보수 적정가 상태)은 v5.9.3부터 기록되므로 <b>그날부터 표본이 시작</b>합니다.</span>')
+        :'')
       +'</div>';
   }
 

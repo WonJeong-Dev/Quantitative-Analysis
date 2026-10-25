@@ -194,12 +194,28 @@
    *   D 무작위: 그날 A와 같은 개수를 같은 모집단에서 뽑는다 → 영가설 분포
    *   E 동일가중: 전 종목 보유 → '아무것도 안 하기' 벤치마크
    * D·E가 없으면 A·B·C의 숫자는 읽을 수 없다. */
+  /* (v5.9.3) 후보 규칙을 **미리** 넓힌다 — 2027년 판독 때 고를 수 있는 폭이 지금 정해진다.
+   * 결과를 본 뒤에 arm을 더하면 그건 사후 선택이고, 사전등록이 막으려는 바로 그 일이다.
+   *
+   * ★ A~E의 정의는 **한 글자도 바꾸지 않는다.** 추가만 한다 — 그래야 v1 동결본과 비교가 유지된다.
+   * ★ 새 arm 셋 모두 새 상수가 0개다. '상'·'결측 0'·'가치 이하'는 전부 이미 있는 범주다.
+   * ★ F·G는 v4.35부터 기록된 열을 쓰므로 과거 로그에도 적용된다. H가 쓰는 cfvState는
+   *   v5.9.3부터 기록되므로 **그날부터 표본이 시작된다** — 과거 문서에서는 null이라 빠진다.
+   *   이것은 결함이 아니라 '그때는 측정하지 않았다'는 사실이다(§22-⑫ null≠거짓).
+   * ★ qMissW/aMissW는 null을 0으로 치지 않는다. 열이 없던 문서는 '결측이 없다'가 아니라
+   *   '모른다'이므로 G에서 빠진다. */
   const SHADOW_ARMS=[
     {key:'A',label:'현행',      note:'tier ∈ {상,중}',      enter:r=>r.tier==='상'||r.tier==='중'},
     {key:'B',label:'캡 해제',    note:'tierNoCap ∈ {상,중}', enter:r=>r.tierNoCap==='상'||r.tierNoCap==='중'},
     {key:'C',label:'전등급',     note:'tier ∈ {상,중,하}',   enter:r=>r.tier==='상'||r.tier==='중'||r.tier==='하'},
     {key:'D',label:'무작위',     note:'플라시보 — A와 같은 개수',sample:true},
-    {key:'E',label:'동일가중 보유',note:'벤치마크 — 전 종목',   always:true}
+    {key:'E',label:'동일가중 보유',note:'벤치마크 — 전 종목',   always:true},
+    {key:'F',label:'상만',       note:"tier = '상'",
+      enter:r=>r.tier==='상'},
+    {key:'G',label:'결측 없음',   note:'tier ∈ {상,중} ∧ qMissW=0 ∧ aMissW=0',
+      enter:r=>(r.tier==='상'||r.tier==='중')&&r.qMissW===0&&r.aMissW===0},
+    {key:'H',label:'가치 이하만', note:"tier ∈ {상,중} ∧ cfvState = 'at' (현재가 ≤ 보수 적정가)",
+      enter:r=>(r.tier==='상'||r.tier==='중')&&r.cfvState==='at'}
   ];
 
   /* 진입 사건. 독립 관측 단위는 '등급 진입 이벤트'다 — 같은 종목의 연속된 날은 독립이 아니다.
@@ -344,6 +360,9 @@
 
   /* 사전등록 본문 — 정의를 문자열로 굳혀 해시한다. 규칙이 create-only이므로 덮어쓸 수 없고,
    * 나중에 정의가 바뀌면 해시 불일치로 드러난다(SHADOW-5.6 §5). */
+  /* (v5.9.3) 사전등록 판 번호. v1은 Firestore에 create-only로 굳어 있어 **고칠 수 없고**,
+   * arm을 더하면 해시가 달라지므로 새 문서(v2)로 굳힌다. v1은 그대로 보존된다. */
+  const PREREG_VER='v2';
   function preregBody(rv){
     const rows={arms:SHADOW_ARMS.map(a=>({key:a.key,label:a.label,note:a.note||(a.sample?'sample':a.always?'always':'')})),
       entry:'직전 문서에서 거짓→참 전이 · 직전 행이 없으면 판정 안 함',
@@ -353,7 +372,10 @@
     const outcomes={primary:'x60',secondary:'m60',horizons:[20,60,120],
       note:'x=지수 대비 · m=같은 날짜·시장·유형 중앙값 대비. 둘을 나란히 본다'};
     const promote=Object.assign({},PROMOTE,{correction:'holm',placebo:'arm D'});
-    const body={id:rv+'_shadow_v1',rows,outcomes,promote};
+    const body={id:rv+'_shadow_'+PREREG_VER,rows,outcomes,promote,
+      supersedes:(PREREG_VER==='v1')?null:(rv+'_shadow_v1'),
+      note:'A~E의 정의는 v1과 동일하다. v2는 arm F·G·H를 **추가만** 한 판이다. '
+          +'H의 입력(cfvState)은 v5.9.3부터 기록되므로 그 이전 문서에서는 null이라 진입하지 않는다.'};
     return Object.assign({},body,{hash:String(hashStr(settingsKey(body)))});
   }
 
@@ -540,7 +562,7 @@
   }
 
   return {num,isYMD,accountKind,normCode,instrument,positionKey,debtRatio,tradeError,fingerprint,importPlan,positions,lastIndex,forward,forwardTaint,settingsKey,BACKUP_COLLECTIONS,RESTORE_SKIP,validateBackup,
-    hashStr,rngFrom,sampleK,quantile,median,rowOf,crossMedianExcess,SHADOW_ARMS,
+    hashStr,rngFrom,sampleK,quantile,median,rowOf,crossMedianExcess,SHADOW_ARMS,PREREG_VER,
     shadowEvents,regimeOf,blockBootstrap,shadowStats,shadowRun,PROMOTE,promoteCheck,preregBody,
     normCdf,invPhi,touchProb,probFloor,conservativeFV,buyPlan,positionSize};
 });
