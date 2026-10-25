@@ -486,7 +486,6 @@
     else if(vm.per===0)            skipped.push({key:'eps',label:'이익력(EPS)',why:'이 종목은 PER 판별력 없음(지표신뢰 0)'});
     else add('eps','이익력(EPS)',epsNorm*fPer,
       (epsT!=null&&epsF!=null?'정상화 EPS(후행·선행 평균)':(epsT!=null?'후행 EPS':'선행 EPS'))
-      +(epsT!=null&&inp.perTtmSrc?('['+inp.perTtmSrc+']'):'')
       +' × 정당PER '+fPer.toFixed(1)+'배');
     /* ② 매출 — **흑자면 쓰지 않는다.** PSR은 이익이 없을 때의 대체이고, 기존 엔진도 같은 분기다.
      *   흑자인데 PSR을 median에 섞으면 마진을 전혀 못 보는 값이 추정치를 끌어당긴다. */

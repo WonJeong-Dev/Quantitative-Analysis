@@ -2531,25 +2531,9 @@ function catBadge(t,near,isETF){
  *   환산 로직을 다시 쓰지 않는다(§22-⑲).
  * ========================================================================== */
 const CFV_H=GL_HORIZ[1];        // 60거래일 ≈ 1분기. 새 상수가 아니라 지평 목록(GL_HORIZ) 재사용.
-/* (v5.9.8) 후행 EPS 폴백 — **표시 전용**.
- * 실측(국내 종목): 야후가 `trailingEps`를 주지 않아 perAuto가 비고, 이익력이 선행 EPS 단독으로
- * 산출됐다. 그런데 워커는 이미 `perT`(야후 trailingPE)를 보내 Firestore에 저장까지 하고 있었다 —
- * 앱이 쓰지 않았을 뿐이다. price/perT는 야후가 **같은 상장가로** 계산한 비율의 역산이라
- * 통화·ADR 배수가 자동으로 맞는다(변환이 필요 없다).
- * ★ 판정 쪽 perAuto는 compute() 안(판정영역)이라 건드리지 않는다 — 고치면 RULE_VER이 올라가
- *   쌓인 로그가 집계에서 빠지고 250거래일 시계가 0으로 돌아간다. 영향 범위를 센 뒤 따로 정한다.
- * ★ 가격 정합 이상 신호가 있으면 폴백을 쓰지 않는다 — 틀린 가격으로 역산하면 조용히 틀린다. */
-function perTtmOf(id,k){
-  if(k.perAuto!=null)return {per:k.perAuto,src:null};
-  if(k.priceAnomaly)return {per:null,src:null};
-  const F=(S.cache&&S.cache[id]&&S.cache[id].fund)||null;
-  const pt=(F&&F.perT!=null&&isFinite(F.perT)&&F.perT>0)?+F.perT:null;
-  return pt!=null?{per:pt,src:'야후 PER 역산'}:{per:null,src:null};
-}
 function cfvOf(id){
   const k=S.calc[id]; if(!k||k.assetType==='etf')return null;
   const rb=k.revenueBasis;
-  const pt=perTtmOf(id,k);
   /* 주식수는 **시가총액과 맞춰진 것만** 쓴다(워커 reconcileShares). 맞지 않는 주식수로
    * 주당 FCF를 내면 조용히 몇 배 틀린다 — 그때는 이 방법을 빼는 것이 맞다(§22-㉕). */
   const shares=(rb&&rb.status==='reconciled'&&rb.shares>0)?rb.shares:null;
@@ -2557,7 +2541,7 @@ function cfvOf(id){
   return QADomain.buyPlan({
     price:k.price, quality:k.quality, annVol:k.annVol, h:CFV_H, ceil:FUND_CEIL_N,
     fairPerNow:fairPER(0,k.quality), fairPsrNow:fairPSR(0),
-    perTtm:pt.per, perTtmSrc:pt.src, perFwd:k.perFwdAuto, psr:k.psrAuto, pbr:k.pbrAuto, fcfPS:fcfPS,
+    perTtm:k.perAuto, perFwd:k.perFwdAuto, psr:k.psrAuto, pbr:k.pbrAuto, fcfPS:fcfPS,
     curMismatch:!!k.curMismatch,   // (v5.9.7) 통화가 섞이면 PBR 비율을 믿을 수 없다
     vm:effVM(id)
   });
@@ -4438,7 +4422,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.13 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.14 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -4571,7 +4555,7 @@ function diagCollect(){
               적자라정상:loss.length,
               진짜결측:miss.length,
               설명필요:other.length,
-              야후PER로복구가능:byPer.length,
+              야후PER있음:byPer.length,
               분기실적있음_복구불가:byQ.length,
               복구불가:miss.length-byPer.length,
               결측종목:miss.map(r=>{const q=qrows(r), s4=qSum(r), f=F(r);
@@ -4581,7 +4565,7 @@ function diagCollect(){
                        +(s4!=null?(' · 4분기합 '+s4.toFixed(2)):'')+']'):' [분기 실적 없음]');}),
               적자종목:loss.map(r=>r.nm+' (EPS '+epsOf(r)+')'),
               설명필요종목:other.map(r=>r.nm+' (EPS '+epsOf(r)+')'),
-              주의:'적자는 결함이 아닙니다. ★ 분기 epsActual 합은 복구원이 아닙니다 — '
+              주의:'적자는 결함이 아닙니다. ★ 분기 epsActual 합은 쓸 수 없습니다 — '
                 +'후행 EPS와 둘 다 있는 47종목에서 중앙값 16.6%·최대 1741.7% 어긋났고, '
                 +'조정(비GAAP) EPS와 GAAP EPS를 섞는 것으로 보입니다. 쓰면 국내 종목만 PER이 낮아집니다. '
                 +'결론: 이 11종목은 PER 없이 판정합니다(신뢰도 칸의 성분결측이 그 사실을 이미 반영합니다)'};
@@ -4762,16 +4746,21 @@ function diagRender(){
       const head='주식 '+e.주식수+' · PER 없음 <b>'+e['PER없음']+'</b>'
         +' (적자라 정상 '+e.적자라정상+' · <b>진짜 결측 '+e.진짜결측+'</b>'
         +(e.설명필요?(' · <b style="color:var(--down)">설명 필요 '+e.설명필요+'</b>'):'')+')';
-      const rec='복구원 — 야후 PER '+e.야후PER로복구가능
-        +' · <b>복구 불가 '+e.복구불가+'</b>'
-        +' <span style="color:var(--muted)">(분기 실적은 '+e.분기실적있음_복구불가+'종목에 있으나 '
-        +'조정 EPS라 복구에 쓰지 않습니다)</span>';
+      /* (v5.9.14) '복구원'이라는 말을 뺐다 — 쓸 수 있는 경로가 없다는 것이 조사 결론이고,
+       * 이름이 가능성을 암시하면 다음 사람이 다시 배선한다. 남은 둘은 **관측**이다:
+       * 야후 PER이 생기면(지금 0) 상황이 바뀐 신호이고, 분기 실적은 있어도 쓰지 않는다. */
+      const rec='<b>복구 불가 '+e.복구불가+'</b>'
+        +' <span style="color:var(--muted)">— 관측: 야후 PER 보유 '+e.야후PER있음
+        +' · 분기 실적 보유 '+e.분기실적있음_복구불가+'(조정 EPS라 쓰지 않음)</span>';
       const li=a=>a&&a.length?('<div style="color:var(--muted);margin-top:2px">'+a.map(esc2).join(' · ')+'</div>'):'';
       return head+'<br>'+rec
         +li(e.결측종목)
         +(e.설명필요&&e.설명필요종목.length?('<div style="color:var(--down);margin-top:2px">설명 필요: '+e.설명필요종목.map(esc2).join(' · ')+'</div>'):'')
+        /* (v5.9.14) 폴백을 걷어냈으므로 '보수 적정가만 복구 경로가 있다'는 문장도 지운다 —
+         * 화면이 더 이상 사실이 아닌 것을 말하게 두지 않는다. 조사 결론을 그대로 적는다. */
         +'<div style="color:var(--muted);margin-top:2px">적자 종목은 PER이 없는 것이 정상입니다 — 결함이 아닙니다. '
-        +'판정(perAuto)은 아직 폴백을 쓰지 않습니다(보수 적정가만 복구 경로가 있습니다). '
+        +'<b>이 종목들은 PER 없이 판정합니다</b> — 복원 경로가 없다는 것이 조사 결론입니다(2026-10-25). '
+        +'분기 epsActual 합은 조정(비GAAP) EPS라 쓰지 않습니다: 둘 다 가진 47종목에서 중앙값 16.6% · 최대 1741.7% 어긋났고 INTC는 적자가 흑자로 뒤집혔습니다. '
         +'적자: '+(e.적자종목.length?esc2(e.적자종목.join(' · ')):'없음')+'</div>';
     })(), d.후행EPS결측.진짜결측>0||d.후행EPS결측.설명필요>0);
   g+=row('EPS 정합',(function(){const e=d.EPS정합, P=e.기간일치;
