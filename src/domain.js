@@ -456,14 +456,32 @@
       if(ceil!=null&&price>0&&value>price*ceil){skipped.push({key,label,why:'현재가 '+ceil+'배 초과 — 이상치 배제'});return;}
       used.push({key,label,value,how:how||''});
     };
-    /* ① 이익력 — 후행·선행 EPS 중 **낮은 쪽**에 성장 0의 정당 PER. 낮은 쪽을 쓰는 것이 보수다.
-     *   EPS는 price/PER로 되돌린다. 적자면 PER이 null이라 이 방법이 자동으로 빠진다. */
-    const perMax=(perT!=null&&perF!=null)?Math.max(perT,perF):(perT!=null?perT:perF);
+    /* ① 이익력 — **정상화 EPS** × 성장 0의 정당 PER.
+     *
+     * (v5.9.6) v5.7~5.9.5는 후행·선행 중 **낮은 쪽**을 썼다. 그것이 결함이었다:
+     * 성장 0의 정당 PER이 이미 "미래 이익에 돈을 내지 않는다"는 뜻인데, EPS까지 낮은 쪽을
+     * 쓰면 **같은 보수성을 두 번 곱한다**. 둘은 독립적인 보수성이 아니다.
+     * 정석적인 이익력 평가(earnings power value)는 정상화 EPS × 무성장 배수이지
+     * 최솟값 EPS × 무성장 배수가 아니다. 실측(매출성장 15% 종목): PER 18.4→11(×0.60)에
+     * EPS ×0.87이 겹쳐 기존 펀더멘털 밸류의 0.52배가 됐다.
+     *
+     * 정상화 규칙은 **새로 만들지 않고** app.js의 fundamentalFV가 쓰는 eNow 정의를 그대로 쓴다:
+     *   둘 다 있으면 50:50 평균 · 후행만 있으면 그 값 · 선행만 있으면 ×0.92(단독 할인).
+     * 두 곳의 값이 어긋나면 tests/consfv.cjs가 배포본에서 직접 읽어 비교해 실패시킨다(§22-⑲).
+     *
+     * EPS는 price/PER로 되돌린다. 적자면 PER이 null이라 이 방법이 자동으로 빠진다. */
+    const epsT=(price>0&&perT!=null&&perT>0)?price/perT:null;
+    const epsF=(price>0&&perF!=null&&perF>0)?price/perF:null;
+    const epsNorm=(epsT!=null&&epsF!=null)?(epsT*0.5+epsF*0.5)
+                 :(epsT!=null?epsT:(epsF!=null?epsF*0.92:null));
+    const perMax=(perT!=null||perF!=null)?1:null;   // 가용성 표식 — 아래 분기 조건용
     if(!(price>0))                 skipped.push({key:'eps',label:'이익력(EPS)',why:'현재가 없음'});
     else if(fPer==null)            skipped.push({key:'eps',label:'이익력(EPS)',why:'정당 PER 산출 불가(종합점수 결측)'});
-    else if(perMax==null)          skipped.push({key:'eps',label:'이익력(EPS)',why:'흑자 EPS 없음'});
+    else if(perMax==null||epsNorm==null) skipped.push({key:'eps',label:'이익력(EPS)',why:'흑자 EPS 없음'});
     else if(vm.per===0)            skipped.push({key:'eps',label:'이익력(EPS)',why:'이 종목은 PER 판별력 없음(지표신뢰 0)'});
-    else add('eps','이익력(EPS)',price/perMax*fPer,'낮은 EPS × 정당PER '+fPer.toFixed(1)+'배');
+    else add('eps','이익력(EPS)',epsNorm*fPer,
+      (epsT!=null&&epsF!=null?'정상화 EPS(후행·선행 평균)':(epsT!=null?'후행 EPS':'선행 EPS×0.92'))
+      +' × 정당PER '+fPer.toFixed(1)+'배');
     /* ② 매출 — **흑자면 쓰지 않는다.** PSR은 이익이 없을 때의 대체이고, 기존 엔진도 같은 분기다.
      *   흑자인데 PSR을 median에 섞으면 마진을 전혀 못 보는 값이 추정치를 끌어당긴다. */
     if(!(price>0))                 skipped.push({key:'rev',label:'매출(PSR)',why:'현재가 없음'});

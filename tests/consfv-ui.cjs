@@ -61,7 +61,9 @@ function put(id,o){
 console.log('\n[1] 배선 — k의 어느 필드가 어느 방법으로 가는가');
 put('US_X'); VM={per:2,pbr:2,psr:2};
 let r=M.cfvOf('US_X');
-ok('EPS는 낮은 쪽(후행 10배) × 정당PER 12배 = 120', near((r.used.find(m=>m.key==='eps')||{}).value,120,1e-9));
+/* (v5.9.6) 정상화 EPS — perTtm 10배·perFwd 8배 → EPS 10·12.5의 평균 11.25 → ×12 = 135 */
+ok('EPS는 정상화(후행·선행 평균) × 정당PER 12배 = 135', near((r.used.find(m=>m.key==='eps')||{}).value,135,1e-9),
+   (r.used.find(m=>m.key==='eps')||{}).value);
 ok('주당FCF = fcf×fxq÷주식수 = 7 → 7×12 = 84', near((r.used.find(m=>m.key==='fcf')||{}).value,84,1e-9));
 ok('장부가 = 현재가/PBR = 80', near((r.used.find(m=>m.key==='book')||{}).value,80,1e-9));
 ok('흑자라 PSR은 제외', !r.used.some(m=>m.key==='rev'));

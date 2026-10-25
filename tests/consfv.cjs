@@ -48,10 +48,17 @@ const base={price:100,quality:65,ceil:3,fairPerNow:12,fairPsrNow:1.5,vm:{per:2,p
   const r=D.conservativeFV(Object.assign({},base,{perTtm:10,perFwd:8,psr:2,pbr:1.25,fcfPS:7}));
   const keys=r.used.map(m=>m.key);
   ok('흑자에서 PSR은 쓰지 않는다', keys.indexOf('rev')<0&&(r.skipped.find(s=>s.key==='rev')||{}).why.includes('흑자'));
-  ok('EPS는 낮은 쪽(후행 10배 → EPS 10) 사용', near((r.used.find(m=>m.key==='eps')||{}).value,10*12,1e-9));
+  /* (v5.9.6) 낮은 쪽이 아니라 **정상화(후행·선행 평균)**. perTtm 10배·perFwd 8배 →
+ * EPS 10과 12.5의 평균 11.25 → ×12 = 135. 낮은 쪽이었다면 120이었다. */
+ok('EPS는 정상화(후행·선행 평균)', near((r.used.find(m=>m.key==='eps')||{}).value,11.25*12,1e-9),
+   (r.used.find(m=>m.key==='eps')||{}).value);
+ok('더 이상 낮은 쪽을 쓰지 않는다', (r.used.find(m=>m.key==='eps')||{}).value!==120);
+ok('산출 문구가 무엇을 썼는지 말한다', /정상화 EPS\(후행·선행 평균\)/.test((r.used.find(m=>m.key==='eps')||{}).how||''),
+   (r.used.find(m=>m.key==='eps')||{}).how);
   ok('FCF 7 × 12 = 84', near((r.used.find(m=>m.key==='fcf')||{}).value,84,1e-9));
   ok('장부가 100/1.25 = 80', near((r.used.find(m=>m.key==='book')||{}).value,80,1e-9));
-  ok('3개 중앙값 = 84', near(r.fv,84,1e-9), r.fv+' / '+JSON.stringify(keys));
+  /* 이익력 135 · FCF 84 · 장부 80 → 중앙값 84 (그대로) */
+ok('3개 중앙값 = 84', near(r.fv,84,1e-9), r.fv+' / '+JSON.stringify(keys));
 }
 { // 적자: PSR 경로
   const r=D.conservativeFV(Object.assign({},base,{perTtm:null,perFwd:null,psr:2,pbr:1.25,fcfPS:null}));
@@ -78,6 +85,22 @@ const base={price:100,quality:65,ceil:3,fairPerNow:12,fairPsrNow:1.5,vm:{per:2,p
   const r=D.conservativeFV({price:100,quality:65,ceil:3,fairPerNow:12,fairPsrNow:1.5,vm:{}});
   ok('쓸 방법이 없으면 fv=null (0이 아니다)', r.fv===null&&r.n===0);
   ok('그래도 배제 목록은 4종 전부 남는다', r.skipped.length===4, JSON.stringify(r.skipped.map(s=>s.key)));
+}
+
+console.log('\n[5b] 정상화 EPS — 단독 케이스와 app.js 정의와의 일치 (v5.9.6)');
+{ const r2=D.conservativeFV(Object.assign({},base,{perTtm:10,perFwd:null,pbr:1.25,fcfPS:null}));
+  ok('후행만 있으면 그 값', near((r2.used.find(m=>m.key==='eps')||{}).value,10*12,1e-9));
+  const r3=D.conservativeFV(Object.assign({},base,{perTtm:null,perFwd:8,pbr:1.25,fcfPS:null}));
+  ok('선행만 있으면 ×0.92 (적자 전환 할인)', near((r3.used.find(m=>m.key==='eps')||{}).value,12.5*0.92*12,1e-9),
+     (r3.used.find(m=>m.key==='eps')||{}).value);
+  ok('그 사실을 산출 문구에 적는다', /선행 EPS×0\.92/.test((r3.used.find(m=>m.key==='eps')||{}).how||''));
+}
+{ /* ★ §22-⑲ 재사용은 주장이 아니라 검사 — app.js의 fundamentalFV가 쓰는 eNow 정의와
+     같은 숫자를 쓰는지 **배포본에서 직접 읽어** 확인한다. 한쪽만 바뀌면 여기서 깨진다. */
+  const fs=require('fs');
+  const T=fs.readFileSync(__dirname+'/../dist/index.html','utf8');
+  ok('app.js의 50:50 평균 정의가 그대로다', /eNow=\(epsTtm\*0\.5\+epsFwd\*0\.5\)/.test(T));
+  ok('app.js의 선행 단독 할인 0.92가 그대로다', /eNow=epsFwd\*0\.92/.test(T));
 }
 
 console.log('\n[6] buyPlan — 가치 축과 확률 축의 교차');

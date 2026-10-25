@@ -3541,6 +3541,9 @@ const CONST_LOG=[
    * RULE_VER을 올리지 않는다(올리면 판정 로그가 rv 불일치로 전부 빠지고 250일 시계가 0으로 돌아간다). */
   {k:'CFV_H',        v:60,     from:'2026-10-22', ver:'v5.7', cls:'기존 상수 재사용 — GL_HORIZ[1](60거래일≈1분기). 표시 전용'},
   {k:'CFV_GROWTH',   v:0,      from:'2026-10-22', ver:'v5.7', cls:'구조적 필연 — 보수의 정의가 「성장을 값에 넣지 않는다」. 기존 fairPER/fairPSR 곡선에 0을 넣은 결과만 쓴다'},
+  /* (v5.9.6) 보수 적정가의 EPS 선택 — 낮은 쪽 → 정상화. 중복 보수성 제거. */
+  {k:'CFV_EPS',      v:'0.5/0.5', from:'2026-10-25', ver:'v5.9.6', cls:'기존 상수 재사용 — fundamentalFV의 eNow(후행·선행 50:50). 낮은 쪽을 쓰면 성장 0 PER과 보수성이 이중 적용된다'},
+  {k:'CFV_EPS_FWD',  v:0.92,   from:'2026-10-25', ver:'v5.9.6', cls:'기존 상수 재사용 — fundamentalFV의 선행 단독 할인. 두 곳이 어긋나면 테스트가 배포본을 읽어 실패시킨다'},
   {k:'CFV_PBR',      v:1.0,    from:'2026-10-22', ver:'v5.7', cls:'외부 사실 — 장부가 기준선(PBR 1배)은 전통적 하한 관례. 배수를 1로 고정해 자유 파라미터 0개'},
   {k:'CFV_DRIFT',    v:0,      from:'2026-10-22', ver:'v5.7', cls:'구조적 필연 — 드리프트를 넣으면 그것이 곧 전망이다. 중립 가정이며 보수성 주장은 하지 않는다'},
   {k:'CFV_P',        v:0.5,    from:'2026-10-22', ver:'v5.7', cls:'통계 관례 — 중앙값(절반의 확률로 닿는 가격). 임계가 아니라 보고 기준점'},
@@ -4394,7 +4397,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.5 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.6 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
