@@ -2569,42 +2569,72 @@ function verdictOf(id){
   const isETF=(k.assetType==='etf'), d=k.grd||null;
   const gn=d&&d.gates?d.gates.filter(x=>x[1]).length:null, gt=d&&d.gates?d.gates.length:null;
   const cfv=isETF?null:cfvOf(id);
-  let key,why;
+  /* (v5.8.1) 이유는 **짧은 명사구**로. 긴 문장은 좁은 칸에서 3줄로 접혀 읽히지 않는다.
+   * 긴 설명은 title로 내린다 — 화면에서 지워지는 것이 아니라 한 겹 뒤로 간다.
+   * 중복도 뺀다: '관망'이 이미 "관문 통과"를 뜻하므로 이유에 또 적지 않는다. */
+  let key,why,tip;
   if(!k.tier){
     key='out';
-    /* d.blocked는 관문의 전체 문구다. 앞부분(이름)만 쓰고 전체는 툴팁에 남긴다. */
-    why=(d&&d.blocked)?('관문에서 걸림 — '+String(d.blocked).split(' — ')[0]):'관문 미통과';
+    const nm=(d&&d.blocked)?String(d.blocked).split(' — ')[0]:null;
+    why=nm?(nm+'에서 걸림'):'관문 미통과';
+    tip=(d&&d.blocked)?('하드 게이트 탈락 — '+d.blocked):'하드 게이트를 통과하지 못했습니다';
   }else if(isETF){
     /* ETF는 재무제표가 없어 보수 적정가를 만들 수 없다 — 결함이 아니라 구조다.
      * 보드 자신의 ETF 등급(저점권/관심권/중립)이 그 자리의 가치 신호다. */
     key=(k.tier==='저점권')?'rec':'watch';
-    why=(key==='rec')?'ETF 등급 저점권 — 지금 가격이 매력 구간'
-                     :'ETF 등급 '+k.tier+' — 재무제표가 없어 지정가는 내지 않음';
+    why='ETF '+k.tier;
+    tip=(key==='rec')?'ETF 등급 저점권 — 지금 가격이 매력 구간입니다'
+                     :'ETF 등급 '+k.tier+' — 재무제표가 없어 지정가는 내지 않습니다';
   }else if(!cfv||cfv.fv==null){
     /* 관문은 통과했는데 값을 못 매기는 상태. 관문 탈락과 **다른 이유**지만 할 일은 같다. */
-    key='out'; why='관문은 통과 · 값을 매길 수 없어 가격 판단 불가';
+    key='out'; why='값을 매길 수 없음';
+    tip='하드 게이트는 전부 통과했지만 재무제표로 가치를 산출할 방법이 하나도 없습니다 — 가격 판단을 할 수 없습니다';
   }else if(cfv.state==='at'){
-    key='rec'; why='현재가가 이미 가치('+curSym(k.currency)+fmtP(cfv.fv,k.currency)+') 아래';
+    key='rec'; why='가치 '+curSym(k.currency)+fmtP(cfv.fv,k.currency)+' 아래';
+    tip='하드 게이트 전부 통과 · 현재가가 보수 적정가('+curSym(k.currency)+fmtP(cfv.fv,k.currency)+') 이하입니다';
   }else{
     key='watch';
     const gap=(k.price>0&&cfv.fv>0)?(k.price/cfv.fv-1)*100:null;
-    why='회사는 통과, 가격이 가치보다 '+(gap!=null?gap.toFixed(1)+'% ':'')+'비쌈';
+    why='가치보다 '+(gap!=null?gap.toFixed(1)+'% ':'')+'비쌈';
+    tip='하드 게이트는 전부 통과했지만 현재가가 보수 적정가('+curSym(k.currency)+fmtP(cfv.fv,k.currency)+')보다 비쌉니다 — 지정가를 걸고 기다리는 자리입니다';
   }
   return {key:key,w:VERDICT[key].w,cls:VERDICT[key].cls,mk:VERDICT[key].mk,
-          why:why,blocked:(d&&d.blocked)||null,gn:gn,gt:gt,tier:k.tier||null,cfv:cfv,isETF:isETF};
+          why:why,tip:tip,blocked:(d&&d.blocked)||null,gn:gn,gt:gt,tier:k.tier||null,cfv:cfv,isETF:isETF};
 }
 /* 근거 밀도 — 「이 판정이 얼마나 얇은 근거 위에 서 있는가」.
  * v4.15의 성분결측 가중을 **뒤집어** 상시 노출되는 품질 수치로 올린다. 경고 필로만 뜨면
  * 사고처럼 보이는데, 실제로는 모든 종목이 늘 어느 정도 결측을 안고 있다.
  * ETF는 fin·growth·ana가 통째로 없는 것이 구조적 정상이라 수치를 내지 않는다(§22-㉕). */
+/* (v5.8.1) 편재 — 「받은 근거 중 한 성분이 혼자 얼마를 차지하는가」.
+ * 밀도가 높아도 한 입력이 과반을 혼자 들고 있으면 그 판정은 사실상 그 하나의 함수다.
+ * ★ 결측분(중립값 50으로 채운 몫)은 **근거가 아니므로 분모에서 뺀다** — 받은 성분만으로 센다.
+ * ★ ETF는 애초에 밀도를 내지 않으므로 여기 오지 않는다. 그래서 compute()의 awEff
+ *   (ETF일 때만 up:0) 분기를 다시 쓸 일이 없고, aw를 그대로 써도 두 곳이 갈라지지 않는다.
+ *   이 전제는 tests/consfv-ui.cjs가 검사한다(§22-⑲ '재사용은 주장이 아니라 검사'). */
+const LOP_WARN=50;   // 과반 — 한 성분이 혼자 판정을 만든 상태. 임계가 아니라 경고선(표시 전용).
+function topShare(parts,w,labels){
+  if(!parts)return null;
+  let tw=0,best=null;
+  for(const key in parts){
+    if(parts[key]==null)continue;
+    const ww=(w&&w[key])||0; tw+=ww;
+    if(!best||ww>best.w)best={w:ww,label:(labels&&labels[key])||key};
+  }
+  return (tw>0&&best)?{share:Math.round(best.w/tw*100),label:best.label}:null;
+}
 function evidenceOf(k){
   if(!k)return null;
-  if(k.assetType==='etf')return {dens:null,why:'ETF는 재무 성분이 구조적으로 없어 밀도를 내지 않습니다'};
+  if(k.assetType==='etf')return {dens:null,lop:null,why:'ETF는 재무 성분이 구조적으로 없어 밀도를 내지 않습니다'};
   const mw=Math.max(k.qMissW||0,k.aMissW||0);
   const parts=[];
   if(k.qMissW>0)parts.push('종합점수 '+k.qMissW+'% ('+(k.qMiss||[]).join(' · ')+')');
   if(k.aMissW>0)parts.push('가격매력도 '+k.aMissW+'% ('+(k.aMiss||[]).join(' · ')+')');
-  return {dens:Math.max(0,Math.min(100,100-mw)),why:parts.join(' / ')||'결측 없음'};
+  const tq=topShare(k.qParts,S.settings.qw||QW_DEF,QW_LABELS);
+  const ta=topShare(k.aParts,S.settings.aw||AW_DEF,AW_LABELS);
+  const cand=[tq&&Object.assign({src:'종합점수'},tq),ta&&Object.assign({src:'가격매력도'},ta)].filter(Boolean);
+  const lop=cand.length?cand.slice().sort((a,b)=>b.share-a.share)[0]:null;
+  return {dens:Math.max(0,Math.min(100,100-mw)),lop:lop,
+          why:parts.join(' / ')||'결측 없음'};
 }
 /* 목록 '실행' 칸 — 지정가 하나 + 닿을 확률 + 수량(v5.9에서 채운다). */
 function exHTML(k,cfv){
@@ -2612,13 +2642,16 @@ function exHTML(k,cfv){
   if(k.assetType==='etf')
     return '<div class="p none" title="ETF는 재무제표가 없어 보수 적정가를 만들 수 없습니다 — 결함이 아니라 구조입니다">지정가 없음 (ETF)</div>';
   if(!cfv||cfv.fv==null)
-    return '<div class="p none" title="'+esc((cfv&&cfv.why)||'재무 입력 미수신')+'">지정가 없음</div>'
-      +'<div class="pr">값을 못 매기니 걸 가격도 없습니다</div>';
+    return '<div class="p none" title="'+esc((cfv&&cfv.why)||'재무 입력 미수신')+'">지정가 없음</div>';
   if(cfv.limit==null||cfv.limitProb==null)
     return '<div class="p">'+curSym(k.currency)+fmtP(cfv.fv,k.currency)+'</div>'
-      +'<div class="pr" title="'+esc(cfv.why||'')+'">닿을 확률 산출 불가 — 변동성 미확보</div>';
-  return '<div class="p">'+curSym(k.currency)+fmtP(cfv.limit,k.currency)+'</div>'
-    +'<div class="pr">'+CFV_H+'거래일 안에 여기까지 내려올 확률 <b>'+Math.round(cfv.limitProb*100)+'%</b></div>';
+      +'<div class="pr" title="'+esc(cfv.why||'')+'">도달 확률 산출 불가 — 변동성 미확보</div>';
+  /* (v5.8.1) 확률을 칩으로 올려 가격과 **같은 줄**에 둔다 — 문장으로 쓰면 좁은 칸에서 두 줄로 접힌다.
+   * 아래 캡션이 그 %가 무엇인지 한 번만 말한다. */
+  return '<div class="pline"><span class="p">'+curSym(k.currency)+fmtP(cfv.limit,k.currency)+'</span>'
+    +'<span class="prob" title="'+esc(CFV_H+'거래일 안에 이 가격에 한 번이라도 닿을 확률 — 실현변동성·드리프트 0 가정')+'">'
+    +Math.round(cfv.limitProb*100)+'%</span></div>'
+    +'<div class="pr">'+CFV_H+'거래일 내 도달 확률</div>';
 }
 /* 목록 '근거' 칸 */
 function evHTML(k){
@@ -2628,8 +2661,15 @@ function evHTML(k){
   const on=Math.round(e.dens/20), low=e.dens<60;
   let b='<div class="bars">';
   for(let i=0;i<5;i++)b+='<i class="'+(i<on?(low?'lo':'on'):'')+'"></i>';
-  return '<div class="n"'+(low?' style="color:var(--amber)"':'')+' title="'+esc('근거 밀도 — 중립값 50으로 대체되지 않은 비율. 비어 있는 성분: '+e.why)+'">'+e.dens+'%</div>'
-    +'<div class="s">근거 밀도</div>'+b+'</div>';
+  b+='</div>';
+  const lop=e.lop;
+  const tip='근거 밀도 '+e.dens+'% — 중립값 50으로 대체되지 않은 비율. 비어 있는 성분: '+e.why
+    +(lop?(' / 최대 단일 근거: '+lop.src+'의 '+lop.label+' '+lop.share+'%'):'');
+  /* 편재는 **경고일 때만** 적는다. 늘 띄우면 또 한 줄이 늘고, 과반이 아니면 읽을 이유가 없다. */
+  const warn=(lop&&lop.share>LOP_WARN)
+    ? '<div class="s lop" title="'+esc(lop.src+'의 '+lop.label+'이 받은 근거의 '+lop.share+'%를 혼자 차지합니다 — 이 판정은 사실상 그 한 값의 함수입니다')+'">⚠ 단일 '+lop.share+'%</div>'
+    : '';
+  return '<div class="n"'+(low?' style="color:var(--amber)"':'')+' title="'+esc(tip)+'">'+e.dens+'%</div>'+b+warn;
 }
 /* 상세 패널용 — 방법별 내역과 **배제 사유**, 그리고 가정을 전부 적는다.
  * 중앙값만 보여주면 어느 방법이 끌어내렸는지 알 수 없고, 그러면 숫자를 믿을 근거도 없다. */
@@ -2770,12 +2810,13 @@ function render(){
         +'<div class="c '+chgCls(k.chg)+'">'+fmtPct(k.chg)+' <span class="live lv-'+fi.cls+'"><i class="ld"></i>'+fi.label+'</span></div>'
         +(stale&&fi.cls==='close'?'<div class="stale">캐시 '+ago(k.updatedAt)+'</div>':'')+'</div>'
         +'<div class="g-vd">'
-          +(VD?('<div class="vd '+VD.cls+'"><span class="vmk" aria-hidden="true">'+VD.mk+'</span>'+VD.w+'</div>'
-                +'<div class="vdgate"'+(VD.blocked?(' title="'+esc(VD.blocked)+'"'):'')+'>'
-                  +(VD.gn!=null?('관문 '+VD.gn+' / '+VD.gt):'관문 —')
-                  +(VD.tier?(' · 등급 '+esc(VD.tier)):'')+'</div>'
-                +'<div class="vdwhy">'+esc(VD.why)+'</div>')
-              :'<div class="vd out"><span class="vmk" aria-hidden="true">○</span>판정 대기</div>')
+          +(VD?('<div class="vdline"><span class="vd '+VD.cls+'"><span class="vmk" aria-hidden="true">'+VD.mk+'</span>'+VD.w+'</span>'
+                  +(VD.gn!=null?('<span class="gchip'+(VD.gn<VD.gt?' bad':'')+'" title="'
+                      +esc('하드 게이트 '+VD.gn+'/'+VD.gt+' 통과'+(VD.tier?(' · 규칙 후보등급 '+VD.tier):' · 후보 아님'))
+                      +'">'+VD.gn+'/'+VD.gt+(VD.tier?('<i>'+esc(VD.tier)+'</i>'):'')+'</span>'):'')
+                +'</div>'
+                +'<div class="vdwhy" title="'+esc(VD.tip||VD.why)+'">'+esc(VD.why)+'</div>')
+              :'<div class="vdline"><span class="vd out"><span class="vmk" aria-hidden="true">○</span>판정 대기</span></div>')
           +(warn.length?'<div class="vdwarn">'+warn.join('')+'</div>':'')
         +'</div>'
         +'<div class="ex g-ex num">'+exHTML(k,CFV)+'</div>'
@@ -4172,7 +4213,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.8.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.8.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

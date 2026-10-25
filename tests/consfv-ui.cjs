@@ -23,11 +23,19 @@ function fairPER(g,q){ if(g==null||!isFinite(g))return null; let per=pl(g,[[-20,
 function fairPSR(g){ if(g==null||!isFinite(g))return null; return clamp(pl(g,[[-20,0.6],[0,1.5],[20,4],[40,7],[60,10],[100,15],[150,20]]),0.3,22); }
 let VM={per:2,pbr:2,psr:2};
 const effVM=()=>VM;
+/* 점수 가중·라벨은 app.js 원본과 같은 값을 쓴다 — 편재는 '어느 성분이 최대인가'를 보는 것이라
+ * 값 자체가 아니라 **비중 계산이 맞는가**를 검사한다. */
+const QW_DEF={fin:35,growth:28,ana:22,stab:15};
+const AW_DEF={up:46,rsi:18,bb:12,vp:14,prox:10};
+const QW_LABELS={fin:'재무 품질',growth:'성장성',ana:'애널 신뢰',stab:'안정성'};
+const AW_LABELS={up:'상승여력',rsi:'RSI 반등',bb:'볼린저',vp:'매물대',prox:'눌림목'};
+S.settings={qw:QW_DEF,aw:AW_DEF};
 
 const M=new Function('S','esc','clamp','fmtP','fmtPct','chgCls','curSym','GL_HORIZ','FUND_CEIL_N',
-  'fairPER','fairPSR','effVM','QADomain',
-  src+'\n;return {cfvOf,cfvDetailHTML,stripHTML,verdictOf,evidenceOf,exHTML,evHTML,CFV_H,CFV_STATE,VERDICT};')
-  (S,esc,clamp,fmtP,fmtPct,chgCls,curSym,GL_HORIZ,FUND_CEIL_N,fairPER,fairPSR,effVM,QADomain);
+  'fairPER','fairPSR','effVM','QADomain','QW_DEF','AW_DEF','QW_LABELS','AW_LABELS',
+  src+'\n;return {cfvOf,cfvDetailHTML,stripHTML,verdictOf,evidenceOf,topShare,exHTML,evHTML,CFV_H,CFV_STATE,VERDICT,LOP_WARN};')
+  (S,esc,clamp,fmtP,fmtPct,chgCls,curSym,GL_HORIZ,FUND_CEIL_N,fairPER,fairPSR,effVM,QADomain,
+   QW_DEF,AW_DEF,QW_LABELS,AW_LABELS);
 
 let pass=0,fail=0;
 const ok=(n,c,x)=>{c?(pass++,console.log('  OK   '+n)):(fail++,console.log('  FAIL '+n+(x!==undefined?('  ← '+x):'')));};
@@ -44,6 +52,8 @@ function put(id,o){
     perAuto:10,perFwdAuto:8,psrAuto:2,pbrAuto:1.25,fcf:700,fxq:1,
     revenueBasis:{status:'reconciled',shares:100},
     tier:'중',grd:grd(11,11),qMissW:0,aMissW:0,qMiss:[],aMiss:[],
+    qParts:{fin:70,growth:60,ana:80,stab:50},
+    aParts:{up:60,rsi:55,bb:50,vp:52,prox:48},
     lo52:60,hi52:140,chg:0.5},o||{});
   return id;
 }
@@ -78,27 +88,28 @@ console.log('\n[4] 판정 — 세 단어, 겹치지 않는다 (v5.8)');
 put('US_W'); VM={per:2,pbr:2,psr:2};          // fv=84 < price=100 → 관망
 let v=M.verdictOf('US_W');
 ok('관문 통과 + 가격이 가치보다 비쌈 → 관망', v.key==='watch'&&v.w==='관망', v.key);
-ok('이유에 괴리율이 적힌다', /가치보다 19\.0% 비쌈/.test(v.why), v.why);
+ok('이유는 짧은 명사구', v.why==='가치보다 19.0% 비쌈', v.why);
+ok('"회사는 통과" 같은 중복을 빼고 긴 설명은 title로', !/회사는 통과/.test(v.why)&&/하드 게이트는 전부 통과/.test(v.tip||''), v.tip);
 ok('관문 통과수를 센다', v.gn===11&&v.gt===11);
 put('US_A',{price:70,perAuto:7,perFwdAuto:7,pbrAuto:0.875,fcf:490});  // fv=84 ≥ price=70 → 추천
 v=M.verdictOf('US_A');
 ok('현재가가 가치 이하 → 추천', v.key==='rec'&&v.w==='추천', v.key+' fv='+(v.cfv&&v.cfv.fv));
-ok('이유에 가치 금액이 적힌다 (median(120, 58.8, 80)=80)', /현재가가 이미 가치\(\$80\) 아래/.test(v.why), v.why);
+ok('이유에 가치 금액이 적힌다 (median(120, 58.8, 80)=80)', v.why==='가치 $80 아래', v.why);
 put('US_O',{tier:null,grd:grd(9,11,'최소 품질 — 종합점수 ≥ 45')});
 v=M.verdictOf('US_O');
 ok('관문 미통과 → 탈락', v.key==='out'&&v.w==='탈락');
-ok('어느 관문에서 걸렸는지 앞부분만 쓴다', v.why==='관문에서 걸림 — 최소 품질', v.why);
+ok('어느 관문에서 걸렸는지 앞부분만 쓴다', v.why==='최소 품질에서 걸림', v.why);
 ok('전체 문구는 툴팁용으로 보존', v.blocked==='최소 품질 — 종합점수 ≥ 45');
 put('US_NV2',{perAuto:null,perFwdAuto:null,psrAuto:null,pbrAuto:null,fcf:null});
 v=M.verdictOf('US_NV2');
 ok('관문은 통과했는데 값을 못 매기면 탈락', v.key==='out');
-ok('관문 탈락과 다른 이유를 적는다', /관문은 통과 · 값을 매길 수 없어/.test(v.why), v.why);
+ok('관문 탈락과 다른 이유를 적는다', v.why==='값을 매길 수 없음'&&/하드 게이트는 전부 통과했지만/.test(v.tip||''), v.why);
 put('US_ETF2',{assetType:'etf',tier:'저점권'});
 ok('ETF 저점권 → 추천', M.verdictOf('US_ETF2').key==='rec');
 put('US_ETF3',{assetType:'etf',tier:'중립'});
 v=M.verdictOf('US_ETF3');
 ok('ETF 중립 → 관망', v.key==='watch');
-ok('ETF는 지정가를 내지 않는다고 적는다', /재무제표가 없어 지정가는 내지 않음/.test(v.why), v.why);
+ok('ETF는 지정가를 내지 않는다고 title에 적는다', /재무제표가 없어 지정가는 내지 않습니다/.test(v.tip||''), v.tip);
 put('US_ETF4',{assetType:'etf',tier:null,grd:grd(5,6,'데이터 충분 — 상장 120봉(≈6개월) 이상')});
 ok('ETF도 관문 미통과면 탈락', M.verdictOf('US_ETF4').key==='out');
 ok('판정 단어는 셋뿐', Object.keys(M.VERDICT).length===3&&
@@ -108,17 +119,23 @@ console.log('\n[5] 실행 칸 — 지정가 하나 + 닿을 확률');
 put('US_E');
 { const h=M.exHTML(S.calc['US_E'],M.cfvOf('US_E'));
   ok('지정가가 하나만 크게', (h.match(/class="p"/g)||[]).length===1, h);
-  ok('닿을 확률을 적는다', /60거래일 안에 여기까지 내려올 확률 <b>\d+%<\/b>/.test(h), h);
+  ok('확률은 가격과 같은 줄의 칩', /<span class="prob"[^>]*>\d+%<\/span>/.test(h), h);
+  ok('그 %가 무엇인지 캡션이 한 번 말한다', /60거래일 내 도달 확률/.test(h), h);
+  ok('가격과 칩이 한 줄(pline) 안에 있다', /<div class="pline">[\s\S]*?<\/div>/.test(h), h);
   ok('"제약" 같은 내부 용어를 쓰지 않는다', !/제약/.test(h)&&!/중앙 도달가/.test(h), h); }
 { put('US_E2',{annVol:null});
   const h=M.exHTML(S.calc['US_E2'],M.cfvOf('US_E2'));
-  ok('변동성이 없으면 지정가를 꾸며내지 않고 보수 적정가를 보인다', /닿을 확률 산출 불가/.test(h), h); }
+  ok('변동성이 없으면 지정가를 꾸며내지 않고 보수 적정가를 보인다', /도달 확률 산출 불가/.test(h)&&!/class="prob"/.test(h), h); }
 { put('US_E3',{assetType:'etf',tier:'중립'});
   const h=M.exHTML(S.calc['US_E3'],null);
   ok('ETF는 구조적 이유를 적는다', /지정가 없음 \(ETF\)/.test(h)&&/결함이 아니라 구조/.test(h), h); }
 { put('US_E4',{perAuto:null,perFwdAuto:null,psrAuto:null,pbrAuto:null,fcf:null});
   const h=M.exHTML(S.calc['US_E4'],M.cfvOf('US_E4'));
-  ok('값을 못 매기면 빈 칸이 아니라 이유', /지정가 없음/.test(h)&&/값을 못 매기니/.test(h), h); }
+  /* (v5.8.1) 캡션은 뺐다 — 판정 칸이 이미 '값을 매길 수 없음'이라고 말한다. 같은 말을 두 번 쓰면 세 줄로 접힌다.
+     빈 칸이 아니어야 한다는 원칙은 그대로: 글자(지정가 없음)와 사유(title)가 남는다. */
+  ok('값을 못 매기면 빈 칸이 아니라 글자 + 사유 title', /지정가 없음/.test(h)&&/title="[^"]*산출 불가/.test(h), h);
+  ok('같은 사유를 두 번 쓰지 않는다', (h.match(/산출 불가/g)||[]).length===1, h);
+  ok('그 사유는 판정 칸이 말한다', M.verdictOf('US_E4').why==='값을 매길 수 없음'); }
 
 console.log('\n[6] 근거 칸 — 결측을 뒤집어 상시 품질 수치로');
 put('US_V1',{qMissW:0,aMissW:0});
@@ -128,7 +145,43 @@ put('US_V2',{qMissW:23,aMissW:9,qMiss:['ROE','마진'],aMiss:['매물대']});
   ok('둘 중 큰 결측을 쓴다 (100−23=77)', e.dens===77, e.dens);
   const h=M.evHTML(S.calc['US_V2']);
   ok('비어 있는 성분 이름이 툴팁에 담긴다', /ROE · 마진/.test(h), h.slice(0,200));
-  ok('막대 5칸 중 4칸', (h.match(/<i class="on">/g)||[]).length===4, h); }
+  ok('막대 5칸 중 4칸', (h.match(/<i class="on">/g)||[]).length===4, h);
+  ok('캡션 한 줄을 없애 두 줄로 줄였다', !/>근거 밀도</.test(h), h); }
+
+console.log('\n[6b] 편재 — 받은 근거 중 한 성분의 최대 비중 (v5.8.1)');
+ok('임계는 과반', M.LOP_WARN===50);
+{ // 전부 수신: 종합 fin 35/100=35%, 매력 up 46/100=46% → 최대 46%
+  put('US_L1');
+  const e=M.evidenceOf(S.calc['US_L1']);
+  ok('두 점수 중 더 큰 쪽을 고른다', e.lop.share===46&&e.lop.label==='상승여력'&&e.lop.src==='가격매력도',
+     JSON.stringify(e.lop));
+  ok('과반이 아니면 화면에 적지 않는다 (툴팁에만)', !/class="s lop"/.test(M.evHTML(S.calc['US_L1'])), M.evHTML(S.calc['US_L1']));
+  ok('그래도 툴팁에는 남긴다', /최대 단일 근거: 가격매력도의 상승여력 46%/.test(M.evHTML(S.calc['US_L1'])));
+}
+{ // 결측분은 분모에서 뺀다: 매력에서 rsi·bb·vp·prox가 없으면 up이 혼자 100%
+  put('US_L2',{aParts:{up:60,rsi:null,bb:null,vp:null,prox:null}});
+  const e=M.evidenceOf(S.calc['US_L2']);
+  ok('결측 성분은 분모에서 빠진다 (up 혼자 100%)', e.lop.share===100&&e.lop.label==='상승여력', JSON.stringify(e.lop));
+  ok('과반이면 경고를 적는다', /⚠ 단일 100%/.test(M.evHTML(S.calc['US_L2'])), M.evHTML(S.calc['US_L2']));
+}
+{ // 받은 성분이 하나도 없으면 편재를 내지 않는다 (0으로 세지 않는다)
+  put('US_L3',{qParts:{fin:null,growth:null,ana:null,stab:null},aParts:{up:null,rsi:null,bb:null,vp:null,prox:null}});
+  ok('받은 성분이 없으면 null (0% 아님)', M.evidenceOf(S.calc['US_L3']).lop===null);
+}
+{ // 가중이 바뀌면 편재도 따라간다 — 설정을 읽고 있는지
+  const keep=S.settings.aw; S.settings.aw={up:10,rsi:10,bb:10,vp:10,prox:60};
+  put('US_L4');
+  ok('사용자 가중 설정을 읽는다', M.evidenceOf(S.calc['US_L4']).lop.label==='눌림목', JSON.stringify(M.evidenceOf(S.calc['US_L4']).lop));
+  S.settings.aw=keep;
+}
+{ /* §22-⑲ 재사용은 주장이 아니라 검사 — ETF는 evidenceOf에 도달하지 않으므로
+     compute()의 awEff(ETF일 때 up:0) 분기를 여기서 다시 쓸 일이 없다. */
+  put('US_L5',{assetType:'etf',tier:'중립'});
+  const e=M.evidenceOf(S.calc['US_L5']);
+  ok('ETF는 밀도도 편재도 내지 않는다 — awEff 분기를 다시 쓸 일이 없다', e.dens===null&&e.lop===null);
+}
+
+console.log('\n[6c] 근거 밀도 경고색');
 put('US_V3',{qMissW:55,aMissW:10});
 { const h=M.evHTML(S.calc['US_V3']);
   ok('60% 미만이면 경고색', /color:var\(--amber\)/.test(h)&&/class="lo"/.test(h), h.slice(0,160)); }
