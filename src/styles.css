@@ -187,7 +187,12 @@
             font-size:11px;font-weight:800;cursor:help;font-variant-numeric:tabular-nums}
   .ex .pr{font-size:11px;color:var(--sub);margin-top:3px;line-height:1.45}
   .ex .pr b{color:var(--text);font-weight:700}
-  .ex .q{font-size:11px;color:var(--sub);margin-top:2px;line-height:1.45}
+  /* (v5.9) 수량 줄 — 「틀렸을 때 얼마를 잃기로 했는가」의 결과. */
+  .ex .q{font-size:11px;color:var(--sub);margin-top:3px;line-height:1.45;cursor:help}
+  .ex .q b{color:var(--text);font-weight:800;font-size:12px}
+  .ex .q.none{color:var(--muted);font-weight:600}
+  .ex .q .capped{display:inline-block;padding:0 4px;border-radius:5px;background:var(--amber-soft,#fdf3e0);
+                 color:var(--amber);font-weight:700;font-size:10px}
 
   /* (v5.8) 근거 — 판정이 얼마나 얇은 근거 위에 서 있는가. 판정을 바꾸지 않는다.
    * (v5.8.1) 편재(최대 단일 근거)는 **과반일 때만** 적는다 — 아니면 읽을 이유가 없고 줄만 는다. */

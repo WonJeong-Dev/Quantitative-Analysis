@@ -466,6 +466,51 @@
     return {fv,n:used.length,used,skipped};
   }
 
+  /* ==========================================================================
+   * (v5.9) 변동성 기준 수량 — 손실 통제의 1번.
+   *
+   * 예측을 입력으로 쓰지 않는다. 「얼마나 오를까」가 아니라 「틀렸다고 인정할 가격까지
+   * 얼마나 먼가」만 쓴다. 그 거리는 추측이 아니라 실현변동성에서 나온다:
+   *     무효화 거리 d = σ(연율) × √(h/252)
+   * h는 GL_HORIZ[0]=20거래일(≈1개월)을 재사용한다 — 새 상수가 아니다.
+   * 1σ를 쓰는 것은 통계 관례이며, 「여기까지는 평범한 흔들림」의 경계다.
+   *
+   * 수량 = 위험예산 ÷ (지정가 × d).  변동성이 큰 종목은 **자동으로 적게** 산다 —
+   * 종목마다 '한 번 틀릴 때 잃는 돈'을 같게 맞추는 것이 이 식의 전부다.
+   *
+   * ★ 위험예산(1회 위험 %)은 **사용자 설정**이다. 기본값을 조용히 넣지 않는다 —
+   *   위험 선호는 모형이 정할 수 있는 양이 아니다. 미설정이면 수량을 내지 않는다.
+   * ★ 이것은 손실 상한의 보증이 아니다. 갭 하락·거래정지는 무효화 가격을 건너뛴다.
+   * ========================================================================== */
+  function positionSize(inp){
+    inp=inp||{};
+    const limit=num(inp.limit), av=num(inp.annVol), h=num(inp.stopH), budget=num(inp.budget);
+    const out={qty:null,d:null,perShare:null,stop:null,amount:null,riskAmt:null,cap:null,why:null};
+    if(!(limit>0)){out.why='지정가가 없어 수량을 낼 수 없습니다';return out;}
+    if(!(av>0)){out.why='변동성 미확보 — 무효화 거리를 낼 수 없습니다';return out;}
+    if(!(h>0)){out.why='무효화 지평이 없습니다';return out;}
+    if(!(budget>0)){out.why='위험예산 미설정 — 투자정책에서 총자산과 1회 위험(%)을 입력하세요';return out;}
+    out.d=av*Math.sqrt(h/252);
+    out.stop=limit*(1-out.d);
+    out.perShare=limit*out.d;
+    if(!(out.perShare>0)){out.why='주당 위험이 0입니다';return out;}
+    let qty=Math.floor(budget/out.perShare);
+    /* 금액 상한(종목 비중 한도 등)은 **지정가 통화 기준**으로 받는다 — 환산은 호출부의 일이다.
+     * 여기서 통화를 다루면 환율 로직이 두 곳이 된다(§22-⑲). */
+    const maxAmt=num(inp.maxAmount);
+    if(maxAmt!=null&&maxAmt>=0){
+      const qCap=Math.floor(maxAmt/limit);
+      if(qCap<qty){qty=qCap;out.cap=inp.capLabel||'금액 상한';}
+    }
+    if(!(qty>=1)){
+      out.qty=0;
+      out.why=out.cap?(out.cap+'에 막혀 1주도 담을 수 없습니다'):'위험예산으로 1주도 살 수 없습니다';
+      return out;
+    }
+    out.qty=qty; out.amount=qty*limit; out.riskAmt=qty*out.perShare;
+    return out;
+  }
+
   /* 보수 적정가(가치 축)와 개연성 하락가(확률 축)를 **곱하지 않고 교차**시킨다.
    * 둘은 다른 종류의 양이다 — 하나로 뭉개면 어느 쪽이 제약인지 사라진다(§22-⑫).
    * 제안 지정가 = min(두 값): '가치로 정당하고(≤보수적정가) 닿을 만한(≤중앙도달가) 가장 높은 가격'.
@@ -497,5 +542,5 @@
   return {num,isYMD,accountKind,normCode,instrument,positionKey,debtRatio,tradeError,fingerprint,importPlan,positions,lastIndex,forward,forwardTaint,settingsKey,BACKUP_COLLECTIONS,RESTORE_SKIP,validateBackup,
     hashStr,rngFrom,sampleK,quantile,median,rowOf,crossMedianExcess,SHADOW_ARMS,
     shadowEvents,regimeOf,blockBootstrap,shadowStats,shadowRun,PROMOTE,promoteCheck,preregBody,
-    normCdf,invPhi,touchProb,probFloor,conservativeFV,buyPlan};
+    normCdf,invPhi,touchProb,probFloor,conservativeFV,buyPlan,positionSize};
 });

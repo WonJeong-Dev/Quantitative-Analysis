@@ -2,11 +2,13 @@
  'use strict';
  const num=x=>(typeof x==='number'||typeof x==='string'&&x.trim()!=='')&&Number.isFinite(Number(x))?Number(x):null;
  const required=(o,keys)=>keys.filter(k=>num(o?.[k])===null);
- const labels={assets:'총자산',cash:'현재 현금',minCash:'최소 현금',stockMax:'종목 비중 한도',sectorMax:'업종 비중 한도',themeMax:'테마 비중 한도',lossMax:'손실한도',themeStress:'공통 테마 하락 가정'};
+ const labels={assets:'총자산',cash:'현재 현금',minCash:'최소 현금',stockMax:'종목 비중 한도',sectorMax:'업종 비중 한도',themeMax:'테마 비중 한도',lossMax:'손실한도',themeStress:'공통 테마 하락 가정',riskPct:'1회 위험'};
  function policy(p={}){
   const errors=required(p,['assets','cash','minCash','stockMax','sectorMax','themeMax','lossMax','themeStress']).map(k=>labels[k]+' 미설정');
   for(const k of ['assets','cash','minCash'])if(num(p[k])!==null&&(+p[k]<0||(k==='assets'&&+p[k]===0)))errors.push(labels[k]+' 범위 오류');
-  for(const k of ['stockMax','sectorMax','themeMax','lossMax','themeStress'])if(num(p[k])!==null&&(+p[k]<=0||+p[k]>100))errors.push(labels[k]+' 0 초과 100 이하 필요');
+  for(const k of ['stockMax','sectorMax','themeMax','lossMax','themeStress','riskPct'])if(num(p[k])!==null&&(+p[k]<=0||+p[k]>100))errors.push(labels[k]+' 0 초과 100 이하 필요');
+  /* (v5.9) riskPct(1회 위험 %)는 **필수 목록에 넣지 않는다** — 기존에 저장된 정책이 갑자기
+   * 미완료로 바뀌면 매수 전 점검이 통째로 보류된다. 미설정이면 목록이 수량을 내지 않을 뿐이다. */
   if(num(p.assets)!==null&&num(p.cash)!==null&&+p.cash>+p.assets)errors.push('현금이 총자산 초과');
   if(num(p.cash)!==null&&num(p.minCash)!==null&&+p.minCash>+p.cash)errors.push('현재 현금이 최소 현금 미달');
   return {complete:!errors.length,errors};

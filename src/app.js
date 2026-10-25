@@ -2636,8 +2636,78 @@ function evidenceOf(k){
   return {dens:Math.max(0,Math.min(100,100-mw)),lop:lop,
           why:parts.join(' / ')||'결측 없음'};
 }
+/* ==========================================================================
+ * (v5.9) 위험예산과 수량 — 손실 통제.
+ *
+ * ★ 새 설정 블록을 만들지 않는다. 이미 있는 **투자정책**(S.settings.investmentPolicy)에
+ *   1회 위험(%)만 더한다. 총자산·현금·최소현금·종목 비중 한도는 거기 이미 있다.
+ * ★ 업종·테마 한도는 여기서 보지 않는다 — 상세의 「투자정책·시나리오·집중도 점검」이
+ *   I.exposure로 전부 검사한다. 목록에서 다시 구현하면 두 곳이 갈라진다(§22-⑲).
+ *   목록이 반영하는 상한은 **금액으로 바로 환산되는 둘**뿐이다: 종목 비중 한도 · 최소 현금.
+ *   그 둘이 exposure의 규칙과 같은 식인지는 tests/possize-ui.cjs가 교차검사한다.
+ * ========================================================================== */
+const CFV_STOP_H=GL_HORIZ[0];   // 20거래일(≈1개월). 새 상수가 아니라 지평 목록 재사용.
+let _rcCache=null, _rcKey=null;
+function riskCtx(){
+  const p=S.settings.investmentPolicy||null;
+  /* 렌더마다 원장을 다시 접지 않도록 얕게 캐시한다 — 키가 바뀌면 자동으로 다시 센다. */
+  const key=JSON.stringify([p||null,Object.keys(S.trades||{}).length,S.uid||null,
+    Object.keys(S.calc||{}).length]);
+  if(_rcKey===key&&_rcCache)return _rcCache;
+  const out={ready:false,why:null,budget:null,total:null,perStock:{},stockMax:null,cashRoom:null};
+  if(!p){out.why='투자정책 미저장 — 종목 상세의 「투자정책·시나리오·집중도 점검」에서 입력하세요';}
+  else{
+    const assets=QADomain.num(p.assets), rp=QADomain.num(p.riskPct);
+    if(!(assets>0))out.why='투자정책에 총자산이 없습니다';
+    else if(!(rp>0))out.why='1회 위험(%) 미설정 — 위험 선호는 모형이 정할 수 없습니다';
+    else{
+      out.ready=true; out.budget=assets*rp/100; out.riskPct=rp;
+      /* 분모는 exposure와 같은 정의: 현재 현금 + 원장 평가액(원화 환산). */
+      let invested=0;
+      for(const h of positions()){
+        if(!(h.qty>0))continue;
+        const st=S.stocks[h.stockId]||{}, q=S.calc[h.stockId]||{};
+        const cur=q.qcur||(st.market==='KR'?'KRW':st.market==='US'?'USD':null);
+        const fx=cur?fxOf(cur,'KRW'):null;
+        const v=(h.mval!=null&&fx!=null)?h.mval*fx:null;
+        if(v==null)continue;                      // 환율·평가액 미확인은 **0으로 세지 않는다**(§22-⑫)
+        invested+=v; out.perStock[h.stockId]=(out.perStock[h.stockId]||0)+v;
+      }
+      const cash=QADomain.num(p.cash), minCash=QADomain.num(p.minCash);
+      out.total=(cash!=null)?cash+invested:null;
+      out.stockMax=QADomain.num(p.stockMax);
+      out.cashRoom=(cash!=null&&minCash!=null)?Math.max(0,cash-minCash):null;
+    }
+  }
+  _rcKey=key; _rcCache=out; return out;
+}
+/* 종목 하나에 더 담을 수 있는 **원화 금액** 상한. 모르면 null(무제한이 아니라 '미확인'이다). */
+function roomKRW(id,rc){
+  const caps=[];
+  if(rc.stockMax!=null&&rc.total>0)
+    caps.push({v:rc.total*rc.stockMax/100-(rc.perStock[id]||0),lab:'종목 비중 한도 '+rc.stockMax+'%'});
+  if(rc.cashRoom!=null)caps.push({v:rc.cashRoom,lab:'최소 현금'});
+  if(!caps.length)return null;
+  return caps.reduce((a,b)=>b.v<a.v?b:a);
+}
+function sizeOf(id,cfv,rc){
+  const k=S.calc[id]; if(!k)return null;
+  rc=rc||riskCtx();
+  if(!rc.ready)return {qty:null,why:rc.why};
+  if(!k.tier)return {qty:null,why:'탈락 종목 — 수량을 제안하지 않습니다'};
+  const limit=(cfv&&cfv.limit!=null)?cfv.limit:null;
+  const cur=k.qcur||null, fx=cur?fxOf(cur,'KRW'):null;
+  const room=roomKRW(id,rc);
+  /* 위험예산과 금액 상한을 **종목 통화**로 맞춘다. 환산이 불가능하면 상한을 무시하지 않고
+   * 수량을 내지 않는다 — 모르는 환율을 1로 치면 해외 종목에서 몇 배 틀린다. */
+  if(fx==null||!(fx>0))return {qty:null,why:'환율 미확보 — '+(cur||'해당 통화')+' 금액을 원화로 환산할 수 없습니다'};
+  const r=QADomain.positionSize({limit:limit,annVol:k.annVol,stopH:CFV_STOP_H,
+    budget:rc.budget/fx, maxAmount:room?Math.max(0,room.v)/fx:null, capLabel:room?room.lab:null});
+  return Object.assign({},r,{fx:fx,cur:cur,amountKRW:(r.amount!=null)?r.amount*fx:null,
+    riskKRW:(r.riskAmt!=null)?r.riskAmt*fx:null,riskPct:rc.riskPct});
+}
 /* 목록 '실행' 칸 — 지정가 하나 + 닿을 확률 + 수량(v5.9에서 채운다). */
-function exHTML(k,cfv){
+function exHTML(k,cfv,sz){
   if(!k)return '';
   if(k.assetType==='etf')
     return '<div class="p none" title="ETF는 재무제표가 없어 보수 적정가를 만들 수 없습니다 — 결함이 아니라 구조입니다">지정가 없음 (ETF)</div>';
@@ -2651,7 +2721,22 @@ function exHTML(k,cfv){
   return '<div class="pline"><span class="p">'+curSym(k.currency)+fmtP(cfv.limit,k.currency)+'</span>'
     +'<span class="prob" title="'+esc(CFV_H+'거래일 안에 이 가격에 한 번이라도 닿을 확률 — 실현변동성·드리프트 0 가정')+'">'
     +Math.round(cfv.limitProb*100)+'%</span></div>'
-    +'<div class="pr">'+CFV_H+'거래일 내 도달 확률</div>';
+    +'<div class="pr">'+CFV_H+'거래일 내 도달 확률</div>'
+    +qtyHTML(k,sz);
+}
+/* 수량 줄 — 「틀렸을 때 얼마를 잃기로 했는가」가 먼저다. 수량은 그 결과일 뿐이다. */
+function qtyHTML(k,sz){
+  if(!sz)return '';
+  if(sz.qty==null)return '<div class="q none" title="'+esc(sz.why||'')+'">수량 제안 없음</div>';
+  if(sz.qty===0)return '<div class="q none" title="'+esc(sz.why||'')+'">0주 — '+esc(sz.cap||'예산 부족')+'</div>';
+  const won=v=>'₩'+Math.round(v).toLocaleString('ko-KR');
+  return '<div class="q" title="'+esc('무효화 가격 '+curSym(k.currency)+fmtP(sz.stop,k.currency)
+      +' (지정가에서 −'+(sz.d*100).toFixed(1)+'% · '+CFV_STOP_H+'거래일 1σ) · 여기까지 밀리면 '+won(sz.riskKRW)
+      +'를 잃습니다. 갭 하락·거래정지는 이 가격을 건너뜁니다 — 손실 상한의 보증이 아닙니다.')+'">'
+    +'<b>'+sz.qty.toLocaleString('ko-KR')+'주</b> '+won(sz.amountKRW)
+    +' · 위험 '+sz.riskPct+'%'
+    +(sz.cap?(' <span class="capped" title="'+esc(sz.cap+'에 막혀 수량이 깎였습니다')+'">↓'+esc(sz.cap.split(' ')[0])+'</span>'):'')
+    +'</div>';
 }
 /* 목록 '근거' 칸 */
 function evHTML(k){
@@ -2759,6 +2844,7 @@ function render(){
   const gradeSort=(effSort()==='grade');
   const HOLD=holdMap();        // (v4.30) 거래기록과 보드를 잇는다
   let dividerShown=false;
+  const RC=riskCtx();        // (v5.9) 원장 합산은 렌더당 한 번 — 행마다 다시 접지 않는다
   list.innerHTML=ids.map((id,i)=>{
     const st=S.stocks[id], k=S.calc[id], open=!!S.ui.open[id];
     const err=(S.fetchErr||{})[id];
@@ -2819,7 +2905,7 @@ function render(){
               :'<div class="vdline"><span class="vd out"><span class="vmk" aria-hidden="true">○</span>판정 대기</span></div>')
           +(warn.length?'<div class="vdwarn">'+warn.join('')+'</div>':'')
         +'</div>'
-        +'<div class="ex g-ex num">'+exHTML(k,CFV)+'</div>'
+        +'<div class="ex g-ex num">'+exHTML(k,CFV,k?sizeOf(id,CFV,RC):null)+'</div>'
         +'<div class="ev g-ev num">'+evHTML(k)+'</div>'
         +'<div class="g-st">'+stripHTML(k,CFV)+'</div>';
     }else{
@@ -3374,7 +3460,13 @@ const CONST_LOG=[
   {k:'CFV_P',        v:0.5,    from:'2026-10-22', ver:'v5.7', cls:'통계 관례 — 중앙값(절반의 확률로 닿는 가격). 임계가 아니라 보고 기준점'},
   {k:'Z75',          v:0.6744897502, from:'2026-10-22', ver:'v5.7', cls:'유도값 Φ⁻¹(0.75) — 새 상수 아님(CFV_P=0.5의 반사원리 해)'},
   {k:'ERF_AS',       v:'A&S 7.1.26', from:'2026-10-22', ver:'v5.7', cls:'외부 사실 — Abramowitz & Stegun erf 근사 계수(|오차|<1.5e-7). 문헌값, 자체 튜닝 아님'},
-  {k:'IPHI_ACKLAM',  v:'Acklam', from:'2026-10-22', ver:'v5.7', cls:'외부 사실 — Φ⁻¹ 유리함수 근사 계수(|오차|<1.15e-9). 문헌값, 자체 튜닝 아님'}
+  {k:'IPHI_ACKLAM',  v:'Acklam', from:'2026-10-22', ver:'v5.7', cls:'외부 사실 — Φ⁻¹ 유리함수 근사 계수(|오차|<1.15e-9). 문헌값, 자체 튜닝 아님'},
+  /* (v5.8.1) 표시 전용 */
+  {k:'LOP_WARN',     v:50,     from:'2026-10-25', ver:'v5.8.1', cls:'구조적 필연 — 과반이면 한 성분이 혼자 판정을 만든 상태. 임계가 아니라 경고선'},
+  /* (v5.9) 수량 — 판정에 쓰이지 않는다. 위험예산은 사용자 설정이며 기본값을 넣지 않는다. */
+  {k:'CFV_STOP_H',   v:20,     from:'2026-10-25', ver:'v5.9', cls:'기존 상수 재사용 — GL_HORIZ[0](20거래일≈1개월). 무효화 거리의 지평'},
+  {k:'STOP_SIGMA',   v:1,      from:'2026-10-25', ver:'v5.9', cls:'통계 관례(1σ) — 「여기까지는 평범한 흔들림」의 경계. 수익률 임계가 아님'},
+  {k:'RISK_PCT',     v:'설정값', from:'2026-10-25', ver:'v5.9', cls:'구조적 필연 — 위험 선호는 모형이 정할 수 없다. 기본값 없음, 미설정이면 수량을 내지 않는다'}
 ];
 /* 같은 키의 마지막 행 = 현재 유효한 값. 자기점검·검증 리포트가 이걸 쓴다. */
 function constNow(){ const m={}; for(const r of CONST_LOG)m[r.k]=r; return m; }
@@ -4213,7 +4305,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.8.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

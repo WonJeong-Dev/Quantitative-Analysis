@@ -4,7 +4,7 @@
  const I=QAInvestment,box=document.getElementById('investmentBody'),mask=document.getElementById('maskInvestment');
  let selected='',busy=false;const history=new Map();
  const e=x=>esc(String(x??'')),n=x=>I.num(x),fmt=x=>x==null?'미확인':Number(x).toLocaleString('ko-KR',{maximumFractionDigits:2});
- const defaults={assets:40000000,minCash:0,cash:null,stockMax:null,sectorMax:null,themeMax:null,lossMax:null,themeStress:null};
+ const defaults={assets:40000000,minCash:0,cash:null,stockMax:null,sectorMax:null,themeMax:null,lossMax:null,themeStress:null,riskPct:null};
  const input=(name,label,value,extra='')=>'<label>'+e(label)+'<input name="'+name+'" type="number" step="any" value="'+e(value??'')+'" '+extra+'></label>';
  const textInput=(name,label,value,type='text')=>'<label>'+e(label)+'<input name="'+name+'" type="'+type+'" value="'+e(value??'')+'"></label>';
  const getPolicy=()=>({...defaults,...S.settings.investmentPolicy});
@@ -17,8 +17,8 @@
   box.innerHTML='<p>규칙 등급은 후보 선별입니다. 가치 가정과 포트폴리오 위험을 함께 확인하세요. 비중의 분모는 현재 현금 + 원장 평가액(계산값)이며, 입력한 총자산은 대사 참고값입니다(0.5% 넘게 다르면 경고).</p>'
    +'<details open><summary>1. 투자정책 · 원화 기준</summary><form id="investmentPolicyForm"><div class="invest-grid">'
    +input('assets','현재 투자자산 총액 (원)',p.assets,'min="1"')+input('cash','현재 현금 (원화 환산)',p.cash,'min="0"')+input('minCash','최소 현금 (원)',p.minCash,'min="0"')
-   +input('stockMax','종목 최대 비중 (%)',p.stockMax,'min="0.01" max="100"')+input('sectorMax','업종 최대 비중 (%)',p.sectorMax,'min="0.01" max="100"')+input('themeMax','공통 테마 최대 비중 (%)',p.themeMax,'min="0.01" max="100"')+input('lossMax','스트레스 손실한도 (%) — 단일 종목 전액손실·테마 동반하락 모두에 적용',p.lossMax,'min="0.01" max="100"')+input('themeStress','공통 테마 동반하락 가정 (%)',p.themeStress,'min="0.01" max="100"')
-   +'</div><p class="note">빈 위험한도는 미정으로 저장됩니다. 현금 0원 보유도 허용하지만, 현금이 없으면 추가 매수예정액은 충당되지 않습니다. 입금·매도 후 잔액과 총자산을 갱신하세요. 새 계좌·미기록 자산이 있으면 비중 판정을 보류합니다.</p><button class="btn" type="submit">정책 저장</button></form></details>'
+   +input('stockMax','종목 최대 비중 (%)',p.stockMax,'min="0.01" max="100"')+input('sectorMax','업종 최대 비중 (%)',p.sectorMax,'min="0.01" max="100"')+input('themeMax','공통 테마 최대 비중 (%)',p.themeMax,'min="0.01" max="100"')+input('lossMax','스트레스 손실한도 (%) — 단일 종목 전액손실·테마 동반하락 모두에 적용',p.lossMax,'min="0.01" max="100"')+input('themeStress','공통 테마 동반하락 가정 (%)',p.themeStress,'min="0.01" max="100"')+input('riskPct','1회 거래 위험 (%) — 한 종목이 틀렸을 때 잃기로 한 자산 비율',p.riskPct,'min="0.01" max="100"')
+   +'</div><p class="note"><b>1회 거래 위험(%)</b>을 넣으면 목록에 수량이 제안됩니다 — 수량 = (총자산 × 이 비율) ÷ (지정가 × 20거래일 1σ 거리). 변동성이 큰 종목은 자동으로 적게 삽니다. 비워 두면 수량을 제안하지 않습니다(위험 선호는 모형이 정할 수 없습니다). 목록 수량에는 <b>종목 비중 한도</b>와 <b>최소 현금</b>만 반영됩니다 — 업종·테마 한도는 아래 3번에서 확인하세요. 빈 위험한도는 미정으로 저장됩니다. 현금 0원 보유도 허용하지만, 현금이 없으면 추가 매수예정액은 충당되지 않습니다. 입금·매도 후 잔액과 총자산을 갱신하세요. 새 계좌·미기록 자산이 있으면 비중 판정을 보류합니다.</p><button class="btn" type="submit">정책 저장</button></form></details>'
    +'<details open><summary>2. 종목별 시나리오 · 보유기간 1개월~3년</summary><label>종목<select id="investmentStock">'+ids.map(id=>'<option value="'+e(id)+'" '+(id===selected?'selected':'')+'>'+e(S.stocks[id].name||id)+'</option>').join('')+'</select></label>'
    +'<p>현재가 '+fmt(k.price)+' '+e(k.qcur||(st.market==='KR'?'KRW':'USD'))+' · 기존 휴리스틱 추정가와 별도로 계산합니다. 주당 값은 현재 거래되는 주식/ADR 1주 기준·시세 통화로 입력하세요.</p>'
    +(assetType(st)==='etf'?'<p class="lgalert">ETF에는 기업 EPS·매출 시나리오를 적용하지 않습니다. 포트폴리오 비중 점검만 사용하세요.</p>':'')
