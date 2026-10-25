@@ -9,7 +9,7 @@ const b=L.findIndex(x=>x.startsWith('function render(){'));
 if(a<0||b<0){console.error('구간 미발견 — CFV_H/render');process.exit(2);}
 const src=L.slice(a,b).join('\n');
 
-const S={calc:{},stocks:{}};
+const S={calc:{},stocks:{},cache:{}};
 const esc=x=>String(x==null?'':x);
 const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
 const fmtP=(v,c)=>v==null?'—':(Math.round(v*100)/100).toLocaleString('en-US');
@@ -236,6 +236,42 @@ put('US_D'); VM={per:2,pbr:0,psr:1};
   ok('PBR 판별력 0 배제 사유', /자산\(장부가\) — [^<]*판별력 없음/.test(h));
   ok('드리프트 0 가정 명시', /드리프트 0/.test(h));
   ok('상승추세 과대평가 경고', /상승 추세 종목에서는 도달확률이 과대평가/.test(h)); }
+
+console.log('\n[9] 후행 EPS 폴백 — 야후 PER 역산 (v5.9.8, 표시 전용)');
+/* 워커가 trailingEps를 못 보낸 종목에서도 summaryDetail.trailingPE는 온다.
+ * 현재가/PER = 주당이이므로 이익력 방법을 복원할 수 있다.
+ * 단, ① perAuto가 있으면 그것이 우선  ② 가격 정합 이상이면 쓰지 않는다
+ *       ③ 출처를 화면에 밝힌다  ④ 판정(perAuto)은 여전히 이 폴백을 안 쓴다. */
+VM={per:2,pbr:0,psr:0};
+{ /* perAuto 결우 + 야후 PER 10 → 주당이익 10, 정당PER 12배 = 120 */
+  put('US_FB',{perAuto:null,perFwdAuto:null,fcf:null});
+  S.cache['US_FB']={fund:{perT:10}};
+  const c=M.cfvOf('US_FB');
+  ok('후행 PER에서 주당이익을 역산해 이익력 방법이 살아난다', near(c&&c.fv,120,0.5), c&&c.fv);
+  ok('출처를 방법 설명에 밝힌다', /야후 PER 역산/.test(((c&&c.used)||[]).map(m=>m.how).join(' ')),
+     ((c&&c.used)||[]).map(m=>m.how).join(' ')); }
+{ /* perAuto가 있으면 폴백을 쓰지 않고 출처도 찍지 않는다 */
+  put('US_FB2',{perAuto:10,perFwdAuto:null,fcf:null});
+  S.cache['US_FB2']={fund:{perT:5}};
+  const c=M.cfvOf('US_FB2');
+  ok('perAuto가 우선한다 (야후 PER 5를 써버리지 않는다)', near(c&&c.fv,120,0.5), c&&c.fv);
+  ok('원래 값이라 출처 이름표를 붙이지 않는다', !/야후 PER 역산/.test(((c&&c.used)||[]).map(m=>m.how).join(' '))); }
+{ /* 가격 정합 이상이면 폴백 정지 — 틀린 가계으로 역산하면 조용하게 틀린다 */
+  put('US_FB3',{perAuto:null,perFwdAuto:null,fcf:null,priceAnomaly:true});
+  S.cache['US_FB3']={fund:{perT:10}};
+  const c=M.cfvOf('US_FB3');
+  ok('가격 정합 이상이면 역산하지 않는다', !((c&&c.used)||[]).some(m=>m.key==='eps'),
+     ((c&&c.used)||[]).map(m=>m.key).join(',')); }
+{ /* 야후 PER도 없으면 없는 항목이다 (§22-㉖) */
+  put('US_FB4',{perAuto:null,perFwdAuto:null,fcf:null});
+  S.cache['US_FB4']={fund:{}};
+  const c=M.cfvOf('US_FB4');
+  ok('복원할 값이 없으면 이익력을 그리지 않는다', !((c&&c.used)||[]).some(m=>m.key==='eps'));
+  ok('그 사유를 제외 목록에 남긴다', ((c&&c.skipped)||[]).some(m=>m.key==='eps')); }
+{ /* 판정은 여전히 폴백을 안 쓴다 — perTtmOf는 판정영역 밖에 있어야 한다 */
+  const ja=T.indexOf('function compute(id,simPrice)'), jb=T.indexOf('const GL_HORIZ=');
+  ok('perTtmOf는 판정영역 밖에 있다 (RULE_VER 보전)',
+     ja>=0&&jb>ja&&T.indexOf('function perTtmOf(')>jb, T.indexOf('function perTtmOf(')+' vs '+jb); }
 
 console.log('\n────────────────────────────');
 console.log(pass+' passed · '+fail+' failed');

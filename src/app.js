@@ -2531,9 +2531,25 @@ function catBadge(t,near,isETF){
  *   환산 로직을 다시 쓰지 않는다(§22-⑲).
  * ========================================================================== */
 const CFV_H=GL_HORIZ[1];        // 60거래일 ≈ 1분기. 새 상수가 아니라 지평 목록(GL_HORIZ) 재사용.
+/* (v5.9.8) 후행 EPS 폴백 — **표시 전용**.
+ * 실측(국내 종목): 야후가 `trailingEps`를 주지 않아 perAuto가 비고, 이익력이 선행 EPS 단독으로
+ * 산출됐다. 그런데 워커는 이미 `perT`(야후 trailingPE)를 보내 Firestore에 저장까지 하고 있었다 —
+ * 앱이 쓰지 않았을 뿐이다. price/perT는 야후가 **같은 상장가로** 계산한 비율의 역산이라
+ * 통화·ADR 배수가 자동으로 맞는다(변환이 필요 없다).
+ * ★ 판정 쪽 perAuto는 compute() 안(판정영역)이라 건드리지 않는다 — 고치면 RULE_VER이 올라가
+ *   쌓인 로그가 집계에서 빠지고 250거래일 시계가 0으로 돌아간다. 영향 범위를 센 뒤 따로 정한다.
+ * ★ 가격 정합 이상 신호가 있으면 폴백을 쓰지 않는다 — 틀린 가격으로 역산하면 조용히 틀린다. */
+function perTtmOf(id,k){
+  if(k.perAuto!=null)return {per:k.perAuto,src:null};
+  if(k.priceAnomaly)return {per:null,src:null};
+  const F=(S.cache&&S.cache[id]&&S.cache[id].fund)||null;
+  const pt=(F&&F.perT!=null&&isFinite(F.perT)&&F.perT>0)?+F.perT:null;
+  return pt!=null?{per:pt,src:'야후 PER 역산'}:{per:null,src:null};
+}
 function cfvOf(id){
   const k=S.calc[id]; if(!k||k.assetType==='etf')return null;
   const rb=k.revenueBasis;
+  const pt=perTtmOf(id,k);
   /* 주식수는 **시가총액과 맞춰진 것만** 쓴다(워커 reconcileShares). 맞지 않는 주식수로
    * 주당 FCF를 내면 조용히 몇 배 틀린다 — 그때는 이 방법을 빼는 것이 맞다(§22-㉕). */
   const shares=(rb&&rb.status==='reconciled'&&rb.shares>0)?rb.shares:null;
@@ -2541,7 +2557,7 @@ function cfvOf(id){
   return QADomain.buyPlan({
     price:k.price, quality:k.quality, annVol:k.annVol, h:CFV_H, ceil:FUND_CEIL_N,
     fairPerNow:fairPER(0,k.quality), fairPsrNow:fairPSR(0),
-    perTtm:k.perAuto, perFwd:k.perFwdAuto, psr:k.psrAuto, pbr:k.pbrAuto, fcfPS:fcfPS,
+    perTtm:pt.per, perTtmSrc:pt.src, perFwd:k.perFwdAuto, psr:k.psrAuto, pbr:k.pbrAuto, fcfPS:fcfPS,
     curMismatch:!!k.curMismatch,   // (v5.9.7) 통화가 섞이면 PBR 비율을 믿을 수 없다
     vm:effVM(id)
   });
@@ -4402,7 +4418,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.7 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.8 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -4500,6 +4516,23 @@ function diagCollect(){
         +' ÷ 검증 주당매출 '+(r.k.revPSq!=null?(+r.k.revPSq).toFixed(4):'미확보')+' · 원천 주당매출 '+(r.k.revPSraw!=null?(+r.k.revPSraw).toFixed(4):'없음')
         +' ['+(r.k.fcur||'통화태그없음')+(r.k.fxq!=null?(' @'+r.k.fxq.toFixed(4)):' @환율미확보')+']'
         +(r.k.psrY!=null?(' · 야후원값 '+r.k.psrY.toFixed(2)):' · 야후원값 없음')),
+    /* (v5.9.8) 후행 EPS 결측 실태 — **고치기 전에 센다.**
+     * 판정 쪽(compute 안의 perAuto)을 고치려면 RULE_VER을 올려야 하고 그러면 쌓인 로그가
+     * 전부 집계에서 빠진다. 그 대가를 치를지는 **몇 종목이 걸리는지**를 보고 정한다.
+     * 보수 적정가는 이미 price/perT 폴백을 쓰므로(표시 전용) 여기 숫자와 무관하게 복구돼 있다. */
+    후행EPS결측:(function(){
+      const st=rows.filter(r=>r.k&&r.k.assetType!=='etf');
+      const miss=st.filter(r=>r.k.perAuto==null);
+      const F=r=>(S.cache[r.id]&&S.cache[r.id].fund)||null;
+      const byPer=miss.filter(r=>{const f=F(r);return f&&f.perT!=null&&isFinite(f.perT)&&f.perT>0;});
+      const byQ=miss.filter(r=>{const f=F(r),s4=f&&f.surp;
+        return Array.isArray(s4)&&s4.length>=4&&s4.every(x=>x&&x.act!=null&&isFinite(x.act));});
+      return {주식수:st.length, 결측:miss.length,
+              야후PER로복구가능:byPer.length, 분기실적합으로복구가능:byQ.length,
+              복구불가:miss.filter(r=>!byPer.includes(r)&&!byQ.includes(r)).length,
+              종목:miss.map(r=>r.nm+(F(r)&&F(r).perT!=null?' [PER '+(+F(r).perT).toFixed(1)+']':' [복구원 없음]')),
+              주의:'판정(perAuto)은 아직 폴백을 쓰지 않습니다 — 보수 적정가만 복구돼 있습니다'};
+    })(),
     통화불일치:rows.filter(r=>r.k.curMismatch).map(r=>r.nm+' '+r.k.fcur+'→'+r.k.qcur
       +(r.k.fxq!=null?(' @'+r.k.fxq.toFixed(6)+'['+(r.k.fxSrc||'?')+']'):' @환율미확보')
       +(r.k.psrNoFx!=null?(' · PSR 환산전 '+r.k.psrNoFx.toFixed(2)):'')
