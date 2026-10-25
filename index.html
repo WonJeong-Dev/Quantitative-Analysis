@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-fClzmquthPuhr2t6D0s60Ncwg+hd1P8XqhbYrSsrKAs=' 'sha256-VFiI6ExOyCEXoMRuXTrpSmnuNf2nHVeohvSPx9FXEtE=' 'sha256-JdRgB2WiCgrntpfDlmTUejnW8sF4FWZ/pYp3f4fgWpc=' 'sha256-okYgrpOYTQn4uF4FDOj+ITyJp8Wpkd+S20zkkP5GeB0=' 'sha256-7gQyP1bcfxqPs7nfQkMDQqIHf6cOzaa9PXyQW4z1h8o=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-jZYfmgGH/tBl0qpCn9x7XT1lKn1AQthbkdBY6fZtI7M=' 'sha256-VFiI6ExOyCEXoMRuXTrpSmnuNf2nHVeohvSPx9FXEtE=' 'sha256-J3EyDnQzV7YLBiZIbYA48V0C/QzHTeyRpogWntXTpX4=' 'sha256-okYgrpOYTQn4uF4FDOj+ITyJp8Wpkd+S20zkkP5GeB0=' 'sha256-7gQyP1bcfxqPs7nfQkMDQqIHf6cOzaa9PXyQW4z1h8o=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quant Stock Board — KR·US</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3ClinearGradient%20id='bg'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%234c1d95'/%3E%3Cstop%20offset='.5'%20stop-color='%230e7490'/%3E%3Cstop%20offset='1'%20stop-color='%230f9d8a'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='pk'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fde68a'/%3E%3Cstop%20offset='1'%20stop-color='%23fb5f57'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='gl'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fff'%20stop-opacity='.20'/%3E%3Cstop%20offset='.55'%20stop-color='%23fff'%20stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23bg)'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-opacity='.20'%20stroke-width='13'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-width='8.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='51'%20cy='18'%20r='8'%20fill='url(%23pk)'/%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23gl)'/%3E%3C/svg%3E">
@@ -1159,14 +1159,32 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
       if(ceil!=null&&price>0&&value>price*ceil){skipped.push({key,label,why:'현재가 '+ceil+'배 초과 — 이상치 배제'});return;}
       used.push({key,label,value,how:how||''});
     };
-    /* ① 이익력 — 후행·선행 EPS 중 **낮은 쪽**에 성장 0의 정당 PER. 낮은 쪽을 쓰는 것이 보수다.
-     *   EPS는 price/PER로 되돌린다. 적자면 PER이 null이라 이 방법이 자동으로 빠진다. */
-    const perMax=(perT!=null&&perF!=null)?Math.max(perT,perF):(perT!=null?perT:perF);
+    /* ① 이익력 — **정상화 EPS** × 성장 0의 정당 PER.
+     *
+     * (v5.9.6) v5.7~5.9.5는 후행·선행 중 **낮은 쪽**을 썼다. 그것이 결함이었다:
+     * 성장 0의 정당 PER이 이미 "미래 이익에 돈을 내지 않는다"는 뜻인데, EPS까지 낮은 쪽을
+     * 쓰면 **같은 보수성을 두 번 곱한다**. 둘은 독립적인 보수성이 아니다.
+     * 정석적인 이익력 평가(earnings power value)는 정상화 EPS × 무성장 배수이지
+     * 최솟값 EPS × 무성장 배수가 아니다. 실측(매출성장 15% 종목): PER 18.4→11(×0.60)에
+     * EPS ×0.87이 겹쳐 기존 펀더멘털 밸류의 0.52배가 됐다.
+     *
+     * 정상화 규칙은 **새로 만들지 않고** app.js의 fundamentalFV가 쓰는 eNow 정의를 그대로 쓴다:
+     *   둘 다 있으면 50:50 평균 · 후행만 있으면 그 값 · 선행만 있으면 ×0.92(단독 할인).
+     * 두 곳의 값이 어긋나면 tests/consfv.cjs가 배포본에서 직접 읽어 비교해 실패시킨다(§22-⑲).
+     *
+     * EPS는 price/PER로 되돌린다. 적자면 PER이 null이라 이 방법이 자동으로 빠진다. */
+    const epsT=(price>0&&perT!=null&&perT>0)?price/perT:null;
+    const epsF=(price>0&&perF!=null&&perF>0)?price/perF:null;
+    const epsNorm=(epsT!=null&&epsF!=null)?(epsT*0.5+epsF*0.5)
+                 :(epsT!=null?epsT:(epsF!=null?epsF*0.92:null));
+    const perMax=(perT!=null||perF!=null)?1:null;   // 가용성 표식 — 아래 분기 조건용
     if(!(price>0))                 skipped.push({key:'eps',label:'이익력(EPS)',why:'현재가 없음'});
     else if(fPer==null)            skipped.push({key:'eps',label:'이익력(EPS)',why:'정당 PER 산출 불가(종합점수 결측)'});
-    else if(perMax==null)          skipped.push({key:'eps',label:'이익력(EPS)',why:'흑자 EPS 없음'});
+    else if(perMax==null||epsNorm==null) skipped.push({key:'eps',label:'이익력(EPS)',why:'흑자 EPS 없음'});
     else if(vm.per===0)            skipped.push({key:'eps',label:'이익력(EPS)',why:'이 종목은 PER 판별력 없음(지표신뢰 0)'});
-    else add('eps','이익력(EPS)',price/perMax*fPer,'낮은 EPS × 정당PER '+fPer.toFixed(1)+'배');
+    else add('eps','이익력(EPS)',epsNorm*fPer,
+      (epsT!=null&&epsF!=null?'정상화 EPS(후행·선행 평균)':(epsT!=null?'후행 EPS':'선행 EPS×0.92'))
+      +' × 정당PER '+fPer.toFixed(1)+'배');
     /* ② 매출 — **흑자면 쓰지 않는다.** PSR은 이익이 없을 때의 대체이고, 기존 엔진도 같은 분기다.
      *   흑자인데 PSR을 median에 섞으면 마진을 전혀 못 보는 값이 추정치를 끌어당긴다. */
     if(!(price>0))                 skipped.push({key:'rev',label:'매출(PSR)',why:'현재가 없음'});
@@ -4940,6 +4958,9 @@ const CONST_LOG=[
    * RULE_VER을 올리지 않는다(올리면 판정 로그가 rv 불일치로 전부 빠지고 250일 시계가 0으로 돌아간다). */
   {k:'CFV_H',        v:60,     from:'2026-10-22', ver:'v5.7', cls:'기존 상수 재사용 — GL_HORIZ[1](60거래일≈1분기). 표시 전용'},
   {k:'CFV_GROWTH',   v:0,      from:'2026-10-22', ver:'v5.7', cls:'구조적 필연 — 보수의 정의가 「성장을 값에 넣지 않는다」. 기존 fairPER/fairPSR 곡선에 0을 넣은 결과만 쓴다'},
+  /* (v5.9.6) 보수 적정가의 EPS 선택 — 낮은 쪽 → 정상화. 중복 보수성 제거. */
+  {k:'CFV_EPS',      v:'0.5/0.5', from:'2026-10-25', ver:'v5.9.6', cls:'기존 상수 재사용 — fundamentalFV의 eNow(후행·선행 50:50). 낮은 쪽을 쓰면 성장 0 PER과 보수성이 이중 적용된다'},
+  {k:'CFV_EPS_FWD',  v:0.92,   from:'2026-10-25', ver:'v5.9.6', cls:'기존 상수 재사용 — fundamentalFV의 선행 단독 할인. 두 곳이 어긋나면 테스트가 배포본을 읽어 실패시킨다'},
   {k:'CFV_PBR',      v:1.0,    from:'2026-10-22', ver:'v5.7', cls:'외부 사실 — 장부가 기준선(PBR 1배)은 전통적 하한 관례. 배수를 1로 고정해 자유 파라미터 0개'},
   {k:'CFV_DRIFT',    v:0,      from:'2026-10-22', ver:'v5.7', cls:'구조적 필연 — 드리프트를 넣으면 그것이 곧 전망이다. 중립 가정이며 보수성 주장은 하지 않는다'},
   {k:'CFV_P',        v:0.5,    from:'2026-10-22', ver:'v5.7', cls:'통계 관례 — 중앙값(절반의 확률로 닿는 가격). 임계가 아니라 보고 기준점'},
@@ -5793,7 +5814,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.5 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.6 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
