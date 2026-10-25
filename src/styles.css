@@ -195,7 +195,9 @@
   /* (v5.9.2) 보유 재심사 — 보유 배지가 판정을 함께 말한다. */
   .holdbadge.bad{background:#fae9eb;color:#a32d3c;border-color:#e6b4bb}
   .warnpill.stopx{background:#fae9eb;color:#a32d3c;border:1px solid #e6b4bb}
-  .rvbox{margin:10px 0 4px;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+  /* 같은 이유로 전폭 — 보유 재심사 블록도 .dgrid의 셀 하나로 들어간다. */
+  .rvbox{grid-column:1/-1;min-width:0;margin:10px 0 4px;padding:11px 13px;
+         border:1px solid var(--line);border-radius:12px;background:var(--bg)}
   .rvbox.hit{border-color:#d99aa4;background:#fdf4f5}
   .rvhd{font-weight:800;font-size:13px;margin-bottom:8px}
   .rvhd small{display:block;font-weight:600;font-size:11px;color:var(--sub);margin-top:2px}
@@ -226,7 +228,11 @@
   .vdwhy,.ex .pr,.ex .q,.ev .s{word-break:keep-all;overflow-wrap:anywhere}
 
   /* (v5.7) 상세 패널 블록 */
-  .cfvbox{margin:10px 0 4px;padding:11px 13px;border:1px solid #bcdfe4;border-radius:12px;background:#f3fbfc}
+  /* (v5.9.5) ★ 이 블록은 detailHTML의 `.dgrid`(auto-fill minmax(128px,1fr)) **안에** 들어간다.
+   * 지정하지 않으면 128px짜리 셀 하나에 갇혀 내용이 세로로 무너진다(실측). 전폭을 차지해야 한다.
+   * auto-fit으로 바꾼 내부 격자(.cfvtop)도 셀 폭이 128px이면 소용이 없었다 — 부모가 먼저다. */
+  .cfvbox{grid-column:1/-1;min-width:0;margin:10px 0 4px;padding:11px 13px;
+          border:1px solid #bcdfe4;border-radius:12px;background:#f3fbfc}
   .cfvhd{font-weight:800;font-size:13px;color:#0b5b66;margin-bottom:8px}
   .cfvhd small{display:block;font-weight:600;font-size:11px;color:var(--sub);margin-top:2px}
   /* (v5.9.1) 고정 3열 + 뷰포트 미디어쿼리는 **컨테이너 폭을 모른다**. 상세 패널이 좁으면

@@ -206,6 +206,22 @@ put('US_S');
 ok('cfv 없이 불러도 터지지 않는다', /pricedot/.test(M.stripHTML(S.calc['US_S'],null)));
 ok('k 없으면 빈 띠', M.stripHTML(null,null)==='<div class="strip"></div>');
 
+console.log('\n[7b] 상세 블록은 .dgrid 안에서 전폭이어야 한다 (v5.9.5 회귀)');
+{
+  /* cfvDetailHTML·reviewDetailHTML의 결과는 detailHTML에서 `.dgrid`(auto-fill minmax(128px,1fr))
+   * **안에** 들어간다. grid-column을 주지 않으면 128px 셀 하나에 갇혀 내용이 세로로 무너진다.
+   * 실제로 그렇게 깨졌고, 블록만 따로 렌더한 검사로는 잡히지 않았다 — 부모가 먼저다. */
+  const css=T.slice(0,T.indexOf('</style>',T.indexOf('.cfvbox')));
+  const rule=n2=>{const i=css.indexOf('.'+n2+'{');return i<0?'':css.slice(i,css.indexOf('}',i));};
+  ok('.cfvbox가 전폭(grid-column:1/-1)', /grid-column:1\/-1/.test(rule('cfvbox')), rule('cfvbox').slice(0,90));
+  ok('.rvbox가 전폭(grid-column:1/-1)', /grid-column:1\/-1/.test(rule('rvbox')), rule('rvbox').slice(0,90));
+  ok('둘 다 min-width:0 (격자 셀 안에서 줄어들 수 있어야 한다)',
+     /min-width:0/.test(rule('cfvbox'))&&/min-width:0/.test(rule('rvbox')));
+  ok('.cfvtop은 컨테이너 기준 auto-fit (뷰포트 미디어쿼리에 기대지 않는다)',
+     /repeat\(auto-fit/.test(rule('cfvtop')), rule('cfvtop').slice(0,90));
+  ok('금액을 글자 단위로 끊지 않는다', !/word-break:break-all/.test(rule('cfvcell b')+css.slice(css.indexOf('.cfvcell b{'),css.indexOf('}',css.indexOf('.cfvcell b{')))));
+}
+
 console.log('\n[8] 상세 패널 — 목록에서 내려간 것들이 여기 있는가');
 put('US_D'); VM={per:2,pbr:0,psr:1};
 { const h=M.cfvDetailHTML('US_D',S.calc['US_D']);
