@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-bWkvNAuIbSwStb94ynJRuqC5ZQK81W7QqJMyzD7tyqg=' 'sha256-QaHw5DnCs0SwhqloT4E/kHw55DX5k2TfYtI1oGC72Gk=' 'sha256-JsDZKIgqIIq2C5fsS03/WOm9NrbXiS975IqwjQpFGnE=' 'sha256-YWL6TyR1oCBJgRzcakdgA8gjxnrHmrwg6WTQJ9pTJEs=' 'sha256-H6T51eksi26N2geQmuN2lDqN1180YhYOXQdd4oNq9do=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-bWkvNAuIbSwStb94ynJRuqC5ZQK81W7QqJMyzD7tyqg=' 'sha256-QaHw5DnCs0SwhqloT4E/kHw55DX5k2TfYtI1oGC72Gk=' 'sha256-s3b4jZAzLa7edk5LPH3ddy492McyNecqCpjtm1FnVkU=' 'sha256-YWL6TyR1oCBJgRzcakdgA8gjxnrHmrwg6WTQJ9pTJEs=' 'sha256-H6T51eksi26N2geQmuN2lDqN1180YhYOXQdd4oNq9do=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quant Stock Board — KR·US</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3ClinearGradient%20id='bg'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%234c1d95'/%3E%3Cstop%20offset='.5'%20stop-color='%230e7490'/%3E%3Cstop%20offset='1'%20stop-color='%230f9d8a'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='pk'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fde68a'/%3E%3Cstop%20offset='1'%20stop-color='%23fb5f57'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='gl'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fff'%20stop-opacity='.20'/%3E%3Cstop%20offset='.55'%20stop-color='%23fff'%20stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23bg)'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-opacity='.20'%20stroke-width='13'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-width='8.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='51'%20cy='18'%20r='8'%20fill='url(%23pk)'/%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23gl)'/%3E%3C/svg%3E">
@@ -113,13 +113,18 @@
   .spacer{flex:1}
 
   /* list */
-  .listhead,.row .main{display:grid;grid-template-columns:32px minmax(150px,1.35fr) 106px 150px 150px 108px 58px minmax(150px,1.15fr) 26px;
+  /* (v5.8) 한 종목이 답하는 질문을 셋으로 고정한다 — 판정 · 실행 · 근거.
+   * 종합점수·가격매력도·RSI·후보등급 배지는 지워지지 않고 **드릴다운으로 내려갔다**.
+   * ETF 전용 격자도 없앴다: 열을 빼는 대신 같은 칸에 다른 내용을 적는다(§22-㉖과 같은 이유 —
+   * 구조가 다른 두 상태를 다른 모양으로 그리면 열 수가 어긋나 렌더 결함으로 읽힌다). */
+  .listhead,.row .main{display:grid;grid-template-columns:32px minmax(116px,.8fr) 100px 170px 196px 78px minmax(126px,.85fr) 26px;
     gap:9px;align-items:center}
   /* (v4.33) ETF 탭은 '적정목표가 · 여력'과 '매수등급'이 구조적으로 산출되지 않는다(v4.21·v4.26).
    * 빈 칸으로 남기면 고정 헤더와 값이 어긋나 렌더링 결함으로 오인된다 — 컬럼째 뺀다.
    * 남은 폭은 포지션(52주 범위) 바로 돌려준다. */
+  /* (v5.8) ETF도 같은 격자를 쓴다 — 아래 규칙은 호환을 위해 남겨 두되 값이 같다. */
   #boardView.etfcols .listhead,
-  #boardView.etfcols .row .main{grid-template-columns:32px minmax(150px,1.35fr) 106px 150px 58px minmax(210px,1.7fr) 26px}
+  #boardView.etfcols .row .main{grid-template-columns:32px minmax(116px,.8fr) 100px 170px 196px 78px minmax(126px,.85fr) 26px}
   .listhead{padding:4px 16px 8px;font-size:11px;color:var(--sub);font-weight:700}
   .row{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
        margin-bottom:8px;overflow:hidden;transition:border-color .15s}
@@ -165,14 +170,35 @@
   .warnpill.crash{background:#f0e9fb;color:var(--violet)}
   .fv .v{font-weight:700;font-size:13.5px}
   .fv .u{font-size:11.5px;font-weight:700}
-  /* (v5.7) 적정목표가 아래 두 줄 — 보수 적정가와 제안 지정가. 150px 열에서 줄바꿈 없이 들어가야 한다. */
-  .cfvmini{margin-top:5px;padding-top:4px;border-top:1px dashed var(--line);font-size:11px;line-height:1.5;white-space:nowrap}
-  .cfvmini .c1{font-weight:700;color:#0e7490}
-  .cfvmini .c2{color:var(--sub);font-weight:600}
-  .cfvmini .c2 .pp{display:inline-block;padding:0 4px;border-radius:5px;background:#e2f1f4;color:#0e7490;font-weight:800}
-  .cfvmini .none{color:var(--muted);font-weight:600;cursor:help}
-  .cfvmini .c2.s-up .pp{background:var(--up-soft);color:var(--up)}
-  .cfvmini .c2.s-dn .pp{background:var(--down-soft);color:var(--down)}
+  /* (v5.8) 판정 — 세 단어뿐. 색에만 기대지 않도록 앞에 모양 단서를 둔다(● 추천 / ◐ 관망 / ○ 탈락). */
+  .vd{display:flex;align-items:baseline;gap:5px;font-size:15.5px;font-weight:800;letter-spacing:-.015em;line-height:1.25}
+  .vd .vmk{font-size:10.5px;line-height:1}
+  .vd.rec{color:var(--up)}          /* 한국식 — 매수·상승은 빨강 */
+  .vd.watch{color:var(--amber)}
+  .vd.out{color:var(--sub)}
+  .vdgate{font-size:11px;color:var(--sub);margin-top:1px}
+  /* 한글은 글자 단위로 끊으면 '확률'이 '확'+'률'로 갈라진다 — 단어 단위로 끊는다. */
+  .vdwhy,.vdgate,.ex .pr,.ex .q,.ev .s{word-break:keep-all;overflow-wrap:anywhere}
+  .vdwhy{font-size:11px;color:var(--sub);line-height:1.45;margin-top:2px}
+  .vdwarn{display:flex;gap:3px;flex-wrap:wrap;margin-top:4px}
+
+  /* (v5.8) 실행 — 지정가 하나. '무엇이 이 값을 정했는가'는 지웠다:
+   * 지정가 = min(보수 적정가, 중앙 도달가)라 어느 쪽이 정하든 **항상 보수 적정가 이하**이고,
+   * 따라서 실제로 살 가격에 영향이 없다. 남는 정보는 그 가격에 닿을 확률 하나뿐이다. */
+  .ex .p{font-weight:700;font-size:15px;letter-spacing:-.02em;line-height:1.25}
+  .ex .p.none{font-size:12.5px;font-weight:600;color:var(--muted)}
+  .ex .pr{font-size:11px;color:var(--sub);margin-top:2px;line-height:1.45}
+  .ex .pr b{color:var(--text);font-weight:700}
+  .ex .q{font-size:11px;color:var(--sub);margin-top:2px;line-height:1.45}
+
+  /* (v5.8) 근거 — 판정이 얼마나 얇은 근거 위에 서 있는가. 판정을 바꾸지 않는다. */
+  .g-ev{text-align:right}
+  .ev .n{font-weight:800;font-size:15px;line-height:1.25}
+  .ev .s{font-size:10.5px;color:var(--sub);line-height:1.4}
+  .ev .bars{display:flex;gap:2px;margin-top:4px;justify-content:flex-end}
+  .ev .bars i{width:9px;height:5px;border-radius:1px;background:var(--line)}
+  .ev .bars i.on{background:var(--accent)}
+  .ev .bars i.lo{background:var(--amber)}
 
   /* (v5.7) 상세 패널 블록 */
   .cfvbox{margin:10px 0 4px;padding:11px 13px;border:1px solid #bcdfe4;border-radius:12px;background:#f3fbfc}
@@ -201,23 +227,16 @@
   .row.open .chev{transform:rotate(180deg)}
 
   /* position strip */
-  /* (v5.7) 위쪽 절반은 기술적 위치(매물대·볼린저·이평), 아래 레일은 **가치 위치**(보수 적정가·제안 지정가).
-   * 두 종류를 같은 높이에 섞으면 어느 눈금이 무슨 뜻인지 사라진다 — 층을 나눈다. */
-  .strip{position:relative;height:40px}
-  .strip .cfvzone{position:absolute;top:30px;height:5px;background:#0e7490;opacity:.3;border-radius:3px}
-  .strip .tick.cfv{background:#0e7490;top:27px;height:11px;width:2.5px}
-  .strip .tick.cfvlim{background:#0e7490;opacity:.55;top:27px;height:11px;width:2.5px}
-  .strip .track{position:absolute;left:0;right:0;top:14px;height:3px;border-radius:2px;background:#e6eaf2}
-  .strip .zone{position:absolute;top:9px;height:13px;background:var(--violet-soft);border:1px solid #d9c9f2;border-radius:3px;opacity:.9}
-  .strip .bb{position:absolute;top:13px;height:5px;background:var(--accent-soft);border-radius:2px}
-  .strip .tick{position:absolute;top:7px;width:2px;height:17px;border-radius:1px}
-  .strip .tick.poc{background:var(--violet);top:5px;height:21px}
-  .strip .tick.e20{background:var(--green)}
-  .strip .tick.s50{background:var(--amber)}
-  .strip .tick.s200{background:#4a5670}
-  .strip .tick.bbm{background:#9db1e8;top:10px;height:11px}
-  .strip .pricedot{position:absolute;top:9px;width:13px;height:13px;border-radius:50%;border:2.5px solid #fff;
-    box-shadow:0 0 0 1.5px rgba(20,30,60,.35),0 1px 3px rgba(20,30,60,.3);transform:translateX(-50%)}
+  /* (v5.8) 한 층으로 돌아간다 — 눈금이 셋뿐이라 층을 나눌 이유가 없다.
+   * 매물대·볼린저·이평 눈금은 상세 패널의 차트로 내려갔다. */
+  .strip{position:relative;height:26px}
+  .strip .track{position:absolute;left:0;right:0;top:11px;height:4px;border-radius:2px;background:#e6eaf2}
+  .strip .cfvzone{position:absolute;top:11px;height:4px;border-radius:2px;background:#0e7490;opacity:.32}
+  .strip .tick{position:absolute;top:5px;width:2.5px;height:16px;border-radius:1px;transform:translateX(-50%)}
+  .strip .tick.cfv{background:#0e7490}
+  .strip .tick.cfvlim{background:#0e7490;opacity:.55}
+  .strip .pricedot{position:absolute;top:6px;width:13px;height:13px;border-radius:50%;transform:translateX(-50%);
+         border:2.5px solid #fff;box-shadow:0 0 0 1px #c8d2e4}
   .striplegend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--sub);padding:2px 16px 10px}
   .lg{display:inline-flex;align-items:center;gap:5px}
   .lg i{width:9px;height:9px;border-radius:2px;display:inline-block}
@@ -387,16 +406,15 @@
 
   @media (max-width:880px){
     .listhead{display:none}
-    .row .main{grid-template-columns:26px 1fr 108px 30px;
-      grid-template-areas:"rk nm pr ch" "rk sc gr ch" "rk fv rs ch" "rk st st ch";row-gap:8px}
+    .row .main{grid-template-columns:26px 1fr 112px 30px;
+      grid-template-areas:"rk nm pr ch" "rk vd vd ch" "rk ex ev ch" "rk st st ch";row-gap:9px}
     /* (v4.33) #boardView.etfcols 는 ID 선택자라 미디어쿼리 안에서도 데스크톱 규칙을 이긴다.
      * 모바일 열 정의를 여기서 다시 덮어쓰지 않으면 좁은 화면이 7열로 깨진다. */
-    #boardView.etfcols .row .main{grid-template-columns:26px 1fr 108px 30px;
-      grid-template-areas:"rk nm pr ch" "rk sc rs ch" "rk st st ch"}
-    .g-rk{grid-area:rk}.g-nm{grid-area:nm}.g-pr{grid-area:pr;text-align:right}.g-sc{grid-area:sc}
-    .g-gr{grid-area:gr;justify-content:flex-end}
-    .g-fv{grid-area:fv}.g-rs{grid-area:rs;text-align:right}.g-st{grid-area:st}.g-ch{grid-area:ch}
-    .rsi{text-align:right}
+    #boardView.etfcols .row .main{grid-template-columns:26px 1fr 112px 30px;
+      grid-template-areas:"rk nm pr ch" "rk vd vd ch" "rk ex ev ch" "rk st st ch"}
+    .g-rk{grid-area:rk}.g-nm{grid-area:nm}.g-pr{grid-area:pr;text-align:right}
+    .g-vd{grid-area:vd}.g-ex{grid-area:ex}.g-ev{grid-area:ev;text-align:right}
+    .g-st{grid-area:st}.g-ch{grid-area:ch}
   }
 
 /* v5.2: calm desktop workspace, compact touch layout, accessible input states */
@@ -442,7 +460,7 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
  .wrap{padding:14px 12px 35px}.logo small{font-size:10px}.head-right{margin-left:0;width:100%}.head-right #btnDiag{margin-left:auto}header{gap:12px}
  .overview{display:block;padding:22px 20px;border-radius:16px;margin-bottom:16px}.overview h1{font-size:23px}.overview p{font-size:12px}.overview #workspaceStatus{border-left:0;border-top:1px solid #ffffff30;padding:12px 0 0;margin-top:16px;font-size:12px}
  .marketbar .idx{min-width:127px}.controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:12px;gap:10px}.controls .spacer{display:none}.searchbox{grid-column:1/-1;grid-row:1}.searchbox input{width:100%!important}.controls select{width:100%;min-width:0}.controls .btn{padding:9px;font-size:13px}
- input,select,textarea,.lggrid input,.lggrid select,.manual .fld select{font-size:16px!important}.row .main,#boardView.etfcols .row .main{grid-template-columns:18px minmax(0,1fr) 95px 16px;gap:8px;padding:15px 11px}.nm .k{font-size:14px}.nm .t .sec{display:none}.price .p{font-size:15px}.g-fv{font-size:12px}.ts-lab{font-size:10px}.ts-val{font-size:12px}.rank{font-size:11px}
+ input,select,textarea,.lggrid input,.lggrid select,.manual .fld select{font-size:16px!important}.row .main,#boardView.etfcols .row .main{grid-template-columns:18px minmax(0,1fr) 95px 16px;gap:8px;padding:15px 11px}.nm .k{font-size:14px}.nm .t .sec{display:none}.price .p{font-size:15px}.vd{font-size:14.5px}.ex .p{font-size:14px}.rank{font-size:11px}
  .detail{padding:16px 12px!important}.detail .dgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.manual{grid-template-columns:repeat(2,minmax(0,1fr))!important}.dstat{min-width:0}.dstat .v{overflow-wrap:anywhere}.livebox input,.simbox input{max-width:100%}.simbox,.livebox{flex-wrap:wrap}.chart{max-width:100%}
  .modal{width:100%;max-width:100%!important;border-radius:20px 20px 0 0;max-height:92dvh;padding:22px 18px calc(20px + env(safe-area-inset-bottom))}.mask{padding:0!important;align-items:flex-end!important}.modal .foot{bottom:-22px;padding:12px 0 calc(12px + env(safe-area-inset-bottom));gap:8px}.modal .foot .btn{flex-grow:1}.wrow{grid-template-columns:100px minmax(0,1fr) 35px;gap:8px}.lggrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.lgform{padding:16px 12px}.lggrid input,.lggrid select{min-width:0}.btn.sm,.lgchip{min-height:44px}.lgtbl{font-size:12px}.lgtbl td:first-child{min-width:130px}.lgscroll::after{content:'↔ 표를 좌우로 이동하여 확인하세요';display:block;position:sticky;left:0;padding:8px 12px;font-size:11px;color:var(--sub)}
  #lgNew{width:100%}.lgcards{grid-template-columns:repeat(2,minmax(0,1fr))!important}.lgtot .vl{font-size:20px}.lgfoot{font-size:11px;line-height:1.7}.evidence-card{padding:14px}.evidence-card dl{gap:10px}
@@ -507,22 +525,17 @@ input,select,textarea{border-radius:9px!important}.controls input,.controls sele
   </div>
 
   <details class="legend-panel"><summary>차트 범례와 읽는 법</summary><div class="striplegend">
-    <span class="lg"><i style="background:var(--violet-soft);border:1px solid #d9c9f2"></i>매물대 VA(1Y)</span>
-    <span class="lg"><i style="background:var(--violet)"></i>POC</span>
-    <span class="lg"><i style="background:var(--accent-soft)"></i>볼린저(20,2)</span>
-    <span class="lg"><i style="background:#9db1e8"></i>BB중단</span>
-    <span class="lg"><i style="background:var(--green)"></i>EMA20</span>
-    <span class="lg"><i style="background:var(--amber)"></i>SMA50</span>
-    <span class="lg"><i style="background:#4a5670"></i>SMA200</span>
+    <span class="lg"><i style="background:#0e7490"></i>보수 적정가 <small>(재무제표만으로 낸 지금 정당한 가격)</small></span>
+    <span class="lg"><i style="background:#0e7490;opacity:.55"></i>제안 지정가 <small>(가치 + 도달확률 교차)</small></span>
+    <span class="lg"><i style="background:#0e7490;opacity:.32"></i>가치 구간 <small>(지정가 ~ 보수 적정가)</small></span>
     <span class="lg"><i style="background:#fff;border:2px solid #555;border-radius:50%"></i>현재가</span>
-    <span class="lg"><i style="background:#0e7490"></i>보수 적정가 <small>(재무제표 기준 · 아래 레일)</small></span>
-    <span class="lg"><i style="background:#0e7490;opacity:.55"></i>제안 지정가 <small>(가치+도달확률 교차)</small></span>
-    <span class="lg"><i style="background:#0e7490;opacity:.3"></i>가치 구간 <small>(지정가~보수 적정가)</small></span>
+    <span class="lg" style="opacity:.75">판정 <b>● 추천</b> = 관문 통과 + 현재가가 가치 아래 · <b>◐ 관망</b> = 관문 통과, 가격이 비쌈 · <b>○ 탈락</b> = 관문에서 걸림 또는 값을 못 매김</span>
+    <span class="lg" style="opacity:.75">매물대·볼린저·이평·RSI·종합점수·가격매력도·후보등급은 <b>행을 열면</b> 나옵니다</span>
   </div>
 
   </details>
   <div class="listhead">
-    <div>#</div><div>종목</div><div>현재가</div><div>종합 · 가격매력</div><div>적정목표가 · 여력<br><span style="font-weight:600;opacity:.8">보수 적정가 · 제안 지정가</span></div><div style="text-align:center">규칙 후보등급</div><div style="text-align:center">RSI</div><div>포지션 (52주 범위)<br><span style="font-weight:600;opacity:.8">아래 레일 = 가치 구간</span></div><div></div>
+    <div>#</div><div>종목</div><div>현재가</div><div>판정</div><div>실행 — 지정가 · 닿을 확률</div><div style="text-align:right">근거</div><div>52주 범위 · 가치 구간</div><div></div>
   </div>
   <div id="list"></div>
   </div><!-- /#boardView -->
@@ -3810,22 +3823,91 @@ const CFV_STATE={
   far: {lab:'가치가 제약',   cls:'dn',   tip:'개연성 있는 하락폭으로도 보수 적정가까지 내려오지 않습니다 — 지금은 비싸다는 뜻입니다.'}
 };
 
-/* 목록 한 줄용 축약. ★ 산출 불가일 때 **빈 칸으로 두지 않는다** — 목록에서 조용히 사라지면
- * 기능이 없는 것으로 읽힌다. '—'와 이유(툴팁)를 남긴다(§22-㉕). */
-function cfvMiniHTML(k,cfv){
-  if(!k||k.assetType==='etf')return '';
+/* ==========================================================================
+ * (v5.8) 판정은 세 단어뿐 — 추천 · 관망 · 탈락.
+ *
+ * v5.7까지 목록은 한 종목에 '정당한 가격' 셋, 괴리율 둘, 점수 막대 둘, 띠 2층을 같은 비중으로
+ * 늘어놓았다. 전부 보이면 무엇이 답인지 사라진다. 여기서 하는 일은 숫자를 더하는 것이 아니라
+ * **줄이는 것**이다: 판정 한 단어 + 가격 하나 + 근거 하나. 나머지는 행을 열면 전부 나온다.
+ *
+ * 왜 다섯이 아니라 셋인가. '지켜보기'와 '판단 보류'는 둘 다 "지금 안 산다"로 같고 차이는
+ * **이유**지 판정이 아니다 — 이유 줄로 내린다. '재심사 필요'는 방향이 반대(팔까?)지만
+ * 보유 배지 + 같은 세 단어로 읽힌다(탈락 · 보유 n주 = "지금이라면 안 살 걸 들고 있다").
+ *
+ * ★ 판정식을 바꾸지 않는다. 관문 통과 여부(k.tier의 존재)와 cfv.state를 **읽기만** 한다 —
+ *   RULE_VER이 올라가면 쌓인 판정 로그가 rv 불일치로 집계에서 빠지고 250거래일 시계가 0이 된다.
+ * ========================================================================== */
+const VERDICT={
+  rec  :{w:'추천', cls:'rec',   mk:'●'},
+  watch:{w:'관망', cls:'watch', mk:'◐'},
+  out  :{w:'탈락', cls:'out',   mk:'○'}
+};
+function verdictOf(id){
+  const k=S.calc[id]; if(!k)return null;
+  const isETF=(k.assetType==='etf'), d=k.grd||null;
+  const gn=d&&d.gates?d.gates.filter(x=>x[1]).length:null, gt=d&&d.gates?d.gates.length:null;
+  const cfv=isETF?null:cfvOf(id);
+  let key,why;
+  if(!k.tier){
+    key='out';
+    /* d.blocked는 관문의 전체 문구다. 앞부분(이름)만 쓰고 전체는 툴팁에 남긴다. */
+    why=(d&&d.blocked)?('관문에서 걸림 — '+String(d.blocked).split(' — ')[0]):'관문 미통과';
+  }else if(isETF){
+    /* ETF는 재무제표가 없어 보수 적정가를 만들 수 없다 — 결함이 아니라 구조다.
+     * 보드 자신의 ETF 등급(저점권/관심권/중립)이 그 자리의 가치 신호다. */
+    key=(k.tier==='저점권')?'rec':'watch';
+    why=(key==='rec')?'ETF 등급 저점권 — 지금 가격이 매력 구간'
+                     :'ETF 등급 '+k.tier+' — 재무제표가 없어 지정가는 내지 않음';
+  }else if(!cfv||cfv.fv==null){
+    /* 관문은 통과했는데 값을 못 매기는 상태. 관문 탈락과 **다른 이유**지만 할 일은 같다. */
+    key='out'; why='관문은 통과 · 값을 매길 수 없어 가격 판단 불가';
+  }else if(cfv.state==='at'){
+    key='rec'; why='현재가가 이미 가치('+curSym(k.currency)+fmtP(cfv.fv,k.currency)+') 아래';
+  }else{
+    key='watch';
+    const gap=(k.price>0&&cfv.fv>0)?(k.price/cfv.fv-1)*100:null;
+    why='회사는 통과, 가격이 가치보다 '+(gap!=null?gap.toFixed(1)+'% ':'')+'비쌈';
+  }
+  return {key:key,w:VERDICT[key].w,cls:VERDICT[key].cls,mk:VERDICT[key].mk,
+          why:why,blocked:(d&&d.blocked)||null,gn:gn,gt:gt,tier:k.tier||null,cfv:cfv,isETF:isETF};
+}
+/* 근거 밀도 — 「이 판정이 얼마나 얇은 근거 위에 서 있는가」.
+ * v4.15의 성분결측 가중을 **뒤집어** 상시 노출되는 품질 수치로 올린다. 경고 필로만 뜨면
+ * 사고처럼 보이는데, 실제로는 모든 종목이 늘 어느 정도 결측을 안고 있다.
+ * ETF는 fin·growth·ana가 통째로 없는 것이 구조적 정상이라 수치를 내지 않는다(§22-㉕). */
+function evidenceOf(k){
+  if(!k)return null;
+  if(k.assetType==='etf')return {dens:null,why:'ETF는 재무 성분이 구조적으로 없어 밀도를 내지 않습니다'};
+  const mw=Math.max(k.qMissW||0,k.aMissW||0);
+  const parts=[];
+  if(k.qMissW>0)parts.push('종합점수 '+k.qMissW+'% ('+(k.qMiss||[]).join(' · ')+')');
+  if(k.aMissW>0)parts.push('가격매력도 '+k.aMissW+'% ('+(k.aMiss||[]).join(' · ')+')');
+  return {dens:Math.max(0,Math.min(100,100-mw)),why:parts.join(' / ')||'결측 없음'};
+}
+/* 목록 '실행' 칸 — 지정가 하나 + 닿을 확률 + 수량(v5.9에서 채운다). */
+function exHTML(k,cfv){
+  if(!k)return '';
+  if(k.assetType==='etf')
+    return '<div class="p none" title="ETF는 재무제표가 없어 보수 적정가를 만들 수 없습니다 — 결함이 아니라 구조입니다">지정가 없음 (ETF)</div>';
   if(!cfv||cfv.fv==null)
-    return '<div class="cfvmini"><div class="c1 none" title="'+esc('보수 적정가 산출 불가 — '+((cfv&&cfv.why)||'재무 입력 미수신')+' (상세를 열면 방법별 사유가 나옵니다)')+'">보수 —</div></div>';
-  const st=CFV_STATE[cfv.state]||null;
-  const gap=(k.price>0)?(cfv.fv/k.price-1)*100:null;
-  let g='<div class="cfvmini"><div class="c1" title="'+esc('보수 적정가 — 재무제표만으로 낸 지금 정당한 가격. 방법 '+cfv.n+'종의 중앙값이고 애널 목표가는 쓰지 않습니다.'+(st?' ['+st.lab+'] '+st.tip:''))+'">'
-    +'보수 '+fmtP(cfv.fv,k.currency)+(gap!=null?' <span class="'+chgCls(gap)+'">'+fmtPct(gap)+'</span>':'')+'</div>';
-  if(cfv.limit!=null&&cfv.limitProb!=null)
-    g+='<div class="c2'+(st?' s-'+st.cls:'')+'" title="'+esc('제안 지정가 — 가치로도 정당하고(보수 적정가 이하) '+CFV_H+'거래일 안에 닿을 개연성도 있는 가장 높은 가격. 괄호는 그 가격의 도달확률(실현변동성·무드리프트 가정)입니다. 제약: '+(cfv.bind==='value'?'가치':'확률'))+'">'
-      +'지정 '+fmtP(cfv.limit,k.currency)+' <span class="pp">'+Math.round(cfv.limitProb*100)+'%</span></div>';
-  else
-    g+='<div class="c2 none" title="'+esc(cfv.why||'도달확률 산출 불가')+'">지정 —</div>';
-  return g+'</div>';
+    return '<div class="p none" title="'+esc((cfv&&cfv.why)||'재무 입력 미수신')+'">지정가 없음</div>'
+      +'<div class="pr">값을 못 매기니 걸 가격도 없습니다</div>';
+  if(cfv.limit==null||cfv.limitProb==null)
+    return '<div class="p">'+curSym(k.currency)+fmtP(cfv.fv,k.currency)+'</div>'
+      +'<div class="pr" title="'+esc(cfv.why||'')+'">닿을 확률 산출 불가 — 변동성 미확보</div>';
+  return '<div class="p">'+curSym(k.currency)+fmtP(cfv.limit,k.currency)+'</div>'
+    +'<div class="pr">'+CFV_H+'거래일 안에 여기까지 내려올 확률 <b>'+Math.round(cfv.limitProb*100)+'%</b></div>';
+}
+/* 목록 '근거' 칸 */
+function evHTML(k){
+  const e=evidenceOf(k);
+  if(!e)return '';
+  if(e.dens==null)return '<div class="n" style="color:var(--muted)">—</div><div class="s" title="'+esc(e.why)+'">ETF</div>';
+  const on=Math.round(e.dens/20), low=e.dens<60;
+  let b='<div class="bars">';
+  for(let i=0;i<5;i++)b+='<i class="'+(i<on?(low?'lo':'on'):'')+'"></i>';
+  return '<div class="n"'+(low?' style="color:var(--amber)"':'')+' title="'+esc('근거 밀도 — 중립값 50으로 대체되지 않은 비율. 비어 있는 성분: '+e.why)+'">'+e.dens+'%</div>'
+    +'<div class="s">근거 밀도</div>'+b+'</div>';
 }
 /* 상세 패널용 — 방법별 내역과 **배제 사유**, 그리고 가정을 전부 적는다.
  * 중앙값만 보여주면 어느 방법이 끌어내렸는지 알 수 없고, 그러면 숫자를 믿을 근거도 없다. */
@@ -3867,38 +3949,35 @@ function cfvDetailHTML(id,k){
     +'<b>상승 추세 종목에서는 도달확률이 과대평가됩니다.</b></div>';
   return g+'</div>';
 }
+/* (v5.8) 가격 띠 — 52주 범위 위에 **세 개만** 찍는다: 제안 지정가 · 보수 적정가 · 현재가.
+ * v5.7까지 여기에 매물대 VA · 볼린저 · POC · EMA20 · SMA50 · SMA200 · BB중단까지 8종이 겹쳐
+ * 있었다. 전부 쓸모 있는 값이지만 **가치 판단과 타이밍 참고를 같은 폭에 섞으면** 어느 눈금이
+ * 무슨 뜻인지 사라진다. 기술 눈금은 지워진 것이 아니라 상세 패널의 차트·stat으로 내려갔다.
+ * 축 범위에 지정가·보수 적정가를 포함시킨다 — 빼면 눈금이 0%·100%에 붙어 끝에 걸린 것처럼 보인다. */
 function stripHTML(k,cfv){
   if(!k)return '<div class="strip"></div>';
-  const xs=[k.lo52,k.hi52,k.bbL,k.bbU,k.price,k.s200,k.s50,k.e20];
-  /* (v5.7) 보수 적정가·제안 지정가도 축 범위에 넣는다. 넣지 않으면 밴드가 축 밖으로
-   * 밀려 0% 또는 100%에 붙어 **눈금 끝에 걸린 것처럼** 보인다(§22-⑯과 같은 종류의 함정). */
+  const xs=[k.lo52,k.hi52,k.price];
   if(cfv){ if(cfv.fv!=null)xs.push(cfv.fv); if(cfv.limit!=null)xs.push(cfv.limit); }
-  if(k.vp1){xs.push(k.vp1.val,k.vp1.vah);}
   const valid=xs.filter(x=>x!=null&&isFinite(x));
   if(valid.length<2)return '<div class="strip"></div>';
-  let lo=Math.min(...valid),hi=Math.max(...valid);
-  const pad=(hi-lo)*0.04||1; lo-=pad; hi+=pad;
+  let lo=Math.min.apply(null,valid),hi=Math.max.apply(null,valid);
+  const pad=(hi-lo)*0.05||1; lo-=pad; hi+=pad;
   const P=x=>clamp((x-lo)/(hi-lo)*100,0,100);
+  const money=v=>fmtP(v,k.currency);
   let out='<div class="strip"><div class="track"></div>';
-  if(k.vp1)out+='<div class="zone" style="left:'+P(k.vp1.val).toFixed(2)+'%;width:'+(P(k.vp1.vah)-P(k.vp1.val)).toFixed(2)+'%" title="매물대 VA(1Y) '+fmtP(k.vp1.val,k.currency)+' ~ '+fmtP(k.vp1.vah,k.currency)+'"></div>';
-  if(k.bbL!=null)out+='<div class="bb" style="left:'+P(k.bbL).toFixed(2)+'%;width:'+(P(k.bbU)-P(k.bbL)).toFixed(2)+'%" title="볼린저(20,2) '+fmtP(k.bbL,k.currency)+' ~ '+fmtP(k.bbU,k.currency)+'"></div>';
-  const tick=(x,cls,label)=>x==null?'':'<div class="tick '+cls+'" style="left:'+P(x).toFixed(2)+'%" title="'+label+' '+fmtP(x,k.currency)+'"></div>';
-  /* (v5.7) 가치 구간 — 제안 지정가 ~ 보수 적정가. 현재가 점과의 위치 관계가 곧 판독이다. */
-  if(cfv&&cfv.fv!=null&&cfv.limit!=null&&cfv.limit<=cfv.fv){
-    out+='<div class="cfvzone" style="left:'+P(cfv.limit).toFixed(2)+'%;width:'+Math.max(P(cfv.fv)-P(cfv.limit),0.4).toFixed(2)+'%" title="제안 지정가 '+fmtP(cfv.limit,k.currency)+' ~ 보수 적정가 '+fmtP(cfv.fv,k.currency)+'"></div>';
-  }
-  if(cfv&&cfv.fv!=null)out+=tick(cfv.fv,'cfv','보수 적정가');
-  if(cfv&&cfv.limit!=null)out+=tick(cfv.limit,'cfvlim','제안 지정가');
-  if(k.vp1)out+=tick(k.vp1.poc,'poc','POC(1Y)');
-  out+=tick(k.bbM,'bbm','BB중단(MA20)');
-  out+=tick(k.e20,'e20','EMA20');
-  out+=tick(k.s50,'s50','SMA50');
-  out+=tick(k.s200,'s200','SMA200');
+  /* 가치 구간 — 제안 지정가 ~ 보수 적정가. 둘이 같은 값이면(가치가 제약) 폭이 0이라 그리지 않는다. */
+  if(cfv&&cfv.fv!=null&&cfv.limit!=null&&cfv.limit<cfv.fv)
+    out+='<div class="cfvzone" style="left:'+P(cfv.limit).toFixed(2)+'%;width:'+Math.max(P(cfv.fv)-P(cfv.limit),0.4).toFixed(2)
+      +'%" title="제안 지정가 '+money(cfv.limit)+' ~ 보수 적정가 '+money(cfv.fv)+'"></div>';
+  if(cfv&&cfv.fv!=null)
+    out+='<div class="tick cfv" style="left:'+P(cfv.fv).toFixed(2)+'%" title="보수 적정가 '+money(cfv.fv)+' — 재무제표만으로 낸 지금 정당한 가격"></div>';
+  if(cfv&&cfv.limit!=null)
+    out+='<div class="tick cfvlim" style="left:'+P(cfv.limit).toFixed(2)+'%" title="제안 지정가 '+money(cfv.limit)
+      +(cfv.limitProb!=null?(' — '+CFV_H+'거래일 내 도달확률 '+Math.round(cfv.limitProb*100)+'%'):'')+'"></div>';
   const pc=k.chg>0?'var(--up)':(k.chg<0?'var(--down)':'#7a8499');
-  /* (v4.33 fix) price가 null이면 P(null)이 0을 만들어 **현재가 점이 맨 왼쪽에 찍혔다** —
-   * 52주 최저가에 붙어 있는 것처럼 보인다. 모르는 값은 그리지 않는다(§22-⑯). */
+  /* (v4.33 fix) price가 null이면 P(null)이 0을 만들어 현재가 점이 맨 왼쪽에 찍힌다 — 모르는 값은 그리지 않는다(§22-⑯). */
   if(k.price!=null&&isFinite(k.price))
-    out+='<div class="pricedot" style="left:'+P(k.price).toFixed(2)+'%;background:'+pc+'" title="현재가 '+fmtP(k.price,k.currency)+'"></div>';
+    out+='<div class="pricedot" style="left:'+P(k.price).toFixed(2)+'%;background:'+pc+'" title="현재가 '+money(k.price)+'"></div>';
   return out+'</div>';
 }
 function render(){
@@ -3945,8 +4024,6 @@ function render(){
     const CFV=k?cfvOf(id):null;       // (v5.7) 행 안에서 두 번 쓰므로 한 번만 만든다
     if(k){
       const fi=freshInfo(k);
-      const qv=k.quality, av=k.attract;
-      const isETF=(k.assetType==='etf');   /* (v4.33) 없는 컬럼은 빈 칸이 아니라 통째로 뺀다 */
       const warn=[];
       if(k.dataStale)warn.push('<span class="warnpill hz" title="캔들·시세가 '+(k.barAgeDays!=null?Math.round(k.barAgeDays)+'일':'기간 불명')+' 낡음 — 등급 보류">⚠ 데이터지연</span>');
       if(k.priceAnomaly)warn.push('<span class="warnpill hz" title="현재가 정합 이상 — '+esc((k.dataAnoms||[]).join(' · '))+'">⚠ 가격이상</span>');
@@ -3964,33 +4041,30 @@ function render(){
       if(k.earnSoon)warn.push('<span class="warnpill earn" title="실적 발표 임박(±2일)">📅 실적</span>');
       if(k.hasHardHazard)warn.push('<span class="warnpill hz" title="'+esc(k.hazardMemo||'수동 악재 플래그')+'">⚠ 악재</span>');
       else if(k.crashPenalty<0.8)warn.push('<span class="warnpill crash" title="'+esc(k.crashLbl||'낙폭과대')+'">🪂 급락</span>');
+      /* (v5.8) 판정 · 실행 · 근거 — 셋뿐. 종합점수·가격매력도·RSI·후보등급 배지는
+       * 지워진 것이 아니라 행을 열면 나오는 tierBoxHTML·점수분해·RSI stat으로 내려갔다. */
+      const VD=verdictOf(id);
       main+='<div class="price g-pr num"><div class="p">'+curSym(k.currency)+fmtP(k.price,k.currency)+'</div>'
         +'<div class="c '+chgCls(k.chg)+'">'+fmtPct(k.chg)+' <span class="live lv-'+fi.cls+'"><i class="ld"></i>'+fi.label+'</span></div>'
         +(stale&&fi.cls==='close'?'<div class="stale">캐시 '+ago(k.updatedAt)+'</div>':'')+'</div>'
-        +'<div class="twoscore g-sc">'
-          /* (v4.26) ETF의 종합점수는 fin·growth·ana가 통째로 없어 85%가 잔여 앵커(50)다.
-           * v4.21 이후 ETF 판정에 쓰이지도 않는데 화면에서만 크게 보였다. 뺀다. */
-          +(((k&&k.assetType)==='etf')?'':'<div class="ts-row"><span class="ts-lab">종합</span><div class="ts-bar"><i style="width:'+(qv!=null?qv.toFixed(0):0)+'%;background:'+qColor(qv)+'"></i></div><span class="ts-val" style="color:'+qColor(qv)+'">'+(qv!=null?qv.toFixed(0):'—')+'</span></div>')
-          +'<div class="ts-row"><span class="ts-lab">매력</span><div class="ts-bar"><i style="width:'+(av!=null?av.toFixed(0):0)+'%;background:'+gaugeColor(av||0)+'"></i></div><span class="ts-val" style="color:'+gaugeColor(av||0)+'">'+(av!=null?av.toFixed(0):'—')+'</span></div>'
-          /* (v4.33) ★ 경고 필(데이터지연·가격이상·급락·실적)은 v4.32까지 등급 셀 안에 살았다.
-           * 컬럼만 지우고 이걸 옮기지 않으면 ETF에서 경고가 통째로 사라진다 — 점수 칸으로 내린다. */
-          +((isETF&&warn.length)?'<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:5px">'+warn.join('')+'</div>':'')
+        +'<div class="g-vd">'
+          +(VD?('<div class="vd '+VD.cls+'"><span class="vmk" aria-hidden="true">'+VD.mk+'</span>'+VD.w+'</div>'
+                +'<div class="vdgate"'+(VD.blocked?(' title="'+esc(VD.blocked)+'"'):'')+'>'
+                  +(VD.gn!=null?('관문 '+VD.gn+' / '+VD.gt):'관문 —')
+                  +(VD.tier?(' · 등급 '+esc(VD.tier)):'')+'</div>'
+                +'<div class="vdwhy">'+esc(VD.why)+'</div>')
+              :'<div class="vd out"><span class="vmk" aria-hidden="true">○</span>판정 대기</div>')
+          +(warn.length?'<div class="vdwarn">'+warn.join('')+'</div>':'')
         +'</div>'
-        +(isETF?''
-          :'<div class="fv g-fv num"><div class="v">'+(k.fv!=null?curSym(k.currency)+fmtP(k.fv,k.currency):'—')+'</div>'
-           +'<div class="u '+chgCls(k.upside)+'">'+(k.upside!=null?'여력 '+fmtPct(k.upside):'')+'</div>'
-           +cfvMiniHTML(k,CFV)+'</div>'
-           +'<div class="gradecell g-gr"><div style="display:flex;flex-direction:column;gap:4px;align-items:center">'+catBadge(k.tier,!!(k.grd&&k.grd.nearBoundary),false)
-           +(warn.length?'<div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">'+warn.join('')+'</div>':'')+'</div></div>')
-        +'<div class="rsi g-rs num" style="color:'+(k.rsi!=null?(k.rsi<30?'var(--up)':(k.rsi>70?'var(--down)':'inherit')):'inherit')+'">'+(k.rsi!=null?k.rsi.toFixed(1):'—')
-        +'<small>'+(k.rsi==null?'':(k.rsi<30?'과매도':(k.rsi>70?'과매수':'중립')))+'</small></div>'
+        +'<div class="ex g-ex num">'+exHTML(k,CFV)+'</div>'
+        +'<div class="ev g-ev num">'+evHTML(k)+'</div>'
         +'<div class="g-st">'+stripHTML(k,CFV)+'</div>';
     }else{
       main+='<div class="price g-pr"><div class="p" style="color:var(--sub)">'+(err?'조회 실패':'로딩…')+'</div>'
         +(err?'<div class="stale" title="'+esc(err)+'">'+esc(err.slice(0,26))+'</div>':'')+'</div>'
-        +'<div class="g-sc muted" style="font-size:12px">데이터 수신 대기</div>'
-        +(assetType(st)==='etf'?'':'<div class="g-fv"></div><div class="g-gr"></div>')   /* (v4.33) 로딩 행도 열 수를 맞춘다 */
-        +'<div class="g-rs"></div><div class="g-st"><div class="strip"></div></div>';
+        +'<div class="g-vd muted" style="font-size:12px">데이터 수신 대기</div>'
+        +'<div class="g-ex"></div><div class="g-ev"></div>'   /* (v4.33) 로딩 행도 열 수를 맞춘다 */
+        +'<div class="g-st"><div class="strip"></div></div>';
     }
     main+='<div class="chev g-ch">▼</div></div>';
     return divider+'<div class="row'+(open?' open':'')+'" data-id="'+esc(id)+'">'+main+(open?detailHTML(id):'')+'</div>';
