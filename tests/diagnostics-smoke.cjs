@@ -170,49 +170,34 @@ console.log('\n[8] 수집하고 안 그리면 없는 항목이다 (§22-㉕ · �
   ok("'복구원'으로 광고하지 않는다", !/복구원/.test(H), H.slice(0,400));
   ok('그 근거 수치를 주의에 남긴다', /1741\.7%/.test(M.diagCollect().후행EPS결측.주의));
   ok('PER 없이 판정한다는 결론을 적는다', /PER 없이 판정합니다/.test(M.diagCollect().후행EPS결측.주의));
-  ok('EPS 정합이 그려진다', /EPS 정합/.test(H));
-  ok('판정에 개입하지 않는다고 적는다', /판정에 개입하지 않습니다/.test(H));
+  ok('EPS 순마진이 그려진다', /EPS 순마진/.test(H));
 }
 
-console.log('\n[9] EPS 정합 — 기간이 맞는 비율로만 분류한다 (v5.9.12)');
+console.log('\n[9] EPS 순마진 — 관측이지 오류 판정이 아니다 (v5.9.15)');
+/* v5.9.11~12는 순마진 100% 초과를 '순이익 > 매출이므로 입력 오류'로 분류하고 빨간불을 켰다.
+ * 1차 출처가 그 전제를 반증했다 — SK하이닉스 2026 Q2 공식 발표 순이익률 **118%**
+ * (매출 79.32조 · 영업이익 60.54조 · 당기순이익 93.92조). 지주회사가 아니다.
+ * 세 종목(MU·NVDA·SKH)을 SEC·IR로 전수 확인한 결과 **데이터 오류 0건**이었다.
+ * 이 검사는 분류가 되살아나는 것을 막는다. 임계를 높여 살리는 것도 막는다(§22-⑤). */
 {
-  const E=M.diagCollect().EPS정합;
-  ok('기간일치 축이 분류를 쥔다', E&&E.기간일치&&Array.isArray(E.기간일치.불가능));
-  ok('선행은 참고 축으로 분리된다', Array.isArray(E.선행참고));
-  ok('마진 급확대 축이 있다', Array.isArray(E.마진급확대));
-  ok('분모가 후행 주당매출임을 적는다', /후행 주당매출/.test(E.주의));
-  ok('선행을 분류에 안 쓰는 이유를 적는다', /성장률만큼 부풀어/.test(E.주의));
-  ok('비영업손익 예외를 적는다', /비영업손익/.test(E.주의));
-  ok('판정 미개입을 명시한다', /판정에 개입하지 않습니다/.test(E.주의));
+  const E=M.diagCollect().EPS순마진관측;
+  ok('관측 객체가 있다', !!E&&Array.isArray(E.순마진상위));
+  ok("'불가능' 분류가 없다", E.불가능===undefined&&E.기간일치===undefined, Object.keys(E).join(','));
+  ok("'확인' 분류도 없다", E.확인===undefined);
+  ok('분모 기준을 적는다', /후행 주당매출/.test(E.기준));
+  ok('오류 판정이 아님을 못 박는다', /오류 판정이 아닙니다/.test(E.주의));
+  ok('반례를 수치째로 남긴다 (118%)', /118%/.test(E.주의)&&/93\.92조/.test(E.주의));
+  ok('100%로 되돌리지 말라고 적는다', /100%를 오류 기준으로 되돌리지 마세요/.test(E.주의));
+  ok('1차 출처 확인 사실과 날짜를 남긴다', /2026-10-26/.test(E.주의)&&/데이터 오류 0건/.test(E.주의));
+  ok('마진 확대 가정 축은 관측으로 남는다', Array.isArray(E.마진급확대));
 
-  const id0=Object.keys(S.stocks).find(x=>S.calc[x]&&S.calc[x].assetType!=='etf');
-  ok('주식 종목을 하나 고른다 (검사 전제)', !!id0, id0);
-  const K=S.calc[id0], save={rp:K.revPSq,ef:K.epsFwdEff,pa:K.perAuto,px:K.price};
-  /* 매출 성장률은 fund에 있다 — 없으면 ②③ 축이 조용히 꺼진다. 검사 전제로 세운다. */
-  if(!S.cache[id0])S.cache[id0]={};
-  if(!S.cache[id0].fund)S.cache[id0].fund={};
-  const saveG=S.cache[id0].fund.revG; S.cache[id0].fund.revG=20;
-  const setT=(rp,epsT,epsF)=>{K.revPSq=rp; K.price=100; K.perAuto=epsT!=null?100/epsT:null; K.epsFwdEff=epsF;};
-
-  /* ★ v5.9.11이 틀린 바로 그 자리 — 선행만 높은 성장주는 '불가능'이 아니다. */
-  setT(100,40,160);   // 후행 마진 40% · 선행 마진 160%
-  { const E2=M.diagCollect().EPS정합;
-    ok('선행만 높으면 불가능으로 분류하지 않는다 (v5.9.11 회귀)',
-       !E2.기간일치.불가능.some(x=>x.indexOf(S.stocks[id0].name||S.stocks[id0].symbol)===0),
-       JSON.stringify(E2.기간일치.불가능).slice(0,160));
-    ok('그래도 참고 축에는 남긴다', E2.선행참고.some(x=>/선행 160%/.test(x)), JSON.stringify(E2.선행참고).slice(0,160));
-    ok('마진 급확대로도 잡힌다 (선행 EPS +300%)', E2.마진급확대.some(x=>/\+300%/.test(x)), JSON.stringify(E2.마진급확대).slice(0,160)); }
-
-  setT(100,120,null); // 후행 마진 120% — 기간이 맞는데 순이익>매출
-  ok('기간일치 120%는 불가능으로 분류', M.diagCollect().EPS정합.기간일치.불가능.some(x=>/후행 120%/.test(x)),
-     JSON.stringify(M.diagCollect().EPS정합.기간일치.불가능).slice(0,160));
-  setT(100,75,null);
-  ok('기간일치 75%는 확인 띠', M.diagCollect().EPS정합.기간일치.확인.some(x=>/후행 75%/.test(x)));
-  setT(100,12,null);
-  { const E3=M.diagCollect().EPS정합;
-    ok('기간일치 12%는 정상 (경고 남발 없음)', !E3.기간일치.불가능.length&&!E3.기간일치.확인.some(x=>/후행 12%/.test(x))); }
-  K.revPSq=save.rp; K.epsFwdEff=save.ef; K.perAuto=save.pa; K.price=save.px;
-  S.cache[id0].fund.revG=saveG;
+  M.diagRender(); const H2=HTMLOUT;
+  ok('화면에 그려진다', /EPS 순마진/.test(H2));
+  /* 경고색 인자를 넘기지 않으므로 이 줄의 라벨에 var(--down)이 붙을 일이 없다. */
+  { const seg=H2.slice(Math.max(0,H2.indexOf('EPS 순마진')-160), H2.indexOf('EPS 순마진'));
+    ok('이 줄에 경고색이 켜지지 않는다', !/var\(--down\)/.test(seg), seg.slice(-120)); }
+  ok("화면도 '불가능'이라 말하지 않는다",
+     !/불가능/.test(H2.slice(H2.indexOf('EPS 순마진'), H2.indexOf('EPS 순마진')+1200)));
 }
 
 console.log('\n────────────────────────────');
