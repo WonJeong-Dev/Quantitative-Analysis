@@ -1,6 +1,6 @@
 {
   "name": "qa-stock-board",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "private": true,
   "scripts": {
     "build": "node scripts/build.cjs",

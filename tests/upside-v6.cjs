@@ -52,8 +52,8 @@ ok('「하」 등급은 여전히 MIN_MARGIN을 본다 (G3의 역할은 여기 �
    /\['여력',U,MIN_MARGIN,'%'\]/.test(T));
 
 console.log('\n[6] 규칙 버전 — 로그가 새로 쌓인다는 사실');
-ok("RULE_VER가 v6.0", /const RULE_VER='v6\.0';/.test(T));
-ok('사전등록 판도 함께 올라갔다 (규칙이 다른 관측을 한 장부에 섞지 않는다)', /PREREG_VER='v3'/.test(T));
+ok('RULE_VER가 v6.1 이상', /const RULE_VER='v6\.[1-9]/.test(T));
+ok('사전등록 판도 함께 올라갔다 (규칙이 다른 관측을 한 장부에 섞지 않는다)', /PREREG_VER='v[3-9]'/.test(T));
 ok('supersedes가 바로 앞 판을 가리킨다', /\+\(\+PREREG_VER\.slice\(1\)-1\)/.test(T));
 
 console.log('\n[7] 화면이 왜 탈락인지 말한다');

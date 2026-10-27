@@ -77,13 +77,29 @@ stock('A',{k:{price:70999,tier:'중'}});
 r=M.reviewOf('A',{qty:10});
 ok('선 아래로 내려오면 무효화 도달', r.breach===true&&r.hit===true);
 ok('이유를 문장으로 남긴다', /무효화선 아래로/.test(r.why||''), r.why);
-stock('A',{k:{price:90000,tier:null}});
+/* (v6.1) '지금이라면 안 삼'은 **평가해서 거절했을 때만** 쓴다.
+ * 종전엔 tier가 없으면 전부 거절로 읽어, 데이터가 없어 평가조차 못 한 종목에도 붙었다. */
+const BLK={blocked:'최소 품질 — 종합점수 ≥ 45',blockedCode:'G8',assessable:true};
+stock('A',{k:{price:90000,tier:null,grd:BLK}});
 r=M.reviewOf('A',{qty:10});
 ok('관문 탈락이면 선 위여도 재심사 걸림', r.failed===true&&r.breach===false&&r.hit===true);
 ok('"지금 신규라면" 문장', /지금 신규라면 관문을 통과하지 못합니다/.test(r.why||''), r.why);
-stock('A',{k:{price:70000,tier:null}});
+stock('A',{k:{price:70000,tier:null,grd:BLK}});
 r=M.reviewOf('A',{qty:10});
 ok('둘 다여도 관문 쪽을 먼저 말한다', r.failed&&r.breach&&/관문/.test(r.why));
+
+/* 평가 불가 — 거절이 아니다. 경고색도 켜지 않는다. */
+stock('A',{k:{price:90000,tier:null,grd:{blocked:null,blockedCode:null,assessable:false,
+  unknown:['휴리스틱 현재가치 — 평가 불가 (근거가 목표가뿐이거나 없음)'],unknownCode:['G4']}}});
+r=M.reviewOf('A',{qty:10});
+ok('데이터가 없으면 거절로 읽지 않는다', r.failed===false&&r.unknown===true, JSON.stringify([r.failed,r.unknown]));
+ok('모름에 경고색을 켜지 않는다 (선 위일 때)', r.hit===false, r.hit);
+ok('나쁘다는 뜻이 아님을 문장에 적는다', /나쁘다는 뜻이 아닙니다/.test(r.why||''), r.why);
+/* 다만 무효화선을 깼다면 그건 **관측된 사실**이므로 경고는 켠다. */
+stock('A',{k:{price:70000,tier:null,grd:{blocked:null,blockedCode:null,assessable:false,
+  unknown:['x'],unknownCode:['G4']}}});
+r=M.reviewOf('A',{qty:10});
+ok('무효화선 도달은 모름과 무관하게 경고', r.breach===true&&r.hit===true);
 ok('보유가 아니면 null', M.reviewOf('A',null)===null);
 S.trades=[];
 stock('A',{k:{price:1,tier:'중'}});

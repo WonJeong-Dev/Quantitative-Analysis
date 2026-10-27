@@ -2602,25 +2602,42 @@ const CFV_STATE={
  * ★ 판정식을 바꾸지 않는다. 관문 통과 여부(k.tier의 존재)와 cfv.state를 **읽기만** 한다 —
  *   RULE_VER이 올라가면 쌓인 판정 로그가 rv 불일치로 집계에서 빠지고 250거래일 시계가 0이 된다.
  * ========================================================================== */
+/* (v6.1) 네 번째 칸은 **판정이 아니다.** 추천·관망·탈락은 평가의 결과이고,
+ * '평가 불가'는 평가를 하지 않았다는 사실이다. 셋 중 하나로 접으면 근거 없이
+ * 긍정(통과)이나 부정(탈락)을 말하게 된다 — 데이터가 없는데 평가하는 것은 언제나 틀렸다. */
 const VERDICT={
   rec  :{w:'추천', cls:'rec',   mk:'●'},
   watch:{w:'관망', cls:'watch', mk:'◐'},
-  out  :{w:'탈락', cls:'out',   mk:'○'}
+  out  :{w:'탈락', cls:'out',   mk:'○'},
+  na   :{w:'평가 불가', cls:'na', mk:'⊘'}
 };
 function verdictOf(id){
   const k=S.calc[id]; if(!k)return null;
   const isETF=(k.assetType==='etf'), d=k.grd||null;
-  const gn=d&&d.gates?d.gates.filter(x=>x[1]).length:null, gt=d&&d.gates?d.gates.length:null;
+  const gn=d&&d.gates?d.gates.filter(x=>x[1]===true).length:null, gt=d&&d.gates?d.gates.length:null;
   const cfv=isETF?null:cfvOf(id);
   /* (v5.8.1) 이유는 **짧은 명사구**로. 긴 문장은 좁은 칸에서 3줄로 접혀 읽히지 않는다.
    * 긴 설명은 title로 내린다 — 화면에서 지워지는 것이 아니라 한 겹 뒤로 간다.
    * 중복도 뺀다: '관망'이 이미 "관문 통과"를 뜻하므로 이유에 또 적지 않는다. */
   let key,why,tip;
-  if(!k.tier){
+  /* (v6.1) 거절이 먼저다 — 실제로 평가해서 못 넘은 것이 있으면 그것이 판정이다.
+   * 거절이 없고 모르는 항목만 남으면 판정을 내리지 않는다. */
+  if(d&&d.assessable===false&&!(d&&d.blocked)){
+    key='na';
+    const u=(d.unknown||[]);
+    const nm=u.length?String(u[0]).split(' — ')[0]:null;
+    why=nm?(nm+' 자료 없음'):'평가할 자료 없음';
+    tip='평가할 데이터가 없어 판정을 내리지 않았습니다 — 나쁘다는 뜻이 아닙니다. '
+       +(u.length?('없는 항목: '+u.join(' / ')):'');
+  }else if(!k.tier&&(d&&d.blocked)){
     key='out';
-    const nm=(d&&d.blocked)?String(d.blocked).split(' — ')[0]:null;
-    why=nm?(nm+'에서 걸림'):'관문 미통과';
-    tip=(d&&d.blocked)?('하드 게이트 탈락 — '+d.blocked):'하드 게이트를 통과하지 못했습니다';
+    const nm=String(d.blocked).split(' — ')[0];
+    why=nm+'에서 걸림';
+    tip='하드 게이트 탈락 — '+d.blocked
+       +((d.unknown||[]).length?(' · 함께 평가 불가: '+d.unknown.join(' / ')):'');
+  }else if(!k.tier&&!isETF&&!(d&&d.gates&&d.gates.length)){
+    key='na'; why='평가할 자료 없음';
+    tip='관문을 돌릴 입력이 없습니다 — 판정을 내리지 않았습니다';
   }else if(isETF){
     /* ETF는 재무제표가 없어 보수 적정가를 만들 수 없다 — 결함이 아니라 구조다.
      * 보드 자신의 ETF 등급(저점권/관심권/중립)이 그 자리의 가치 신호다. */
@@ -2629,9 +2646,11 @@ function verdictOf(id){
     tip=(key==='rec')?'ETF 등급 저점권 — 지금 가격이 매력 구간입니다'
                      :'ETF 등급 '+k.tier+' — 재무제표가 없어 지정가는 내지 않습니다';
   }else if(!cfv||cfv.fv==null){
-    /* 관문은 통과했는데 값을 못 매기는 상태. 관문 탈락과 **다른 이유**지만 할 일은 같다. */
-    key='out'; why='값을 매길 수 없음';
-    tip='하드 게이트는 전부 통과했지만 재무제표로 가치를 산출할 방법이 하나도 없습니다 — 가격 판단을 할 수 없습니다';
+    /* (v6.1) 관문은 통과했는데 값을 못 매기는 상태. 종전엔 '탈락'으로 적었으나 **거절이 아니다** —
+     * 재무제표가 없어서 가치를 못 낸 것이지 비싸서 떨어뜨린 것이 아니다. */
+    key='na'; why='가치를 매길 자료 없음';
+    tip='하드 게이트는 전부 통과했지만 재무제표로 가치를 산출할 방법이 하나도 없습니다 — '
+       +'평가를 하지 않았다는 뜻이며, 나쁘다는 뜻이 아닙니다';
   }else if(cfv.state==='at'){
     key='rec'; why='가치 '+curSym(k.currency)+fmtP(cfv.fv,k.currency)+' 아래';
     tip='하드 게이트 전부 통과 · 현재가가 보수 적정가('+curSym(k.currency)+fmtP(cfv.fv,k.currency)+') 이하입니다';
@@ -2714,13 +2733,20 @@ function stopOf(id){
 /* 보유 종목의 재심사 결과. 「지금 신규라면 사는가」 + 「사전 약속을 깼는가」 둘뿐이다. */
 function reviewOf(id,hd){
   if(!hd)return null;
-  const k=S.calc[id]||{}, so=stopOf(id);
-  const failed=!k.tier;                                  // 관문 미통과 = 지금이라면 안 산다
+  const k=S.calc[id]||{}, so=stopOf(id), d=k.grd||null;
+  /* (v6.1) '지금이라면 안 삼'은 **평가해서 거절했을 때만** 쓴다.
+   * 종전엔 `failed=!k.tier`였다 — 등급이 없는 모든 경우를 거절로 읽었고, 그래서
+   * 데이터가 없어 평가조차 못 한 종목에도 "지금이라면 안 삼"이 붙었다(실측: 삼성전자).
+   * 근거 없이 내리는 부정 판정이다. 모르는 것은 모른다고 적는다. */
+  const failed=!k.tier&&!!(d&&d.blocked);                 // 평가했고 관문에서 거절됨
+  const unknown=!k.tier&&!(d&&d.blocked);                 // 평가할 자료가 없었음
   const breach=!!(so&&so.stop!=null&&k.price!=null&&k.price<=so.stop);
-  return {held:true,qty:hd.qty,failed:failed,stop:so,breach:breach,
+  return {held:true,qty:hd.qty,failed:failed,unknown:unknown,stop:so,breach:breach,
+          /* 경고색(hit)은 거절·무효화 도달에만 켠다 — 모름에 빨간불을 켜면 §22-㉖ 위반이다. */
           hit:failed||breach,
           why:failed?'지금 신규라면 관문을 통과하지 못합니다'
-             :(breach?'매수 때 적어 둔 무효화선 아래로 내려왔습니다':null)};
+             :(breach?'매수 때 적어 둔 무효화선 아래로 내려왔습니다'
+             :(unknown?'평가할 데이터가 없어 판정을 내리지 않았습니다 — 나쁘다는 뜻이 아닙니다':null))};
 }
 /* ==========================================================================
  * (v5.9) 위험예산과 수량 — 손실 통제.
@@ -3005,7 +3031,7 @@ function render(){
         +(RV&&RV.hit?(' · '+RV.why):'')
         +' — 거래기록 탭에서 매도할 수 있습니다')+'">보유 '+lgQty(hd.qty)
       +(masked?'':(hd.rate!=null?' '+(hd.rate>=0?'+':'−')+Math.abs(hd.rate).toFixed(1)+'%':''))
-      +(RV&&RV.failed?' · 지금이라면 안 삼':'')+'</span>'):'';
+      +(RV&&RV.failed?' · 지금이라면 안 삼':(RV&&RV.unknown?' · 평가 불가':''))+'</span>'):'';
     let main='<div class="main">'
       +'<div class="rank g-rk '+(goldTop?'top':'')+'">'+(i+1)+'</div>'
       +'<div class="nm g-nm"><div class="k">'+esc(st.name)+hdBadge+'</div><div class="t"><span class="mono">'+esc(st.market==='KR'?(st.code||st.symbol):st.symbol)+'</span><span class="sec">'+esc(st.sector||'')+'</span></div></div>';
@@ -3712,19 +3738,24 @@ const CONST_LOG=[
 function constNow(){ const m={}; for(const r of CONST_LOG)m[r.k]=r; return m; }
 /* ★ 판정 로직 버전. 이 값이 바뀌면 그 이전 로그와 이후 로그를 **같은 평균에 넣으면 안 된다**.
  * 판정에 영향을 주는 변경(임계값·게이트·등급식)이 있을 때만 올린다 — 표시 전용 변경은 그대로 둔다. */
-const RULE_VER='v6.0';   /* (v6.0) 판정 변경 — 상승여력의 기준을 '적정가 혼합'에서 '애널 목표가'로.
+const RULE_VER='v6.1';   /* (v6.0) 판정 변경 — 상승여력의 기준을 '적정가 혼합'에서 '애널 목표가'로.
   * v4.4가 모든 종목에 ×0.5를 넣으면서 v4.3 눈금의 임계 20/25/30을 다시 보지 않아 실효 임계가
   * 40/50/60이 돼 있었다(실측: 60종목 전부 기준일 불명, tgtF.f의 서로 다른 값이 단 2개).
   * 임계는 그대로 두고 **임계가 보는 양**을 이름이 약속하는 것으로 되돌린다.
   * 함께: G3(「하」 등급 여력 조건과 중복) 제거 · G9(실적 ±2일) 관문 → 배지로 강등.
-  * ★ 이 버전부터 판정 로그가 새로 쌓인다 — v5.5 로그는 집계에서 빠지고 250거래일 시계가 0부터다. */
+  * (v6.1) 관문에 **세 번째 상태(null=평가 불가)**를 도입. G5는 RSI·%B가 둘 다 없으면 종전엔
+  *   '과열 아님'으로 통과시켰는데 이제 통과시키지 않는다 — 그래서 판정이 바뀐다(규칙 인상 사유).
+  * ★ 이 버전부터 판정 로그가 새로 쌓인다 — 이전 로그는 집계에서 빠지고 250거래일 시계가 0부터다. */
 
 function classifyDetail(k){
   /* (v4.34) 조기 반환도 정규 반환과 **같은 키 집합**을 갖는다. 격자 검증에서
    * attract==null 경로만 tierNoCap·blockedCode가 undefined로 나오는 것이 드러났다.
    * 판정에는 영향이 없지만, 로그 스키마가 경로에 따라 갈라지면 나중에 그 문서를
    * 읽는 쪽이 '값이 null인 것'과 '키가 없는 것'을 구분하지 못한다. */
+  /* (v6.1) 매력도조차 못 낸 종목은 **평가한 적이 없다.** 종전엔 blocked=null인 채로
+   * tier=null만 돌려줘 화면이 '탈락'으로 읽었다 — 관문을 돌려보지도 않았는데 그렇게 말할 수 없다. */
   if(!k||k.attract==null)return{tier:null,tierNoCap:null,gates:[],conf:[],n:0,nRaw:0,blocked:null,blockedCode:null,
+    assessable:false,unknown:['가격매력도 미산출 — 관문을 돌릴 입력이 없음'],unknownCode:['G0'],
     fallingKnife:false,downtrend:false,statDown:false,slopeDown:false,margins:[],nearBoundary:false};
   const RL=k.rsiLo==null?30:k.rsiLo, RH=k.rsiHi==null?70:k.rsiHi;
   const confLim=(RL+(RH-RL)*0.35);
@@ -3732,9 +3763,12 @@ function classifyDetail(k){
   const fallingKnife=((deepDD||steep)&&k.makingNewLow===true);
   // 하방 안전: 현재가가 '현재 적정가'(근미래 실적 기준) 대비 지나치게 비싸지 않은가.
   //  성장주는 현재적정가 대비 프리미엄이 정상이므로 -25%까지 허용(그 이상은 거품 신호).
-  /* (v5.5) 판정 불가(하방여유 없음 · 현재가치 근거가 목표가뿐)는 통과가 아니다(D6). */
+  /* (v5.5) 판정 불가(하방여유 없음 · 현재가치 근거가 목표가뿐)는 **통과가 아니다**(D6).
+   * (v6.1) 그렇다고 **탈락도 아니다.** v5.5는 통과/탈락 둘뿐이어서 '모름'을 탈락으로 접었고,
+   * 그래서 후행 EPS가 없는 국내 종목이 '지금이라면 안 삼'으로 찍혔다. 세 번째 상태로 둔다 —
+   * 통과시키면 '안전하다'로, 탈락시키면 '나쁘다'로 읽히는데 둘 다 근거가 없다. */
   const downAssess=(k.downside!=null&&k.downIndep!==false);
-  const downsideOK = downAssess ? (k.downside >= -25) : false;
+  const downsideOK = downAssess ? (k.downside >= -25) : null;
   const UE=(k.upsideEff!==undefined)?k.upsideEff:k.upside;   // (v5.5) 게이트·등급·확증이 보는 여력(급락 감쇠 후)
 
   /* (v4.34) 세 번째 원소 = 안정 코드. **라벨은 문구가 바뀌면 달라지지만 코드는 안 바뀐다.**
@@ -3749,15 +3783,34 @@ function classifyDetail(k){
     *  G9 '실적 발표 ±2일 제외' — 실적 발표는 **변동성 사건이지 품질 신호가 아니다.** 발표가
     *     임박했다는 사실은 📅 배지로 그대로 남고, 사는 것을 막지는 않는다. 손실 통제는
     *     수량 사이징과 무효화선이 따로 맡는다. */
+  /* (v6.1) ★ 관문의 세 번째 상태 — **null = 평가 불가.**
+   *
+   * 지금까지 관문은 참/거짓뿐이었고, 그래서 "데이터가 없다"가 둘 중 하나로 접혔다.
+   * 같은 배열 안에서 **규약이 둘로 갈려 있었다**:
+   *   모르면 통과 : G1 신선 · G2 정합 · G5 과열 · G6 칼날 · G10 악재
+   *   모르면 탈락 : G4 하방 · G7 봉수 · G8 품질 · G11 성분
+   * 앞쪽은 '모름'을 안전으로, 뒤쪽은 '모름'을 결격으로 읽었다. 둘 다 **평가하지 않은 것을
+   * 평가한 것처럼** 말한다. 실측: 삼성전자는 후행 EPS가 없어 현재가치 근거가 목표가뿐인데,
+   * 화면은 '탈락 · 지금이라면 안 삼'이라고 적었다 — 근거 없이 내린 부정 판정이다.
+   *
+   * 이제 셋이다: true=통과 · false=**평가했고 못 넘음** · null=**평가할 데이터가 없음**.
+   * null은 탈락이 아니다. 등급도 주지 않지만, 그 종목을 '나쁘다'고 말하지도 않는다.
+   * ★ '없음'과 '모름'은 다르다 — 이상 신호 플래그(G1·G2·G6·G10)의 null은 '신호가 없다'는
+   *   관측이므로 통과가 맞다. 값이 와야 하는데 안 온 것(G4·G5·G7·G8·G11)만 null로 둔다. */
   const gates=[
     ['데이터 신선 — 캔들·시세 '+STALE_MAX_D+'일 이내', !k.dataStale,'G1'],
     ['가격 정합 — 현재가 이상 신호 없음', !k.priceAnomaly,'G2'],
     [downAssess?'휴리스틱 현재가치 대비 괴리 −25% 이상 (손실한도 아님)'
-               :'휴리스틱 현재가치 — 판정 불가 (근거가 목표가뿐이거나 없음)', downsideOK,'G4'],
-    ['과열 아님 — RSI < '+(RH-5)+' · %B < 0.90', !((k.rsi!=null&&k.rsi>=RH-5)||(k.pB!=null&&k.pB>=0.9)),'G5'],
+               :'휴리스틱 현재가치 — 평가 불가 (근거가 목표가뿐이거나 없음)', downsideOK,'G4'],
+    [(k.rsi==null&&k.pB==null)?'과열 — 평가 불가 (RSI·%B 미산출)'
+      :('과열 아님 — RSI < '+(RH-5)+' · %B < 0.90'),
+      (k.rsi==null&&k.pB==null)?null:!((k.rsi!=null&&k.rsi>=RH-5)||(k.pB!=null&&k.pB>=0.9)),'G5'],
     ['떨어지는 칼날 아님 — 급락 중 신저가 갱신 아님', !fallingKnife,'G6'],
-    ['데이터 충분 — 상장 '+MIN_BARS+'봉(≈6개월) 이상', k.listedBars>=MIN_BARS,'G7'],
-    ['최소 품질 — 종합점수 ≥ 45', k.quality!=null&&k.quality>=45,'G8'],
+    [k.listedBars==null?'상장 기간 — 평가 불가 (봉 수 미확인)'
+      :('데이터 충분 — 상장 '+MIN_BARS+'봉(≈6개월) 이상'),
+      k.listedBars==null?null:(k.listedBars>=MIN_BARS),'G7'],
+    [k.quality==null?'최소 품질 — 평가 불가 (종합점수 미산출)':'최소 품질 — 종합점수 ≥ 45',
+      k.quality==null?null:(k.quality>=45),'G8'],
     ['악재 플래그 없음 — 수동 보류 미설정', !k.hasHardHazard,'G10']
   ];
   const conf=[
@@ -3777,7 +3830,13 @@ function classifyDetail(k){
    * 조건식을 새로 쓰지 않고 인덱스로 걸러낸다 — 주식 경로의 문구·임계값이 그대로 남는다. */
   const isETF=(k.assetType==='etf');
   const ETF_SKIP=['G4','G8'];   // (v6.0) 적정가·종합점수를 요구하는 관문만 뺀다. G3·G9는 이제 없다.
-  const gatesEff=isETF?gates.filter(g=>ETF_SKIP.indexOf(g[2])<0):gates.concat([['필수 품질 성분 수신 · 수동 단위 확인',!(k.qMissW>0)&&!k.deUnitUnknown&&!(k.qInputMissing||[]).length,'G11']]);
+  const gatesEff=isETF?gates.filter(g=>ETF_SKIP.indexOf(g[2])<0):gates.concat([[
+    (k.qMissW>0||k.deUnitUnknown||(k.qInputMissing||[]).length)
+      ? ('필수 품질 성분 — 평가 불가 ('+[(k.qMissW>0?('결측 '+k.qMissW+'%'):null),
+          (k.deUnitUnknown?'수동 단위 미확인':null),
+          ((k.qInputMissing||[]).length?((k.qInputMissing||[]).join(' · ')):null)].filter(Boolean).join(' · ')+')')
+      : '필수 품질 성분 수신 · 수동 단위 확인',
+    (k.qMissW>0||k.deUnitUnknown||(k.qInputMissing||[]).length)?null:true,'G11']]);
   const confEff =isETF?conf.filter((_,i)=>i!==0&&i!==4&&i!==5):conf;
   /* (v5.5) 확증은 **독립 정보군당 1표**다. 항목 수를 세면
    *  · C2 RSI · C3 %B · C4 POC는 모두 최근 2~4주 수익률의 단조함수에 가깝다 — 한 번의 급락으로 셋이 함께 참.
@@ -3786,10 +3845,18 @@ function classifyDetail(k){
    *  '상'은 세 군이 모두 동의해야 한다. 항목별 참/거짓은 화면에 그대로 보인다(nRaw).
    *  ETF는 군이 1개라 군 투표에 정보가 없다 — 군 내부 항목 수(nRaw) 2/1/1(종전과 동일)로 판정. */
   const CONF_GRP=[[1,2,3],[0,4],[5]];
-  const g=gatesEff.every(x=>x[1]), nRaw=confEff.filter(x=>x[1]).length;
+  /* (v6.1) 거절과 평가 불가를 가른다. **거절이 우선한다** — 실제로 평가해서 못 넘은 것이
+   * 하나라도 있으면 그것이 이 종목에 대한 판정이고, 모르는 항목이 있다고 해서 그 사실이
+   * 지워지지는 않는다. 거절이 없고 모르는 것만 있으면 **판정을 내리지 않는다.** */
+  const rejected=gatesEff.filter(x=>x[1]===false);
+  const unknownG=gatesEff.filter(x=>x[1]==null);
+  const g=rejected.length===0&&unknownG.length===0;      // 전부 통과해야 등급 심사
+  const assessable=rejected.length>0||unknownG.length===0; // 모르는 것만 남으면 평가 불가
+  const nRaw=confEff.filter(x=>x[1]).length;
   const n=isETF?nRaw:CONF_GRP.filter(gr=>gr.some(i=>conf[i]&&conf[i][1])).length;
-  let blocked=null, blockedCode=null;
-  if(!g){ const f=gatesEff.find(x=>!x[1]); blocked=f?f[0]:null; blockedCode=f?(f[2]||null):null; }
+  let blocked=null, blockedCode=null, unknown=null, unknownCode=null;
+  if(rejected.length){ blocked=rejected[0][0]; blockedCode=rejected[0][2]||null; }
+  if(unknownG.length){ unknown=unknownG.map(x=>x[0]); unknownCode=unknownG.map(x=>x[2]||null); }
 
   const A=k.attract, Q=k.quality!=null?k.quality:0, U=UE;
   /* (v4.9) 등급 임계를 표로 한 곳에 모은다. v4.8까지는 아래 if 사슬에 숫자가 인라인돼
@@ -3893,7 +3960,9 @@ function classifyDetail(k){
       for(const [lbl,v,th,u] of sp) addM(nm+' '+lbl,v,th,u,u==='%'?1:0);
   }
   const nearBoundary=margins.some(m=>m.near);
-  return {tier,tierNoCap,gates:gatesEff,conf:confEff,isETF,n,nRaw,blocked,blockedCode,fallingKnife,downtrend,statDown,slopeDown,downsideOK,downAssess,margins,nearBoundary};
+  return {tier,tierNoCap,gates:gatesEff,conf:confEff,isETF,n,nRaw,blocked,blockedCode,
+          assessable,unknown,unknownCode,                       // (v6.1) 평가 불가를 거절과 구분해 내보낸다
+          fallingKnife,downtrend,statDown,slopeDown,downsideOK,downAssess,margins,nearBoundary};
 }
 function classify(k){ return classifyDetail(k).tier; }
 function tierBoxHTML(k){
@@ -4556,7 +4625,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.0.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.1.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -4596,7 +4665,11 @@ function diagCollect(){
     시각:new Date().toLocaleString('ko-KR'),
     종목수:ids.length,
     요약패스:S.sumProg?((S.sumProg.retry?'재시도 ':'재무조회 ')+S.sumProg.done+'/'+S.sumProg.total):'완료',
-    등급분포:rows.reduce((a,r)=>(a[r.k.tier||'범위밖']=(a[r.k.tier||'범위밖']||0)+1,a),{}),
+    /* (v6.1) '평가 불가'를 '범위밖'(=탈락 더미)에 섞지 않는다 — 평가하지 않은 것을
+     * 떨어진 것으로 세면 분포가 거짓말을 한다. 거절과 모름을 갈라 센다. */
+    등급분포:rows.reduce((a,r)=>{const g=r.k.grd||null;
+      const key=r.k.tier||((g&&g.assessable===false&&!(g&&g.blocked))?'평가불가':'관문탈락');
+      a[key]=(a[key]||0)+1; return a;},{}),
     /* (v4.37) ETF를 뺀다. ETF는 fin·growth·ana(=종합 85%)와 up(=매력 46%)이 통째로
      * 없어 결측률이 **상수**다 — 종목 상태가 아니라 자산유형의 정의다(v4.21·v4.26).
      * 보드 행은 이미 ETF를 0으로 처리하는데(L2938) 진단 패널만 안 해서, 정상인 ETF

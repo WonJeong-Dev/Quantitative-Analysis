@@ -364,7 +364,7 @@
    * arm을 더하면 해시가 달라지므로 새 문서(v2)로 굳힌다. v1은 그대로 보존된다. */
   /* (v6.0) 판정 규칙이 바뀌면 그림자 장부도 새로 동결한다 — 규칙이 다른 관측을 한 장부에
    * 섞으면 승격 판정이 두 규칙의 혼합을 평가하게 된다. supersedes가 이전 장부를 가리킨다. */
-  const PREREG_VER='v3';
+  const PREREG_VER='v4';
   function preregBody(rv){
     const rows={arms:SHADOW_ARMS.map(a=>({key:a.key,label:a.label,note:a.note||(a.sample?'sample':a.always?'always':'')})),
       entry:'직전 문서에서 거짓→참 전이 · 직전 행이 없으면 판정 안 함',

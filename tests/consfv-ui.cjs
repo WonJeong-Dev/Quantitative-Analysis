@@ -108,8 +108,11 @@ ok('어느 관문에서 걸렸는지 앞부분만 쓴다', v.why==='최소 품�
 ok('전체 문구는 툴팁용으로 보존', v.blocked==='최소 품질 — 종합점수 ≥ 45');
 put('US_NV2',{perAuto:null,perFwdAuto:null,psrAuto:null,pbrAuto:null,fcf:null});
 v=M.verdictOf('US_NV2');
-ok('관문은 통과했는데 값을 못 매기면 탈락', v.key==='out');
-ok('관문 탈락과 다른 이유를 적는다', v.why==='값을 매길 수 없음'&&/하드 게이트는 전부 통과했지만/.test(v.tip||''), v.why);
+/* (v6.1) 관문은 통과했는데 가치를 못 매기는 상태는 **거절이 아니다** — 재무제표가 없어서
+ * 값을 못 낸 것이지 비싸서 떨어뜨린 것이 아니다. 탈락으로 되돌리면 이 검사가 깨진다. */
+ok('값을 못 매기면 탈락이 아니라 평가 불가', v.key==='na'&&v.w==='평가 불가', v.key+'/'+v.w);
+ok('평가하지 않았다는 뜻임을 적는다', v.why==='가치를 매길 자료 없음'
+   &&/나쁘다는 뜻이 아닙니다/.test(v.tip||''), v.why);
 put('US_ETF2',{assetType:'etf',tier:'저점권'});
 ok('ETF 저점권 → 추천', M.verdictOf('US_ETF2').key==='rec');
 put('US_ETF3',{assetType:'etf',tier:'중립'});
@@ -118,8 +121,15 @@ ok('ETF 중립 → 관망', v.key==='watch');
 ok('ETF는 지정가를 내지 않는다고 title에 적는다', /재무제표가 없어 지정가는 내지 않습니다/.test(v.tip||''), v.tip);
 put('US_ETF4',{assetType:'etf',tier:null,grd:grd(5,6,'데이터 충분 — 상장 120봉(≈6개월) 이상')});
 ok('ETF도 관문 미통과면 탈락', M.verdictOf('US_ETF4').key==='out');
-ok('판정 단어는 셋뿐', Object.keys(M.VERDICT).length===3&&
-   ['추천','관망','탈락'].every(w=>Object.values(M.VERDICT).some(x=>x.w===w)));
+/* (v6.1) 판정은 여전히 셋이다. '평가 불가'는 네 번째 판정이 아니라 **판정이 없다는 표시**다 —
+ * 평가의 결과(추천·관망·탈락)와 평가하지 않았다는 사실은 종류가 다르다. */
+ok('판정 단어는 셋 + 평가 불가', Object.keys(M.VERDICT).length===4&&
+   ['추천','관망','탈락','평가 불가'].every(w=>Object.values(M.VERDICT).some(x=>x.w===w)));
+ok('평가 불가는 탈락과 다른 표식', M.VERDICT.na.mk!==M.VERDICT.out.mk&&M.VERDICT.na.cls==='na');
+{ /* 경고색으로 칠하면 '나쁘다'로 읽힌다 — 중립이어야 한다. */
+  const css=T.slice(0,T.lastIndexOf('</style>'));
+  const i=css.indexOf('.vd.na{'); const rule=i<0?'':css.slice(i,css.indexOf('}',i));
+  ok('평가 불가는 중립색(경고색 아님)', /var\(--muted\)/.test(rule)&&!/--down|--amber/.test(rule), rule); }
 
 console.log('\n[5] 실행 칸 — 지정가 하나 + 닿을 확률');
 put('US_E');
@@ -155,7 +165,8 @@ put('US_E');
      빈 칸이 아니어야 한다는 원칙은 그대로: 글자(지정가 없음)와 사유(title)가 남는다. */
   ok('값을 못 매기면 빈 칸이 아니라 글자 + 사유 title', /지정가 없음/.test(h)&&/title="[^"]*산출 불가/.test(h), h);
   ok('같은 사유를 두 번 쓰지 않는다', (h.match(/산출 불가/g)||[]).length===1, h);
-  ok('그 사유는 판정 칸이 말한다', M.verdictOf('US_E4').why==='값을 매길 수 없음'); }
+  ok('그 사유는 판정 칸이 말한다', M.verdictOf('US_E4').why==='가치를 매길 자료 없음',
+     M.verdictOf('US_E4').why); }
 
 console.log('\n[6] 신뢰도 칸 — 결측을 뒤집어 상시 품질 수치로');
 put('US_V1',{qMissW:0,aMissW:0});

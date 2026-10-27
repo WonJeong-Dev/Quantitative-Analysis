@@ -29,7 +29,43 @@ ctx.k={...base,earnDays:null};assert.equal(vm.runInContext('classifyDetail(k).ti
 ctx.k={...base,earnDays:1,earnSoon:true};assert.equal(vm.runInContext('classifyDetail(k).tier',ctx),'상','발표 임박도 등급을 막지 않는다');
 assert.ok(!vm.runInContext('JSON.stringify(classifyDetail(k).gates)',ctx).includes('G9'),'G9 관문이 남아 있지 않다');
 ctx.k={...base,earnDays:null,assetType:'etf'};assert.ok(vm.runInContext('classifyDetail(k).tier',ctx));
-ctx.k={...base,qInputMissing:['ROE']};assert.equal(vm.runInContext('classifyDetail(k).blockedCode',ctx),'G11');});
+/* (v6.1) 성분 결측은 **거절이 아니라 평가 불가**다 — 값이 안 온 것을 결격으로 읽으면
+ * 근거 없이 부정 판정을 내리게 된다. blockedCode가 아니라 unknownCode에 담긴다. */
+ctx.k={...base,qInputMissing:['ROE']};
+{const d=JSON.parse(vm.runInContext('JSON.stringify(classifyDetail(k))',ctx));
+ assert.equal(d.blockedCode,null,'거절이 아니다');
+ assert.ok((d.unknownCode||[]).includes('G11'),'평가 불가로 담긴다');
+ assert.equal(d.assessable,false,'평가 불가 상태');
+ assert.equal(d.tier,null,'등급도 주지 않는다');}});
+
+/* (v6.1) 세 번째 상태 — 데이터가 없으면 평가하지 않는다. */
+test('gates have three states: pass / rejected / unassessable',()=>{const code=piece('function classifyDetail(k){','function classify(k)');const ctx=vm.createContext({MIN_MARGIN:20,MIN_BARS:120,DD_DEEP:-35,DROP_STEEP:-20,STALE_MAX_D:10,MA_DEV_MIN:.94,DT_Z:1});vm.runInContext(code,ctx);
+const base={attract:80,quality:80,upside:40,downside:10,listedBars:250,rsi:20,pB:.2,price:100,qMissW:0,qInputMissing:[],earnDays:10};
+const J=()=>JSON.parse(vm.runInContext('JSON.stringify(classifyDetail(k))',ctx));
+ctx.k=base;{const d=J();assert.equal(d.assessable,true);assert.equal(d.tier,'상');}
+// 종합점수가 없으면 '품질 미달'이 아니라 '평가 불가'
+ctx.k={...base,quality:null};{const d=J();
+  assert.equal(d.blockedCode,null,'품질을 모르는 것은 거절이 아니다');
+  assert.ok((d.unknownCode||[]).includes('G8'));assert.equal(d.assessable,false);}
+// 하방 근거가 목표가뿐이면 '평가 불가' (삼성전자가 걸린 자리)
+ctx.k={...base,downside:null};{const d=J();
+  assert.equal(d.blockedCode,null,'하방을 모르는 것은 거절이 아니다');
+  assert.ok((d.unknownCode||[]).includes('G4'));}
+// 실제로 평가해서 못 넘은 것은 여전히 거절이다
+ctx.k={...base,downside:-50};{const d=J();
+  assert.equal(d.blockedCode,'G4','평가했고 못 넘었다 → 거절');assert.equal(d.assessable,true);}
+// 거절이 하나라도 있으면 거절이 우선한다 (모르는 항목이 그 사실을 지우지 않는다)
+ctx.k={...base,downside:-50,quality:null};{const d=J();
+  assert.equal(d.blockedCode,'G4');assert.equal(d.assessable,true,'거절이 우선');}
+// 상장 봉 수 미확인도 평가 불가
+ctx.k={...base,listedBars:null};{const d=J();assert.ok((d.unknownCode||[]).includes('G7'));}
+// RSI·%B 둘 다 없으면 '과열 아님'으로 통과시키지 않는다 (모르면 통과도 틀렸다)
+ctx.k={...base,rsi:null,pB:null};{const d=J();
+  assert.ok((d.unknownCode||[]).includes('G5'),'모르면 통과도 평가다');
+  assert.equal(d.tier,null);}
+// 이상 신호 플래그의 부재는 '모름'이 아니라 '없음'이다 → 통과가 맞다
+ctx.k={...base,dataStale:undefined,priceAnomaly:undefined,hasHardHazard:undefined};
+{const d=J();assert.equal(d.assessable,true);assert.equal(d.tier,'상');}});
 
 /* (v6.0) G3는 「하」 등급의 여력 조건과 값이 같아 결과에 영향이 없었다 — 지웠다.
  * 여력이 모자라면 관문이 아니라 **등급 미달**로 떨어진다. */

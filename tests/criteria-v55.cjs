@@ -35,8 +35,19 @@ const CD=piece('function normCdf(','/* [유도값')+"const RATIO_P=normCdf(-1);"
 const ctxC={MIN_MARGIN:20,MIN_BARS:120,DD_DEEP:-35,DROP_STEEP:-20,STALE_MAX_D:10,MA_DEV_MIN:.94,DT_Z:1};
 const K=o=>Object.assign({attract:80,quality:70,upside:40,upsideEff:40,downside:10,downIndep:true,listedBars:250,rsi:50,rsiLo:30,rsiHi:70,pB:.5,price:100,vp1:{poc:50},qMissW:0,qInputMissing:[],earnDays:10,assetType:'stock'},o);
 const cd=k=>run(CD,{...ctxC,k},'classifyDetail(k)');
-test('G4·C1은 목표가 외 근거가 없으면 판정 불가(탈락·미충족)',()=>{
-  const d=cd(K({downIndep:false}));assert.equal(d.blockedCode,'G4');assert.equal(d.conf[0][1],false);
+/* (v6.1) 목표가 외 근거가 없으면 **평가 불가**다 — 통과도 탈락도 아니다.
+ * v5.5는 둘뿐이라 탈락으로 접었고, 그래서 '지금이라면 안 삼'이 근거 없이 붙었다.
+ * 확증 C1은 종전대로 미충족(false)이다 — 확증은 '있으면 더한다'라서 없으면 안 더하는 게 맞다. */
+test('G4는 목표가 외 근거가 없으면 평가 불가 (탈락 아님) · C1은 미충족',()=>{
+  const d=cd(K({downIndep:false}));
+  assert.equal(d.blockedCode,null,'거절이 아니다');
+  assert.ok((d.unknownCode||[]).includes('G4'),'평가 불가로 담긴다');
+  assert.equal(d.assessable,false);
+  assert.equal(d.tier,null,'등급은 주지 않는다');
+  assert.equal(d.conf[0][1],false,'확증은 미충족');
+  // 실제로 평가해서 못 넘은 경우는 여전히 거절
+  const e=cd(K({downside:-50}));
+  assert.equal(e.blockedCode,'G4');assert.equal(e.assessable,true);
 });
 test('확증은 독립 정보군당 1표 — 단기 과매도 3항목은 1표',()=>{
   const d=cd(K({rsi:20,pB:.1,price:40,downside:-5,upside:30,upsideEff:30,quality:55}));
