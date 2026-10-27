@@ -2248,8 +2248,8 @@ const GL_COLS=['tier','tierNoCap','A','Q','upside','downside','n','gate',
   /* (v5.5) nRaw = 항목별 충족 수(종전 n 정의) · ratioPct = 이격 경험적 분위(판정 축) ·
    * upEff = 급락 감쇠 후 여력(게이트·등급이 본 값) · dInd = 현재가치 독립 근거 유무 · barApp = 합성 봉 */
   'nRaw','ratioPct','upEff','dInd','barApp',
-  /* (v5.9.3) 보수 적정가 3열 — **끝에 붙인다**(가운데 삽입은 과거 문서의 순서를 민다).
-   * 이 값들은 판정에 쓰이지 않지만, 기록해 두지 않으면 2027년에 「보수 적정가가 쓸모 있었는가」를
+  /* (v5.9.3) 무성장 가치 3열 — **끝에 붙인다**(가운데 삽입은 과거 문서의 순서를 민다).
+   * 이 값들은 판정에 쓰이지 않지만, 기록해 두지 않으면 2027년에 「무성장 가치가 쓸모 있었는가」를
    * 영영 물을 수 없다. 수집하고 안 그리는 것이 아니라, 그리려면 먼저 수집해야 한다. */
   'cfvFv','cfvLimit','cfvState'];
 function glRow(k,id){
@@ -2555,7 +2555,7 @@ function catBadge(t,near,isETF){
   return '<span class="badge b-none">'+(isETF?'대기':'범위 밖')+m+'</span>';
 }
 /* ==========================================================================
- * (v5.7) 보수 적정가 — 재무제표만으로 만든 '지금 정당한 가격' + 개연성 있는 하락 도달가.
+ * (v5.7) 무성장 가치 — 재무제표만으로 만든 '지금 정당한 가격' + 개연성 있는 하락 도달가.
  *
  * ★ compute() **바깥**에 둔다. 판정 영역에 한 줄이라도 넣으면 판정 해시가 바뀌고,
  *   RULE_VER을 올리는 순간 쌓인 판정 로그가 rv 불일치로 집계에서 전부 빠진다 —
@@ -2567,6 +2567,9 @@ function catBadge(t,near,isETF){
  *   환산 로직을 다시 쓰지 않는다(§22-⑲).
  * ========================================================================== */
 const CFV_H=GL_HORIZ[1];        // 60거래일 ≈ 1분기. 새 상수가 아니라 지평 목록(GL_HORIZ) 재사용.
+/* (v6.3) 정당 배수의 천장 — fairPER의 clamp(per,5,75)·fairPSR의 clamp(...,0.3,22) 상한과 같다.
+ * 판정영역(fairPER 본문)을 건드리지 않으려고 여기 따로 적되, 값이 갈라지면 검사가 잡는다. */
+const FAIR_PER_MAX=75, FAIR_PSR_MAX=22;
 function cfvOf(id){
   const k=S.calc[id]; if(!k||k.assetType==='etf')return null;
   const rb=k.revenueBasis;
@@ -2578,14 +2581,18 @@ function cfvOf(id){
     price:k.price, quality:k.quality, annVol:k.annVol, h:CFV_H, ceil:FUND_CEIL_N,
     fairPerNow:fairPER(0,k.quality), fairPsrNow:fairPSR(0),
     perTtm:k.perAuto, perFwd:k.perFwdAuto, psr:k.psrAuto, pbr:k.pbrAuto, fcfPS:fcfPS,
+    /* (v6.3) 이 엔진이 '정당하다'고 볼 수 있는 최대 배수. fairPER/fairPSR의 clamp 상한을
+     * 그대로 쓴다 — 새 임계가 아니라 기존 천장의 재사용(§20). 두 곳이 갈라지면
+     * tests/consfv-ui.cjs가 배포본의 clamp 리터럴을 직접 읽어 실패시킨다(§22-⑲). */
+    perCeil:FAIR_PER_MAX, psrCeil:FAIR_PSR_MAX,
     curMismatch:!!k.curMismatch,   // (v5.9.7) 통화가 섞이면 PBR 비율을 믿을 수 없다
     vm:effVM(id)
   });
 }
 const CFV_STATE={
-  at:  {lab:'이미 가치 이하', cls:'up',   tip:'현재가가 보수 적정가보다 낮습니다 — 재무제표 기준으로는 지금 가격이 정당 범위 아래입니다.'},
-  wait:{lab:'기다릴 만함',   cls:'mid',  tip:'60거래일 안에 절반의 확률로 닿는 가격이 보수 적정가보다 더 아래입니다 — 지정가를 걸어두면 가치 이하에서 체결될 개연성이 있습니다.'},
-  far: {lab:'가치가 제약',   cls:'dn',   tip:'개연성 있는 하락폭으로도 보수 적정가까지 내려오지 않습니다 — 지금은 비싸다는 뜻입니다.'}
+  at:  {lab:'이미 가치 이하', cls:'up',   tip:'현재가가 무성장 가치보다 낮습니다 — 재무제표 기준으로는 지금 가격이 정당 범위 아래입니다.'},
+  wait:{lab:'기다릴 만함',   cls:'mid',  tip:'60거래일 안에 절반의 확률로 닿는 가격이 무성장 가치보다 더 아래입니다 — 지정가를 걸어두면 가치 이하에서 체결될 개연성이 있습니다.'},
+  far: {lab:'가치가 제약',   cls:'dn',   tip:'개연성 있는 하락폭으로도 무성장 가치까지 내려오지 않습니다 — 지금은 비싸다는 뜻입니다.'}
 };
 
 /* ==========================================================================
@@ -2647,26 +2654,39 @@ function verdictOf(id){
     tip='하드 게이트는 전부 통과했지만 등급 기준(가격매력도·종합점수·상승여력·확증)에 미치지 못했습니다'
        +((d&&d.unknown||[]).length?(' · 함께 평가 불가: '+d.unknown.join(' / ')):'');
   }else if(isETF){
-    /* ETF는 재무제표가 없어 보수 적정가를 만들 수 없다 — 결함이 아니라 구조다.
+    /* ETF는 재무제표가 없어 무성장 가치를 만들 수 없다 — 결함이 아니라 구조다.
      * 보드 자신의 ETF 등급(저점권/관심권/중립)이 그 자리의 가치 신호다. */
     key=(k.tier==='저점권')?'rec':'watch';
     why='ETF '+k.tier;
     tip=(key==='rec')?'ETF 등급 저점권 — 지금 가격이 매력 구간입니다'
                      :'ETF 등급 '+k.tier+' — 재무제표가 없어 지정가는 내지 않습니다';
-  }else if(!cfv||cfv.fv==null){
-    /* (v6.1) 관문은 통과했는데 값을 못 매기는 상태. 종전엔 '탈락'으로 적었으나 **거절이 아니다** —
-     * 재무제표가 없어서 가치를 못 낸 것이지 비싸서 떨어뜨린 것이 아니다. */
-    key='na'; why='가치를 매길 자료 없음';
-    tip='하드 게이트는 전부 통과했지만 재무제표로 가치를 산출할 방법이 하나도 없습니다 — '
-       +'평가를 하지 않았다는 뜻이며, 나쁘다는 뜻이 아닙니다';
-  }else if(cfv.state==='at'){
-    key='rec'; why='가치 '+curSym(k.currency)+fmtP(cfv.fv,k.currency)+' 아래';
-    tip='하드 게이트 전부 통과 · 현재가가 보수 적정가('+curSym(k.currency)+fmtP(cfv.fv,k.currency)+') 이하입니다';
   }else{
-    key='watch';
-    const gap=(k.price>0&&cfv.fv>0)?(k.price/cfv.fv-1)*100:null;
-    why='가치보다 '+(gap!=null?gap.toFixed(1)+'% ':'')+'비쌈';
-    tip='하드 게이트는 전부 통과했지만 현재가가 보수 적정가('+curSym(k.currency)+fmtP(cfv.fv,k.currency)+')보다 비쌉니다 — 지정가를 걸고 기다리는 자리입니다';
+    /* (v6.3) ★ 추천/관망을 **등급이 가른다.** 종전엔 무성장 가치(cfv.state)가 갈랐다.
+     *
+     * 왜 바꾸나 — 무성장 가치는 설계상 "성장이 멈춰도 받을 값", 즉 **하방 앵커**다.
+     * 그걸 매수 기준선으로 쓰면 거의 모든 종목이 '비쌈'이 된다. 실측(2026-10-27, 52종목):
+     *   괴리 중앙값 **+104.1%** · 25분위도 +49.3% · 가치 이하는 **4종목뿐**이고 전부 폭락주
+     *   (현대차 고점대비 −62.8% · 풍산 −63.3% · LG이노텍 −79.1% · MU −28%).
+     *   같은 기간 시장은 실제로 빠지는 중이었다 — 20일 수익률 중앙 −5.4% · 낙폭 중앙 −22.5%.
+     *   가격이 22% 빠졌는데 "2배 비싸다"고 말하는 기준선은 의사결정에 쓸 수 없다.
+     *   정당PER이 11.4~14.8배인 것은 시장 관찰이 아니라 **성장 0 가정의 귀결**이다.
+     *   그 결과 등급 '상' 6종목(AMZN·ASML·META·MRVL·NVDA 등)이 전부 관망이었다.
+     * 게다가 상세 패널은 이 값을 **'판정에 쓰이지 않음'이라고 적고 있었다** — 화면이 거짓말을 했다.
+     *
+     * 이제 관문과 등급(매력도·종합점수·여력·확증)이 정한 결과를 그대로 쓴다:
+     *   상·중 → 추천 · 하 → 관망. 무성장 가치는 **보조 표시**로 내려간다(그 아래면 배지).
+     * ★ 판정영역은 건드리지 않았다 — 등급 산출은 그대로이고 RULE_VER·로그·250거래일 시계도 그대로다. */
+    const below=!!(cfv&&cfv.state==='at');
+    const belowTxt=below?(' · 무성장 가치 '+curSym(k.currency)+fmtP(cfv.fv,k.currency)+' 아래'):'';
+    if(k.tier==='상'||k.tier==='중'){
+      key='rec'; why='등급 '+k.tier+(below?' · 가치 이하':'');
+      tip='관문 전부 통과 · 등급 '+k.tier+'(가격매력도·종합점수·상승여력·확증)'+belowTxt
+         +(cfv&&cfv.fv!=null&&!below?(' · 무성장 가치('+curSym(k.currency)+fmtP(cfv.fv,k.currency)
+            +')보다는 비쌉니다 — 그 값은 성장이 멈췄을 때의 하방 앵커이며 매수 기준선이 아닙니다'):'');
+    }else{
+      key='watch'; why='등급 하'+(below?' · 가치 이하':'');
+      tip='관문은 전부 통과했지만 등급이 하입니다 — 확증이 부족하거나 매력도·여력이 상·중에 못 미칩니다'+belowTxt;
+    }
   }
   return {key:key,w:VERDICT[key].w,cls:VERDICT[key].cls,mk:VERDICT[key].mk,
           why:why,tip:tip,blocked:(d&&d.blocked)||null,gn:gn,gt:gt,tier:k.tier||null,cfv:cfv,isETF:isETF};
@@ -2839,7 +2859,7 @@ function sizeOf(id,cfv,rc){
 function exHTML(k,cfv,sz){
   if(!k)return '';
   if(k.assetType==='etf')
-    return '<div class="p none" title="ETF는 재무제표가 없어 보수 적정가를 만들 수 없습니다 — 결함이 아니라 구조입니다">지정가 없음 (ETF)</div>';
+    return '<div class="p none" title="ETF는 재무제표가 없어 무성장 가치를 만들 수 없습니다 — 결함이 아니라 구조입니다">지정가 없음 (ETF)</div>';
   if(!cfv||cfv.fv==null)
     return '<div class="p none" title="'+esc((cfv&&cfv.why)||'재무 입력 미수신')+'">지정가 없음</div>';
   if(cfv.limit==null||cfv.limitProb==null)
@@ -2928,14 +2948,14 @@ function reviewDetailHTML(id){
 function cfvDetailHTML(id,k){
   const cfv=cfvOf(id); if(!cfv)return '';
   const C=k.currency, money=v=>curSym(C)+fmtP(v,C);
-  let g='<div class="cfvbox"><div class="cfvhd">보수 적정가 <small>재무제표만 · 애널 목표가 미사용 · 표시 전용(판정에 쓰이지 않음)</small></div>';
+  let g='<div class="cfvbox"><div class="cfvhd">무성장 가치 <small>재무제표만 · 애널 목표가 미사용 · 표시 전용(판정에 쓰이지 않음)</small></div>';
   if(cfv.fv==null){
     g+='<div class="cfvnone">산출 불가 — '+esc(cfv.why||'쓸 수 있는 방법이 없습니다')+'</div>';
   }else{
     const st=CFV_STATE[cfv.state]||{lab:'—',cls:'',tip:''};
     const gap=(k.price>0)?(cfv.fv/k.price-1)*100:null;
     g+='<div class="cfvtop">'
-      +'<div class="cfvcell"><span class="l">보수 적정가</span><b>'+money(cfv.fv)+'</b>'
+      +'<div class="cfvcell"><span class="l">무성장 가치</span><b>'+money(cfv.fv)+'</b>'
         +'<em>'+esc(cfv.basis||(cfv.n+'종'))+(gap!=null?' · 현재가 대비 <span class="'+chgCls(gap)+'">'+fmtPct(gap)+'</span>':'')+'</em></div>'
       +'<div class="cfvcell"><span class="l">제안 지정가</span><b>'+(cfv.limit!=null?money(cfv.limit):'—')+'</b>'
         +'<em>'+(cfv.limitProb!=null?(CFV_H+'거래일 내 도달확률 '+(cfv.limitProb*100).toFixed(0)+'%<br>'
@@ -2945,7 +2965,7 @@ function cfvDetailHTML(id,k){
     if(cfv.probFloor!=null)
       g+='<div class="cfvnote">같은 가정에서 '+CFV_H+'거래일 안에 <b>절반의 확률</b>로 닿는 가격은 '+money(cfv.probFloor)
         +' 입니다(현재가 '+money(k.price)+' 대비 '+fmtPct((cfv.probFloor/k.price-1)*100)+'). '
-        +'제안 지정가는 이 값과 보수 적정가 중 <b>낮은 쪽</b>입니다 — 두 조건을 동시에 만족하는 가장 높은 가격.</div>';
+        +'제안 지정가는 이 값과 무성장 가치 중 <b>낮은 쪽</b>입니다 — 두 조건을 동시에 만족하는 가장 높은 가격.</div>';
     g+='<div class="cfvwrap"><table class="cfvtbl"><tr><th>방법</th><th class="num">주당가치</th><th>산출</th></tr>';
     for(const m of cfv.used)
       g+='<tr'+(m.ref?' class="refrow"':'')+'><td>'+esc(m.label)
@@ -2966,11 +2986,11 @@ function cfvDetailHTML(id,k){
     +'<b>상승 추세 종목에서는 도달확률이 과대평가됩니다.</b></div>';
   return g+'</div>';
 }
-/* (v5.8) 가격 띠 — 52주 범위 위에 **세 개만** 찍는다: 제안 지정가 · 보수 적정가 · 현재가.
+/* (v5.8) 가격 띠 — 52주 범위 위에 **세 개만** 찍는다: 제안 지정가 · 무성장 가치 · 현재가.
  * v5.7까지 여기에 매물대 VA · 볼린저 · POC · EMA20 · SMA50 · SMA200 · BB중단까지 8종이 겹쳐
  * 있었다. 전부 쓸모 있는 값이지만 **가치 판단과 타이밍 참고를 같은 폭에 섞으면** 어느 눈금이
  * 무슨 뜻인지 사라진다. 기술 눈금은 지워진 것이 아니라 상세 패널의 차트·stat으로 내려갔다.
- * 축 범위에 지정가·보수 적정가를 포함시킨다 — 빼면 눈금이 0%·100%에 붙어 끝에 걸린 것처럼 보인다. */
+ * 축 범위에 지정가·무성장 가치를 포함시킨다 — 빼면 눈금이 0%·100%에 붙어 끝에 걸린 것처럼 보인다. */
 function stripHTML(k,cfv){
   if(!k)return '<div class="strip"></div>';
   const xs=[k.lo52,k.hi52,k.price];
@@ -2983,12 +3003,12 @@ function stripHTML(k,cfv){
   const money=v=>fmtP(v,k.currency);
   /* 띠는 전부 장식이다 — 같은 값이 실행 칸과 툴팁에 글자로 있다. 스크린리더에서 뺀다. */
   let out='<div class="strip" aria-hidden="true"><div class="track"></div>';
-  /* 가치 구간 — 제안 지정가 ~ 보수 적정가. 둘이 같은 값이면(가치가 제약) 폭이 0이라 그리지 않는다. */
+  /* 가치 구간 — 제안 지정가 ~ 무성장 가치. 둘이 같은 값이면(가치가 제약) 폭이 0이라 그리지 않는다. */
   if(cfv&&cfv.fv!=null&&cfv.limit!=null&&cfv.limit<cfv.fv)
     out+='<div class="cfvzone" style="left:'+P(cfv.limit).toFixed(2)+'%;width:'+Math.max(P(cfv.fv)-P(cfv.limit),0.4).toFixed(2)
-      +'%" title="제안 지정가 '+money(cfv.limit)+' ~ 보수 적정가 '+money(cfv.fv)+'"></div>';
+      +'%" title="제안 지정가 '+money(cfv.limit)+' ~ 무성장 가치 '+money(cfv.fv)+'"></div>';
   if(cfv&&cfv.fv!=null)
-    out+='<div class="tick cfv" style="left:'+P(cfv.fv).toFixed(2)+'%" title="보수 적정가 '+money(cfv.fv)+' — 재무제표만으로 낸 지금 정당한 가격"></div>';
+    out+='<div class="tick cfv" style="left:'+P(cfv.fv).toFixed(2)+'%" title="무성장 가치 '+money(cfv.fv)+' — 재무제표만으로 낸 지금 정당한 가격"></div>';
   if(cfv&&cfv.limit!=null)
     out+='<div class="tick cfvlim" style="left:'+P(cfv.limit).toFixed(2)+'%" title="제안 지정가 '+money(cfv.limit)
       +(cfv.limitProb!=null?(' — '+CFV_H+'거래일 내 도달확률 '+Math.round(cfv.limitProb*100)+'%'):'')+'"></div>';
@@ -3181,7 +3201,7 @@ function detailHTML(id){
   g+=stat('적정 목표가 ★ (상방)',k.fvTarget!=null?curSym(C)+fmtP(k.fvTarget,C):'—',
     '<span class="'+chgCls(k.upside)+'">상승여력 '+fmtPct(k.upside)+'</span> · 성장반영 · 근거: '+esc(fvBasisLbl));
   g+=reviewDetailHTML(id);    /* (v5.9.2) 보유 재심사 — 진입가를 쓰지 않는 판정 + 사전 무효화선 */
-  g+=cfvDetailHTML(id,k);     /* (v5.7) 재무제표 기준 보수 적정가 — 위 두 값과 독립 */
+  g+=cfvDetailHTML(id,k);     /* (v5.7) 재무제표 기준 무성장 가치 — 위 두 값과 독립 */
   if(k.fundFV){
     const ff=k.fundFV;
     g+=stat('펀더멘털 밸류 ('+ff.basis+')',
@@ -3722,11 +3742,11 @@ const CONST_LOG=[
   {k:'SHRS_SIG_K',   v:3,      from:'2026-09-30', ver:'v5.5', cls:'통계 관례(3σ) — 원장 전용(KRX 주식수 판정), 등급 판정 미반영'},
   {k:'FUND_W',       v:'0.18/0.22·0.85', from:'2026-09-30', ver:'v5.5', cls:'판정 변경 — 값 불변, 분기 기준만 tw>0 → 원시 목표가 존재로(절벽 제거)'},
   {k:'TGT_W',        v:'0.90·conf / 0.50·conf', from:'2026-09-30', ver:'v5.5', cls:'판정 변경 — 절편(0.10/0.05)을 기울기에 합침(conf=1 값 불변, conf→0 연속)'},
-  /* (v5.7) 보수 적정가 — 전부 **표시 전용**이다. 판정·게이트·그림자장부 어디에도 들어가지 않으므로
+  /* (v5.7) 무성장 가치 — 전부 **표시 전용**이다. 판정·게이트·그림자장부 어디에도 들어가지 않으므로
    * RULE_VER을 올리지 않는다(올리면 판정 로그가 rv 불일치로 전부 빠지고 250일 시계가 0으로 돌아간다). */
   {k:'CFV_H',        v:60,     from:'2026-10-22', ver:'v5.7', cls:'기존 상수 재사용 — GL_HORIZ[1](60거래일≈1분기). 표시 전용'},
   {k:'CFV_GROWTH',   v:0,      from:'2026-10-22', ver:'v5.7', cls:'구조적 필연 — 보수의 정의가 「성장을 값에 넣지 않는다」. 기존 fairPER/fairPSR 곡선에 0을 넣은 결과만 쓴다'},
-  /* (v5.9.6) 보수 적정가의 EPS 선택 — 낮은 쪽 → 정상화. 중복 보수성 제거. */
+  /* (v5.9.6) 무성장 가치의 EPS 선택 — 낮은 쪽 → 정상화. 중복 보수성 제거. */
   {k:'CFV_EPS',      v:'0.5/0.5', from:'2026-10-25', ver:'v5.9.6', cls:'기존 상수 재사용 — fundamentalFV의 eNow(후행·선행 50:50). 낮은 쪽을 쓰면 성장 0 PER과 보수성이 이중 적용된다'},
   {k:'CFV_EPS_FWD',  v:'미적용', from:'2026-10-25', ver:'v5.9.7', cls:'구조적 필연 — 기존 엔진의 선행 단독 할인 0.92는 성장 반영 PER과 짝이다. 성장 0에 또 곱하면 이중 적용(실측 −8.7%)'},
   {k:'CFV_FCF',      v:'참고',  from:'2026-10-25', ver:'v5.9.7', cls:'구조적 필연 — 단년 FCF에 이익 멀티플은 범주 오류. 실측 2종목에서 이익력의 46%·37%로 구조적 편향. 중앙값에서 제외'},
@@ -4638,7 +4658,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.2.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.3.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -4743,7 +4763,7 @@ function diagCollect(){
     /* (v5.9.8) 후행 EPS 결측 실태 — **고치기 전에 센다.**
      * 판정 쪽(compute 안의 perAuto)을 고치려면 RULE_VER을 올려야 하고 그러면 쌓인 로그가
      * 전부 집계에서 빠진다. 그 대가를 치를지는 **몇 종목이 걸리는지**를 보고 정한다.
-     * 보수 적정가는 이미 price/perT 폴백을 쓰므로(표시 전용) 여기 숫자와 무관하게 복구돼 있다. */
+     * 무성장 가치는 이미 price/perT 폴백을 쓰므로(표시 전용) 여기 숫자와 무관하게 복구돼 있다. */
     후행EPS결측:(function(){
       const st=rows.filter(r=>r.k&&r.k.assetType!=='etf');
       /* ★ 실측(v5.9.8 보고서)이 드러낸 두 가지 — 둘 다 이 계측기 자신의 결함이었다.
@@ -4964,7 +4984,7 @@ function diagRender(){
       return head+'<br>'+rec
         +li(e.결측종목)
         +(e.설명필요&&e.설명필요종목.length?('<div style="color:var(--down);margin-top:2px">설명 필요: '+e.설명필요종목.map(esc2).join(' · ')+'</div>'):'')
-        /* (v5.9.14) 폴백을 걷어냈으므로 '보수 적정가만 복구 경로가 있다'는 문장도 지운다 —
+        /* (v5.9.14) 폴백을 걷어냈으므로 '무성장 가치만 복구 경로가 있다'는 문장도 지운다 —
          * 화면이 더 이상 사실이 아닌 것을 말하게 두지 않는다. 조사 결론을 그대로 적는다. */
         +'<div style="color:var(--muted);margin-top:2px">적자 종목은 PER이 없는 것이 정상입니다 — 결함이 아닙니다. '
         +'<b>이 종목들은 PER 없이 판정합니다</b> — 복원 경로가 없다는 것이 조사 결론입니다(2026-10-25). '
@@ -6613,7 +6633,7 @@ function lgShadowHTML(hz){
       +((QADomain.PREREG_VER!=='v1')
         ? ('<br><span style="color:var(--sub)">v2는 후보 arm <b>F 상만 · G 결측 없음 · H 가치 이하만</b>을 '
            +'<b>추가만</b> 한 판입니다 — A~E의 정의는 v1과 한 글자도 다르지 않고, v1 문서도 그대로 남아 있습니다. '
-           +'H의 입력(보수 적정가 상태)은 v5.9.3부터 기록되므로 <b>그날부터 표본이 시작</b>합니다.</span>')
+           +'H의 입력(무성장 가치 상태)은 v5.9.3부터 기록되므로 <b>그날부터 표본이 시작</b>합니다.</span>')
         :'')
       +'</div>';
   }

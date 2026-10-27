@@ -1,4 +1,4 @@
-/* (v5.8) 보수 적정가 · 판정 3단어 · 목록 칸 — 배포본(dist/index.html)에서 렌더 경로를 실제로 실행한다.
+/* (v5.8) 무성장 가치 · 판정 3단어 · 목록 칸 — 배포본(dist/index.html)에서 렌더 경로를 실제로 실행한다.
  * 순수함수가 맞아도 배선(perAuto→perTtm, fcf×fxq÷shares)이나 판정 분기가 틀리면 조용히 잘못 뜬다.
  * 사용법: node tests/consfv-ui.cjs [dist/index.html] */
 const fs=require('fs'),QADomain=require('../src/domain.js');
@@ -42,7 +42,7 @@ const ok=(n,c,x)=>{c?(pass++,console.log('  OK   '+n)):(fail++,console.log('  FA
 const near=(a,b,tol)=>a!=null&&Math.abs(a-b)<=tol;
 
 /* 현재가 100 · 후행PER 10 · 선행PER 8 · PSR 2 · PBR 1.25 · 종합점수 65(→정당PER 12배)
- * FCF 700(fcur) · fx 1 · 주식수 100 → 주당FCF 7.  보수 적정가 = median(120, 84, 80) = 84 */
+ * FCF 700(fcur) · fx 1 · 주식수 100 → 주당FCF 7.  무성장 가치 = median(120, 84, 80) = 84 */
 function grd(n,total,blocked){
   const gates=[]; for(let i=0;i<total;i++)gates.push(['관문'+(i+1),i<n,'G'+(i+1)]);
   return {gates:gates,blocked:blocked||null,nearBoundary:false};
@@ -89,30 +89,40 @@ put('US_EMPTY',{perAuto:null,perFwdAuto:null,psrAuto:null,pbrAuto:null,fcf:null}
 ok('입력이 전부 없으면 fv=null', M.cfvOf('US_EMPTY').fv===null);
 
 console.log('\n[4] 판정 — 세 단어, 겹치지 않는다 (v5.8)');
-/* 관망 조건: 현재가 > 보수 적정가. perAuto/perFwdAuto 15배 → 이익력 80, 장부 80 → fv 80 < 100 */
-put('US_W',{perAuto:15,perFwdAuto:15}); VM={per:2,pbr:2,psr:2};
+/* (v6.3) ★ 추천/관망은 **등급이 가른다.** 무성장 가치는 보조 표시로 내려갔다.
+ * 종전엔 cfv.state가 갈랐고, 그 결과 등급 '상' 6종목이 전부 관망이었다 —
+ * 무성장 가치는 "성장이 멈춰도 받을 값"(하방 앵커)이지 매수 기준선이 아니다.
+ * 실측: 52종목 괴리 중앙 +104.1%, 가치 이하는 폭락주 4개뿐. cfv로 되돌리면 이 검사가 깨진다. */
+put('US_W',{perAuto:15,perFwdAuto:15,tier:'하'}); VM={per:2,pbr:2,psr:2};
 let v=M.verdictOf('US_W');
-ok('관문 통과 + 가격이 가치보다 비쌈 → 관망', v.key==='watch'&&v.w==='관망', v.key);
-ok('이유는 짧은 명사구', v.why==='가치보다 25.0% 비쌈', v.why);
-ok('"회사는 통과" 같은 중복을 빼고 긴 설명은 title로', !/회사는 통과/.test(v.why)&&/하드 게이트는 전부 통과/.test(v.tip||''), v.tip);
+ok('등급 하 → 관망 (가치보다 비싸도 등급이 쥔다)', v.key==='watch'&&v.w==='관망', v.key);
+ok('이유는 짧은 명사구', v.why==='등급 하', v.why);
+ok('긴 설명은 title로', !/회사는 통과/.test(v.why)&&/등급이 하입니다/.test(v.tip||''), v.tip);
 ok('관문 통과수를 센다', v.gn===11&&v.gt===11);
-/* 추천 조건: 현재가 ≤ 보수 적정가. 이익력 70/7×12=120 · 장부 70/0.875=80 → fv 100 ≥ 70 */
-put('US_A',{price:70,perAuto:7,perFwdAuto:7,pbrAuto:0.875,fcf:490});
+put('US_W2',{perAuto:15,perFwdAuto:15,tier:'상'});
+v=M.verdictOf('US_W2');
+ok('등급 상이면 가치보다 비싸도 추천', v.key==='rec'&&v.why==='등급 상', v.key+'/'+v.why);
+ok('그 값이 매수 기준선이 아님을 title에 적는다', /하방 앵커이며 매수 기준선이 아닙니다/.test(v.tip||''), v.tip);
+put('US_W3',{perAuto:15,perFwdAuto:15,tier:'중'});
+ok('등급 중도 추천', M.verdictOf('US_W3').key==='rec');
+/* 가치 이하는 **보조 배지**로만 남는다 — 판정을 뒤집지 않는다. */
+put('US_A',{price:70,perAuto:7,perFwdAuto:7,pbrAuto:0.875,fcf:490,tier:'하'});
 v=M.verdictOf('US_A');
-ok('현재가가 가치 이하 → 추천', v.key==='rec'&&v.w==='추천', v.key+' fv='+(v.cfv&&v.cfv.fv));
-ok('이유에 가치 금액이 적힌다 (2종 중앙값 = (120+80)/2 = 100)', v.why==='가치 $100 아래', v.why);
+ok('가치 이하여도 등급 하면 관망', v.key==='watch', v.key+' fv='+(v.cfv&&v.cfv.fv));
+ok('가치 이하는 보조로 덧붙는다', v.why==='등급 하 · 가치 이하', v.why);
 put('US_O',{tier:null,grd:grd(9,11,'최소 품질 — 종합점수 ≥ 45')});
 v=M.verdictOf('US_O');
 ok('관문 미통과 → 탈락', v.key==='out'&&v.w==='탈락');
 ok('어느 관문에서 걸렸는지 앞부분만 쓴다', v.why==='최소 품질에서 걸림', v.why);
 ok('전체 문구는 툴팁용으로 보존', v.blocked==='최소 품질 — 종합점수 ≥ 45');
-put('US_NV2',{perAuto:null,perFwdAuto:null,psrAuto:null,pbrAuto:null,fcf:null});
+put('US_NV2',{perAuto:null,perFwdAuto:null,psrAuto:null,pbrAuto:null,fcf:null,tier:'중'});
 v=M.verdictOf('US_NV2');
-/* (v6.1) 관문은 통과했는데 가치를 못 매기는 상태는 **거절이 아니다** — 재무제표가 없어서
- * 값을 못 낸 것이지 비싸서 떨어뜨린 것이 아니다. 탈락으로 되돌리면 이 검사가 깨진다. */
-ok('값을 못 매기면 탈락이 아니라 평가 불가', v.key==='na'&&v.w==='평가 불가', v.key+'/'+v.w);
-ok('평가하지 않았다는 뜻임을 적는다', v.why==='가치를 매길 자료 없음'
-   &&/나쁘다는 뜻이 아닙니다/.test(v.tip||''), v.why);
+/* (v6.3) 가치를 못 매겨도 **등급은 났다** — 관문과 점수로 평가가 끝났으므로 판정한다.
+ * v6.1은 이걸 '평가 불가'로 돌렸는데, 등급이 있는 종목을 평가하지 않았다고 말하는 것은 틀렸다.
+ * 평가 불가는 **관문을 못 돌린** 경우에만 쓴다(그 검사는 tests/investment.cjs가 본다). */
+ok('가치를 못 매겨도 등급이 있으면 판정한다', v.key==='rec'&&v.w==='추천', v.key+'/'+v.w);
+ok('지정가는 못 내므로 실행 칸이 그 사실을 적는다',
+   /지정가 없음/.test(M.exHTML(S.calc['US_NV2'],M.cfvOf('US_NV2'))), M.exHTML(S.calc['US_NV2'],M.cfvOf('US_NV2')).slice(0,120));
 put('US_ETF2',{assetType:'etf',tier:'저점권'});
 ok('ETF 저점권 → 추천', M.verdictOf('US_ETF2').key==='rec');
 put('US_ETF3',{assetType:'etf',tier:'중립'});
@@ -138,6 +148,38 @@ ok('평가 불가는 탈락과 다른 표식', M.VERDICT.na.mk!==M.VERDICT.out.m
   const i=css.indexOf('.vd.na{'); const rule=i<0?'':css.slice(i,css.indexOf('}',i));
   ok('평가 불가는 중립색(경고색 아님)', /var\(--muted\)/.test(rule)&&!/--down|--amber/.test(rule), rule); }
 
+console.log('\n[4b] 정당 배수 천장 — 값이 무의미해지는 자리에서 그리지 않는다 (v6.3)');
+/* 실측: PANW는 GAAP EPS가 0.4로 눌려 유효 PER 976배였고, 거기에 정당PER 12배를 곱한
+ * $30.97이 주가 $390 옆에 '가치'로 떴다. QNT는 주당매출 0.0865 × PSR 1.5 = $0.13(괴리 +28041%).
+ * "비싸다"가 아니라 **값이 무의미한 것**이다 — 모르는 값은 그리지 않는다(§22-⑯). */
+{ /* 천장이 엔진 자신의 clamp 상한과 같은가 — 두 곳이 갈라지면 조용히 어긋난다(§22-⑲) */
+  const per=(T.match(/return clamp\(per,\s*5,\s*(\d+)\)/)||[])[1];
+  const psr=(T.match(/\[150,20\]\]\),\s*0\.3,\s*(\d+)\)/)||[])[1];
+  const dec=(T.match(/const FAIR_PER_MAX=(\d+),\s*FAIR_PSR_MAX=(\d+);/)||[]);
+  ok('FAIR_PER_MAX가 fairPER의 clamp 상한과 같다', per&&dec[1]&&per===dec[1], per+' vs '+dec[1]);
+  ok('FAIR_PSR_MAX가 fairPSR의 clamp 상한과 같다', psr&&dec[2]&&psr===dec[2], psr+' vs '+dec[2]); }
+{ /* 유효 PER 976배 — 이익이 0 근처라 정당 배수를 매길 수 없다 */
+  put('US_CEIL',{price:390,perAuto:976,perFwdAuto:976,pbrAuto:null,psrAuto:null,fcf:null});
+  VM={per:2,pbr:0,psr:0};
+  const c=M.cfvOf('US_CEIL');
+  ok('천장 밖 PER이면 이익력을 그리지 않는다', !((c&&c.used)||[]).some(m=>m.key==='eps'),
+     ((c&&c.used)||[]).map(m=>m.key).join(','));
+  ok('사유에 유효 PER을 적는다', /유효 PER 976배/.test(((c&&c.skipped)||[]).map(m=>m.why).join(' ')),
+     ((c&&c.skipped)||[]).map(m=>m.why).join(' | '));
+  ok('남는 방법이 없으면 값을 내지 않는다 (0.13 같은 수를 그리지 않는다)', c&&c.fv==null, c&&c.fv); }
+{ /* 천장 안이면 종전대로 그린다 — 경고를 남발하지 않는다 */
+  put('US_OK',{price:100,perAuto:20,perFwdAuto:20,pbrAuto:null,psrAuto:null,fcf:null});
+  const c=M.cfvOf('US_OK');
+  ok('PER 20배는 정상적으로 그린다', ((c&&c.used)||[]).some(m=>m.key==='eps'), c&&c.fv); }
+{ /* 매출 쪽도 같은 규칙 — 적자 기업의 PSR 422배 */
+  put('US_PSR',{price:36.5,perAuto:null,perFwdAuto:null,psrAuto:422,pbrAuto:null,fcf:null});
+  VM={per:2,pbr:0,psr:2};
+  const c=M.cfvOf('US_PSR');
+  ok('천장 밖 PSR이면 매출을 그리지 않는다', !((c&&c.used)||[]).some(m=>m.key==='rev'),
+     ((c&&c.used)||[]).map(m=>m.key).join(','));
+  ok('사유에 PSR 배수를 적는다', /PSR 422배/.test(((c&&c.skipped)||[]).map(m=>m.why).join(' '))); }
+VM={per:2,pbr:2,psr:2};
+
 console.log('\n[5] 실행 칸 — 지정가 하나 + 닿을 확률');
 put('US_E');
 { const h=M.exHTML(S.calc['US_E'],M.cfvOf('US_E'));
@@ -150,7 +192,7 @@ put('US_E');
   ok('"제약" 같은 내부 용어를 쓰지 않는다', !/제약/.test(h)&&!/중앙 도달가/.test(h), h); }
 { put('US_E2',{annVol:null});
   const h=M.exHTML(S.calc['US_E2'],M.cfvOf('US_E2'));
-  ok('변동성이 없으면 지정가를 꾸며내지 않고 보수 적정가를 보인다', /도달 확률 산출 불가/.test(h)&&!/class="prob"/.test(h), h); }
+  ok('변동성이 없으면 지정가를 꾸며내지 않고 무성장 가치를 보인다', /도달 확률 산출 불가/.test(h)&&!/class="prob"/.test(h), h); }
 /* (v5.9.9) 반올림과 흐림 — 0%는 '０이다'로 읽히는데 실제로는 '1% 미만'이다(§22-⑫와 같은 종류). */
 { put('US_P0',{annVol:0.02,perAuto:40,perFwdAuto:40,pbrAuto:null,fcf:null});
   const c=M.cfvOf('US_P0'), h=M.exHTML(S.calc['US_P0'],c);
@@ -172,8 +214,8 @@ put('US_E');
      빈 칸이 아니어야 한다는 원칙은 그대로: 글자(지정가 없음)와 사유(title)가 남는다. */
   ok('값을 못 매기면 빈 칸이 아니라 글자 + 사유 title', /지정가 없음/.test(h)&&/title="[^"]*산출 불가/.test(h), h);
   ok('같은 사유를 두 번 쓰지 않는다', (h.match(/산출 불가/g)||[]).length===1, h);
-  ok('그 사유는 판정 칸이 말한다', M.verdictOf('US_E4').why==='가치를 매길 자료 없음',
-     M.verdictOf('US_E4').why); }
+  ok('판정은 등급이 말한다 (가치 산출 실패가 판정을 뒤집지 않는다)',
+     M.verdictOf('US_E4').key!=='na', M.verdictOf('US_E4').why); }
 
 console.log('\n[6] 신뢰도 칸 — 결측을 뒤집어 상시 품질 수치로');
 put('US_V1',{qMissW:0,aMissW:0});
@@ -246,7 +288,7 @@ ok('ETF 칸은 — 로 적고 이유를 담는다', /—/.test(M.evHTML(S.calc['
 console.log('\n[7] 가격 띠 — 눈금 셋뿐');
 put('US_S');
 { const cfv=M.cfvOf('US_S'), h=M.stripHTML(S.calc['US_S'],cfv);
-  ok('보수 적정가 눈금', /tick cfv"/.test(h));
+  ok('무성장 가치 눈금', /tick cfv"/.test(h));
   ok('제안 지정가 눈금', /tick cfvlim"/.test(h));
   ok('현재가 점', /pricedot/.test(h));
   ok('기술 눈금(매물대·볼린저·이평)은 더 이상 그리지 않는다',

@@ -204,7 +204,7 @@ test('F 상만 / G 결측 없음 / H 가치 이하만 — 진입 조건',()=>{
   assert.equal(by.G.enter({tier:'중',qMissW:5,aMissW:0}),false);
   assert.equal(by.G.enter({tier:'중',qMissW:null,aMissW:null}),false,'null을 0으로 치면 안 된다');
   assert.equal(by.G.enter({tier:'하',qMissW:0,aMissW:0}),false);
-  // H: 보수 적정가 이하. cfvState는 v5.9.3부터 기록되므로 과거 문서는 null → 진입 없음.
+  // H: 무성장 가치 이하. cfvState는 v5.9.3부터 기록되므로 과거 문서는 null → 진입 없음.
   assert.equal(by.H.enter({tier:'상',cfvState:'at'}),true);
   assert.equal(by.H.enter({tier:'중',cfvState:'wait'}),false);
   assert.equal(by.H.enter({tier:'중',cfvState:null}),false,'기록 전 구간은 표본에 들어오지 않는다');

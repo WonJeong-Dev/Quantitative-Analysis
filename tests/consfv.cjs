@@ -1,4 +1,4 @@
-/* (v5.7) 보수 적정가 + 개연성 하락가 — 순수함수 검증.
+/* (v5.7) 무성장 가치 + 개연성 하락가 — 순수함수 검증.
  * 확률 계층은 해석해가 있는 양이라 **알려진 값과 대조**한다. 자기참조 검사만 하면
  * 근사식 계수를 잘못 적어도 통과한다. */
 const D=require('../src/domain.js');
@@ -42,7 +42,7 @@ ok('중앙 도달가는 exp(-0.6745σ_H)배', near(D.probFloor(P,V,H,0.5),P*Math
 ok('변동성이 크면 더 멀리 내려간다', D.probFloor(P,0.6,H,0.5)<D.probFloor(P,0.2,H,0.5));
 ok('지평이 길면 더 멀리 내려간다', D.probFloor(P,V,120,0.5)<D.probFloor(P,V,20,0.5));
 
-console.log('\n[5] 보수 적정가 — 방법 선택과 배제');
+console.log('\n[5] 무성장 가치 — 방법 선택과 배제');
 const base={price:100,quality:65,ceil:3,fairPerNow:12,fairPsrNow:1.5,vm:{per:2,pbr:2,psr:2}};
 { // 흑자: EPS·FCF·장부 3종, PSR은 제외
   const r=D.conservativeFV(Object.assign({},base,{perTtm:10,perFwd:8,psr:2,pbr:1.25,fcfPS:7}));
@@ -118,7 +118,7 @@ console.log('\n[5b] 정상화 EPS — 단독 케이스와 app.js 정의와의 �
   const fs=require('fs');
   const T=fs.readFileSync(__dirname+'/../dist/index.html','utf8');
   ok('app.js의 50:50 평균 정의가 그대로다', /eNow=\(epsTtm\*0\.5\+epsFwd\*0\.5\)/.test(T));
-  /* 기존 엔진에는 0.92가 그대로 있어야 한다(판정 불변) — 다만 보수 적정가는 쓰지 않는다. */
+  /* 기존 엔진에는 0.92가 그대로 있어야 한다(판정 불변) — 다만 무성장 가치는 쓰지 않는다. */
   ok('app.js의 0.92는 손대지 않았다(판정 불변)', /eNow=epsFwd\*0\.92/.test(T));
 }
 
@@ -127,7 +127,7 @@ const bp=o=>D.buyPlan(Object.assign({},base,{annVol:V,h:H},o));
 /* 이익력 100/15×12=80 · 장부 100/1.25=80 → 2종 중앙값 80. 중앙도달가 87.67 > 80 → 가치가 제약 */
 { const r=bp({perTtm:15,perFwd:15,pbr:1.25,fcfPS:7});
   ok('중앙도달가 > 보수적정가 → 가치가 제약', r.bind==='value', r.bind+' fv='+r.fv+' pf='+r.probFloor);
-  ok('제안 지정가 = 보수 적정가', near(r.limit,80,1e-9), r.limit);
+  ok('제안 지정가 = 무성장 가치', near(r.limit,80,1e-9), r.limit);
   ok('상태 far (개연성 하락으로도 가치 미달)', r.state==='far', r.state);
   ok('제안가의 도달확률을 함께 낸다', r.limitProb>0&&r.limitProb<0.5, r.limitProb);
 }
@@ -141,11 +141,11 @@ const bp=o=>D.buyPlan(Object.assign({},base,{annVol:V,h:H},o));
 }
 { const r=bp({perTtm:15,perFwd:15,pbr:1.25,fcfPS:7,annVol:null});
   ok('변동성 없으면 지정가를 만들지 않는다', r.limit===null&&r.probFloor===null);
-  ok('보수 적정가는 그래도 나온다', near(r.fv,80,1e-9), r.fv);
+  ok('무성장 가치는 그래도 나온다', near(r.fv,80,1e-9), r.fv);
   ok('이유를 문장으로 남긴다', /변동성 미확보/.test(r.why||''), r.why);
 }
 { const r=D.buyPlan({price:100,annVol:V,h:H,quality:65,ceil:3,fairPerNow:12,fairPsrNow:1.5,vm:{}});
-  ok('방법이 없으면 why에 그 사실을 적는다', /보수 적정가 산출 불가/.test(r.why||''), r.why);
+  ok('방법이 없으면 why에 그 사실을 적는다', /무성장 가치 산출 불가/.test(r.why||''), r.why);
   ok('지정가도 null', r.limit===null);
 }
 
@@ -153,7 +153,7 @@ console.log('\n[7] 단조성 — 입력이 좋아지면 값이 커진다');
 {
   const a=D.conservativeFV(Object.assign({},base,{perTtm:10,perFwd:10,pbr:1.25,fcfPS:7}));
   const b=D.conservativeFV(Object.assign({},base,{perTtm:5,perFwd:5,pbr:1.25,fcfPS:7}));  // EPS 2배
-  ok('EPS가 커지면 보수 적정가가 작아지지 않는다', b.fv>=a.fv, a.fv+' → '+b.fv);
+  ok('EPS가 커지면 무성장 가치가 작아지지 않는다', b.fv>=a.fv, a.fv+' → '+b.fv);
   const c=D.conservativeFV(Object.assign({},base,{perTtm:10,perFwd:10,pbr:1.25,fcfPS:7,fairPerNow:15}));
   ok('정당 PER이 커지면 값도 커진다', c.fv>a.fv, a.fv+' → '+c.fv);
 }

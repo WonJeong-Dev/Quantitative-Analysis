@@ -214,7 +214,7 @@
       enter:r=>r.tier==='상'},
     {key:'G',label:'결측 없음',   note:'tier ∈ {상,중} ∧ qMissW=0 ∧ aMissW=0',
       enter:r=>(r.tier==='상'||r.tier==='중')&&r.qMissW===0&&r.aMissW===0},
-    {key:'H',label:'가치 이하만', note:"tier ∈ {상,중} ∧ cfvState = 'at' (현재가 ≤ 보수 적정가)",
+    {key:'H',label:'가치 이하만', note:"tier ∈ {상,중} ∧ cfvState = 'at' (현재가 ≤ 무성장 가치)",
       enter:r=>(r.tier==='상'||r.tier==='중')&&r.cfvState==='at'}
   ];
 
@@ -383,7 +383,7 @@
 
 
   /* ==========================================================================
-   * (v5.7) 보수 적정가 + 개연성 하락가 — **표시 전용**. 판정·게이트·그림자장부와 분리된다.
+   * (v5.7) 무성장 가치 + 개연성 하락가 — **표시 전용**. 판정·게이트·그림자장부와 분리된다.
    *
    * 왜 기존 fvNow와 따로 두는가. 기존 엔진은 애널 목표가가 주 앵커다(목표가 0.90·신뢰도 대
    * 펀더멘털 0.18). 즉 '재무제표 기준 가격'이 아니라 '전문가 전망에 펀더멘털을 조금 섞은 값'이다.
@@ -478,6 +478,7 @@
      * 50:50 평균이 두 곳에서 어긋나면 tests/consfv.cjs가 배포본을 직접 읽어 실패시킨다(§22-⑲).
      *
      * EPS는 price/PER로 되돌린다. 적자면 PER이 null이라 이 방법이 자동으로 빠진다. */
+    const perCeil=num(inp.perCeil), psrCeil=num(inp.psrCeil);   // (v6.3) 엔진 자신의 천장
     const epsT=(price>0&&perT!=null&&perT>0)?price/perT:null;
     const epsF=(price>0&&perF!=null&&perF>0)?price/perF:null;
     const epsNorm=(epsT!=null&&epsF!=null)?(epsT*0.5+epsF*0.5):(epsT!=null?epsT:epsF);
@@ -486,6 +487,18 @@
     else if(fPer==null)            skipped.push({key:'eps',label:'이익력(EPS)',why:'정당 PER 산출 불가(종합점수 결측)'});
     else if(perMax==null||epsNorm==null) skipped.push({key:'eps',label:'이익력(EPS)',why:'흑자 EPS 없음'});
     else if(vm.per===0)            skipped.push({key:'eps',label:'이익력(EPS)',why:'이 종목은 PER 판별력 없음(지표신뢰 0)'});
+    /* ★ (v6.3) 이익이 일시적으로 0 근처면 **값을 그리지 않는다.**
+     * 실측: PANW는 GAAP EPS가 0.4로 눌려 유효 PER 976배였고, 거기에 정당PER 12배를 곱한
+     * $30.97이 주가 $390 옆에 '가치'로 떴다. TSLA $17.92 · PLTR $23.59도 같은 자리다.
+     * 이건 "비싸다"가 아니라 **값이 무의미한 것**이다 — 모르는 값은 그리지 않는다(§22-⑯).
+     * 기준은 눈대중이 아니라 **이 엔진 자신의 천장**이다: fairPER이 어떤 성장·품질에도
+     * 75배를 넘겨 정당하다고 하지 않는다(clamp(per,5,75)). 현재 배수가 그 천장 밖이면
+     * 이 틀 안에서는 정당 배수를 매길 수 있는 이익이 아니다. 새 상수가 아니라 기존 천장의 재사용(§20).
+     * perCeil이 안 넘어오면(구버전 호출) 종전대로 동작한다 — 조용히 더 엄해지지 않는다. */
+    else if(perCeil!=null&&epsNorm>0&&(price/epsNorm)>perCeil)
+      skipped.push({key:'eps',label:'이익력(EPS)',
+        why:'이익이 일시적으로 눌림 — 유효 PER '+Math.round(price/epsNorm)
+           +'배로 정당 배수 범위(≤'+perCeil+'배) 밖'});
     else add('eps','이익력(EPS)',epsNorm*fPer,
       (epsT!=null&&epsF!=null?'정상화 EPS(후행·선행 평균)':(epsT!=null?'후행 EPS':'선행 EPS'))
       +' × 정당PER '+fPer.toFixed(1)+'배');
@@ -495,6 +508,12 @@
     else if(perMax!=null)          skipped.push({key:'rev',label:'매출(PSR)',why:'흑자 — 이익력으로 판단(PSR은 적자 대체)'});
     else if(psr==null||fPsr==null) skipped.push({key:'rev',label:'매출(PSR)',why:'주당매출 결측'});
     else if(vm.psr===0)            skipped.push({key:'rev',label:'매출(PSR)',why:'이 종목은 PSR 판별력 없음(지표신뢰 0)'});
+    /* 같은 이유로 매출도. 실측: QNT는 주당매출 0.0865에 정당PSR 1.5를 곱해 **$0.13**이
+     * 주가 $37.53 옆에 '가치'로 떴다(괴리 +28041%). 매출이 거의 없는 회사에 PSR을 곱한 값은
+     * 가치 추정이 아니다. 천장은 fairPSR 자신의 clamp 상한(22배)을 그대로 쓴다. */
+    else if(psrCeil!=null&&psr>psrCeil)
+      skipped.push({key:'rev',label:'매출(PSR)',
+        why:'매출 대비 주가가 정당 배수 범위 밖 — PSR '+Math.round(psr)+'배 (≤'+psrCeil+'배)'});
     else add('rev','매출(PSR)',price/psr*fPsr,'주당매출 × 정당PSR '+fPsr.toFixed(1)+'배');
     /* ③ 현금흐름 — 주당 FCF × 같은 정당 PER. **(v5.9.7) 참고값이다. 중앙값에 넣지 않는다.**
      *
@@ -576,7 +595,7 @@
     return out;
   }
 
-  /* 보수 적정가(가치 축)와 개연성 하락가(확률 축)를 **곱하지 않고 교차**시킨다.
+  /* 무성장 가치(가치 축)와 개연성 하락가(확률 축)를 **곱하지 않고 교차**시킨다.
    * 둘은 다른 종류의 양이다 — 하나로 뭉개면 어느 쪽이 제약인지 사라진다(§22-⑫).
    * 제안 지정가 = min(두 값): '가치로 정당하고(≤보수적정가) 닿을 만한(≤중앙도달가) 가장 높은 가격'.
    * 상태 셋을 구분한다:
@@ -595,7 +614,7 @@
     }else{
       out.why='변동성 미확보 — 도달확률을 낼 수 없습니다(일간 수익률 21봉 이상 필요)';
     }
-    if(c.fv==null){ out.why=(out.why?out.why+' / ':'')+'보수 적정가 산출 불가 — 쓸 수 있는 방법이 없습니다'; return out; }
+    if(c.fv==null){ out.why=(out.why?out.why+' / ':'')+'무성장 가치 산출 불가 — 쓸 수 있는 방법이 없습니다'; return out; }
     if(out.probFloor==null)return out;
     out.limit=Math.min(c.fv,out.probFloor);
     out.bind=(c.fv<=out.probFloor)?'value':'prob';
