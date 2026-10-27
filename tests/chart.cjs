@@ -13,6 +13,7 @@ console.log('\n[1] 상세 패널이 캔버스 두 장을 낸다');
 ok('250거래일 캔버스', /data-bars="250"/.test(T));
 ok('14거래일 캔버스',  /data-bars="14"/.test(T));
 ok('두 장에 이름표가 붙는다', /250거래일/.test(T)&&/14거래일/.test(T));
+ok('14일 이름표가 매물대를 약속한다', /14일 매물대/.test(T));
 
 console.log('\n[2] 호출부 — 한 장만 그리면 나머지가 빈 채로 남는다');
 /* querySelector는 첫 캔버스만 집는다. 되돌아가면 14일 패널이 영영 비어 있고,
@@ -38,12 +39,13 @@ const grab=p=>{const i=L.findIndex(x=>x.startsWith(p));if(i<0)throw new Error('�
   let d=0,o=[];for(let j=i;j<L.length;j++){o.push(L[j]);
     for(const ch of L[j]){if(ch==='{')d++;else if(ch==='}')d--;}
     if(d===0&&o.length>1)break;} return o.join('\n');};
-const src=['function smaArr(','function stdArr(','function emaArr(','function fmtAxis(','function drawChart(cv,id){']
+const src=['function volumeProfile(','function smaArr(','function stdArr(','function emaArr(','function fmtAxis(','function drawChart(cv,id){']
   .map(grab).join('\n');
 
-function rec(){ const r={fillRect:0,arc:0,strokeCount:0,texts:[],moveX:[],dash:[]};
+function rec(){ const r={fillRect:0,arc:0,strokeCount:0,texts:[],moveX:[],dash:[],rects:[]};
   const ctx={ scale(){},clearRect(){},beginPath(){},closePath(){},save(){},restore(){},
-    fill(){},stroke(){r.strokeCount++;},fillRect(){r.fillRect++;},
+    fill(){},stroke(){r.strokeCount++;},fillRect(x,y,w,hh){r.fillRect++;r.rects.push({x,y,w,h:hh});},
+    translate(){},rotate(){},
     arc(){r.arc++;}, lineTo(x){r.moveX.push(x);}, moveTo(x){r.moveX.push(x);},
     setLineDash(d){r.dash.push(d);}, measureText(t){return {width:t.length*5};},
     fillText(t,x,y){r.texts.push({t:String(t),x,y});},
@@ -53,11 +55,13 @@ function rec(){ const r={fillRect:0,arc:0,strokeCount:0,texts:[],moveX:[],dash:[
 const n=260,t=[],c=[],h=[],l=[];
 let px=100,seed=7; const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;};
 const now=Math.floor(Date.now()/1000);
+const v=[];
 for(let i=0;i<n;i++){ px*=1+0.002+(rnd()-0.5)*0.02;
-  t.push(now-(n-i)*86400); c.push(px); h.push(px*1.01); l.push(px*0.99); }
+  t.push(now-(n-i)*86400); c.push(px); h.push(px*1.01); l.push(px*0.99);
+  v.push(1e6*(0.5+rnd())); }
 
 const id='X';
-const S={cache:{[id]:{c,h,l,t,currency:'USD'}},
+const S={cache:{[id]:{c,h,l,t,v,currency:'USD'}},
   calc:{[id]:{price:c[c.length-1],chg:1,currency:'USD',fv:c[c.length-1]*0.5,
     vp1:{lo:Math.min(...l),bw:(Math.max(...h)-Math.min(...l))/20,poc:c[c.length-1]*0.9,
          bins:Array.from({length:20},(_,b)=>b+1)}}},
@@ -78,8 +82,23 @@ ok('250축은 월로 눈금을 적는다', long.texts.some(x=>/^\d+월$/.test(x.
 ok('14축은 날짜로 적는다 (월이 안 바뀌면 눈금이 하나도 없다)',
    short.texts.some(x=>/^\d+\/\d+$/.test(x.t)) && !short.texts.some(x=>/^\d+월$/.test(x.t)),
    short.texts.map(x=>x.t).join(','));
-/* 매물대는 1년 구간 산출물이다 — 14일 축에 올리면 같은 구간으로 읽힌다 */
-ok('매물대는 250축에만 그린다', long.fillRect>0&&short.fillRect===0, long.fillRect+' / '+short.fillRect);
+/* (v5.9.17) 두 축 모두 매물대를 그리되 **구간이 다르다.**
+ * 1년짜리 vp1을 14축에 얹으면 읽는 사람이 같은 구간으로 읽는다 — 다시 계산해야 한다. */
+ok('250축은 1년 매물대(vp1 20칸)를 그린다', long.fillRect===20, long.fillRect);
+ok('14축은 자기 구간으로 다시 계산한다 (12칸)', short.fillRect===12, short.fillRect);
+ok('14축 매물대가 그림 안에 들어온다',
+   short.rects.length>0&&short.rects.every(q=>q.y>=10&&q.y<=258), JSON.stringify(short.rects.slice(0,2)));
+{ /* vp1을 지워도 14축 매물대는 남아야 한다 — 남지 않으면 vp1을 베껴 쓰고 있다는 뜻이다. */
+  const keep=S.calc[id].vp1; S.calc[id].vp1=null;
+  const s2=run(14,300), l2=run(250,700);
+  S.calc[id].vp1=keep;
+  ok('vp1 없이도 14축 매물대는 그려진다', s2.fillRect===12, s2.fillRect);
+  ok('vp1이 없으면 250축 매물대는 비운다 (지어내지 않는다)', l2.fillRect===0, l2.fillRect); }
+{ /* 거래량이 없으면 그리지 않고, 이름표가 약속한 것을 없다고 적는다 */
+  const kv=S.cache[id].v; S.cache[id].v=null;
+  const s3=run(14,300); S.cache[id].v=kv;
+  ok('거래량이 없으면 매물대를 지어내지 않는다', s3.fillRect===0, s3.fillRect);
+  ok('없다는 사실을 적는다', s3.texts.some(x=>/거래량 없음/.test(x.t)), s3.texts.map(x=>x.t).join(',')); }
 ok('14축은 일중 고저 막대를 그린다 (종가선만으로는 그날이 안 보인다)',
    short.strokeCount>long.strokeCount/3, short.strokeCount);
 
@@ -94,6 +113,12 @@ ok('같은 자리에 겹쳐 찍지 않는다', new Set(ys).size===ys.length, JSO
 ok('250축에서는 범위 밖 표식을 쓰지 않는다 (기준선을 범위에 넣으므로)',
    !long.texts.some(x=>/범위 밖/.test(x.t)));
 ok('250축은 기준선을 점선으로 긋는다', long.dash.length>=3, long.dash.length);
+
+console.log('\n[5b] POC 이름표에 구간이 붙는다');
+/* 같은 모양의 보라색 선이 한쪽은 1년, 한쪽은 14일을 뜻한다. 이름이 없으면 둘 다 안 읽힌다. */
+ok('250축은 POC 1Y', long.texts.some(x=>x.t==='POC 1Y'), long.texts.map(x=>x.t).join(','));
+ok('14축은 POC 14D', short.texts.some(x=>x.t==='POC 14D'), short.texts.map(x=>x.t).join(','));
+ok('구간 없는 맨 POC는 쓰지 않는다', !long.texts.some(x=>x.t==='POC')&&!short.texts.some(x=>x.t==='POC'));
 
 console.log('\n[6] 봉이 모자랄 때');
 const few={c:c.slice(0,6),h:h.slice(0,6),l:l.slice(0,6),t:t.slice(0,6),currency:'USD'};

@@ -3264,7 +3264,7 @@ const evidence='<div class="evidence-card"><b>판단 근거와 데이터</b><p>�
     +'<div class="chartpair">'
       +'<div class="chartbox long"><div class="chlab">250거래일 <small>추세 · 이평 · 볼린저 · 매물대</small></div>'
         +'<canvas class="chart" data-id="'+esc(id)+'" data-bars="250"></canvas></div>'
-      +'<div class="chartbox short"><div class="chlab">14거래일 <small>최근 움직임 · 일중 고저</small></div>'
+      +'<div class="chartbox short"><div class="chlab">14거래일 <small>최근 움직임 · 일중 고저 · 14일 매물대</small></div>'
         +'<canvas class="chart" data-id="'+esc(id)+'" data-bars="14"></canvas></div>'
     +'</div>'
     +tierBoxHTML(k)+gradeExtra+'<button class="btn" data-invest-id="'+esc(id)+'">투자정책·시나리오·집중도 점검</button>'
@@ -3311,8 +3311,11 @@ function fmtAxis(v,c){
  * ★ 14일 패널의 y범위는 그 14일의 고저로만 잡는다. 기준선(FV·적립·실현·POC)까지 범위에 넣으면
  *   2주 움직임이 납작해져 패널의 존재 이유가 사라진다. 범위 밖 기준선은 **숨기지 않고**
  *   가장자리에 방향 표식(▲▼)과 이름을 남긴다 — 없는 것으로 보이게 하지 않는다(§22-⑯).
- * ★ 매물대(vp1)는 1년 구간으로 만든 값이라 14일 축에 올리지 않는다(§22-㉕의 거울상:
- *   맥락이 다른 값을 같은 그림에 얹으면 읽는 사람이 같은 구간으로 읽는다). */
+ * ★ (v5.9.17) 14축에도 매물대를 그리되 **그 14봉으로 다시 계산한다.** 1년짜리 vp1을 그대로
+ *   얹으면 읽는 사람이 같은 구간으로 읽는다 — 맥락이 다른 값을 같은 그림에 올리는 것이다.
+ *   같은 `volumeProfile()`을 구간만 바꿔 부른다(§22-⑲: 재사용은 주장이 아니라 검사).
+ *   POC 이름표에 구간을 함께 적는다(`POC 1Y` / `POC 14D`) — 이름 없는 같은 모양이 다른 뜻을
+ *   가지면 둘 다 안 읽힌다(v5.9.9에서 %로 겪었다). */
 function drawChart(cv,id){
   const ch=S.cache[id], k=S.calc[id], st=S.stocks[id];
   if(!ch||!ch.c)return;
@@ -3343,7 +3346,7 @@ function drawChart(cv,id){
       if(x!=null&&isFinite(x)&&x>0){lo=Math.min(lo,x);hi=Math.max(hi,x);}});
   }
   const pad=(hi-lo)*0.05||1;lo-=pad;hi+=pad;
-  const PL=52,PR=SHORT?20:70,PT=10,PB=22,IW=W-PL-PR,IH=H-PT-PB;
+  const PL=52,PR=SHORT?46:70,PT=10,PB=22,IW=W-PL-PR,IH=H-PT-PB;
   const X=i=>PL+(N===1?0:(i-off)/(N-1)*IW), Y=v=>PT+(hi-v)/(hi-lo)*IH;
   /* grid */
   x2.strokeStyle='#eef1f7';x2.fillStyle='#8b96ad';x2.lineWidth=1;
@@ -3382,16 +3385,27 @@ function drawChart(cv,id){
     x2.lineTo(X(i),Y(ma20[i]-2*sd20[i]));}
   x2.closePath();x2.fillStyle='rgba(59,91,219,.07)';x2.fill();
   x2.strokeStyle='#c3cef3';x2.lineWidth=1;x2.stroke();
-  /* 매물대(1Y) — 250일 축에만 */
-  if(!SHORT&&k&&k.vp1){
-    const vp=k.vp1,maxB=Math.max(...vp.bins);
-    for(let b=0;b<vp.bins.length;b++){
-      const y1=Y(vp.lo+(b+1)*vp.bw),y0=Y(vp.lo+b*vp.bw);
-      const bw2=(vp.bins[b]/maxB)*(PR-14);
-      const isPoc=Math.abs(vp.lo+(b+0.5)*vp.bw-vp.poc)<vp.bw*0.55;
-      x2.fillStyle=isPoc?'rgba(112,72,182,.75)':'rgba(112,72,182,.28)';
-      x2.fillRect(W-PR+6,y1,bw2,Math.max(1,y0-y1-1));
+  /* 매물대 — 250축은 1년(판정이 쓰는 vp1 그대로), 14축은 **그 14봉으로 다시 계산**.
+   * 칸 수는 해상도 선택이지 임계가 아니다 — 판정에 쓰이지 않는다. 1년 252봉에 24칸이면
+   * 봉 10개당 1칸인데, 14봉에 24칸이면 칸이 봉보다 많아 대부분 빈 칸이 된다. 절반인 12칸으로 둔다. */
+  const vpShort=(SHORT&&Array.isArray(ch.v)&&ch.v.some(x=>x>0))
+    ? volumeProfile(h,l,ch.v,N,12) : null;
+  const vp=SHORT?vpShort:(k&&k.vp1);
+  if(vp&&vp.bins){
+    const maxB=Math.max.apply(null,vp.bins);
+    if(maxB>0){
+      for(let b=0;b<vp.bins.length;b++){
+        const y1=Y(vp.lo+(b+1)*vp.bw),y0=Y(vp.lo+b*vp.bw);
+        const bw2=(vp.bins[b]/maxB)*(PR-14);
+        const isPoc=Math.abs(vp.lo+(b+0.5)*vp.bw-vp.poc)<vp.bw*0.55;
+        x2.fillStyle=isPoc?'rgba(112,72,182,.75)':'rgba(112,72,182,.28)';
+        x2.fillRect(W-PR+6,y1,bw2,Math.max(1,y0-y1-1));
+      }
     }
+  }else if(SHORT){
+    /* 이름표가 '매물대'를 약속했으니 없으면 없다고 적는다 — 빈 여백은 '그렸는데 안 보인다'로 읽힌다. */
+    x2.save();x2.translate(W-PR+8,PT+6);x2.rotate(Math.PI/2);
+    x2.fillStyle='#b4bdcd';x2.fillText('거래량 없음',0,0);x2.restore();
   }
   const line=(arr,col,w2)=>{x2.beginPath();let s3=false;
     for(let i=off;i<c.length;i++){if(arr[i]==null)continue;const x=X(i),y=Y(arr[i]);
@@ -3430,7 +3444,7 @@ function drawChart(cv,id){
     x2.beginPath();x2.moveTo(PL,y);x2.lineTo(W-PR,y);x2.stroke();x2.restore();
     x2.fillStyle=col;x2.fillText(label,PL+3,y-3);
   };
-  if(k&&k.vp1&&!SHORT)hline(k.vp1.poc,'#7048b6','POC');
+  if(vp&&vp.poc!=null)hline(vp.poc,'#7048b6',SHORT?'POC 14D':'POC 1Y');
   if(k)hline(k.fv,'#3b5bdb','FV',[7,4]);
   hline(parseFloat(m.accum),'#2f9e63','적립');
   hline(parseFloat(m.take),'#d94550','실현');
@@ -4488,7 +4502,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.16 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v5.9.17 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
