@@ -926,13 +926,14 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, psrR
   const num=x=>(x!=null&&x!==''&&isFinite(+x)&&+x>0)?+x:null;
 
   // --- 애널리스트 목표가 (분산 보정) ---
-  let anaTgt=num(man.target), anaConf=0, anaTgtAdj=null;
+  let anaTgt=num(man.target), anaConf=0, anaTgtAdj=null, anaSpreadMul=null;
   if(anaTgt!=null&&tw>0){
     let spreadMul=1;
     if(tgtSpread!=null&&isFinite(tgtSpread)){
       spreadMul=clamp(pl(tgtSpread,[[0.2,1],[0.5,1],[0.9,0.7],[1.4,0.45],[2.2,0.25]]),0.25,1);
     }
     anaConf = tw * spreadMul;      // 0~1: 목표가 종합 신뢰도
+    anaSpreadMul = spreadMul;      // (v6.0) 자격 판정이 같은 값을 본다 — 밖에서 다시 계산하지 않는다
     anaTgtAdj = anaTgt;
   }
 
@@ -1044,7 +1045,7 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, psrR
   else if(fundOutlier)basis.push('펀더멘털 이상치 배제');
   if(myFair!=null)basis.push('수동');
   if(tgtFromNow)basis.push('목표=현재적정가 대체');
-  return {fvNow, fvTarget, tgtUsed:anaTgtAdj, anaConf, nowIndep,
+  return {fvNow, fvTarget, tgtUsed:anaTgtAdj, anaConf, nowIndep, spreadMul:anaSpreadMul,
           fundFV:((fundMul>0&&fundUsable)?fund2:null), fundOutlier,
           basis:basis.join('+')||'—', techRef};
 }
@@ -1113,6 +1114,13 @@ function sessDay(sec,market){
   const f=SESS_FMT[tz]||(SESS_FMT[tz]=new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}));
   return f.format(new Date(sec*1000));
 }
+/* (v6.0) 목표가 기준일 불명의 기본 계수. **새 값이 아니다** — targetFresh가 v4.4부터 쓰던 0.5를
+ * 상수로 꺼낸 것이다(나이 사다리 0.7/0.4의 중간값). 여력 환산에서 분모로 쓰여 '모두에게 똑같이
+ * 걸리는 몫'을 걷어낸다. targetFresh의 식과 이 값이 갈라지면 tests/criteria가 깨진다. */
+const TGT_UNKNOWN_BASE=0.5;
+/* 목표가 분산 바닥. spreadMul 격자의 끝점(분산 2.2배 → 0.25)을 그대로 쓴다 — 새 임계가 아니라
+ * 기존 격자의 마지막 칸이다. 여기 닿으면 '컨센서스라 부를 수 없는 흩어짐'으로 보고 여력 근거에서 뺀다. */
+const TGT_SPREAD_FLOOR=0.25;
 function compute(id,simPrice){
   const st=S.stocks[id], ch=S.cache[id];
   if(!st||!ch||!ch.c||ch.c.length<30)return null;
@@ -1524,7 +1532,35 @@ function compute(id,simPrice){
   k.fvTech=techRef; // 하위호환 표시용
   k.fv=k.fvTarget;  // 하위호환: 기존 k.fv 참조 → 적정목표가로 매핑
   // 상승여력 = 적정목표가 기준 (미래 반영). 하방여유 = 현재적정가 기준.
-  k.upside=(k.fvTarget!=null&&price>0)?(k.fvTarget-price)/price*100:null;
+  /* (v6.0) ★ 관문·등급·점수가 보는 상승여력을 **애널 목표가 기준**으로 바꾼다.
+   *
+   * 무엇이 문제였나 — 임계와 희석이 다른 판에 따로 들어왔다.
+   *   v4.3: tgtF.f = 1.0(희석 없음). 임계 20/25/30은 **이 눈금에서** 정해졌다.
+   *   v4.4: 기준일 불명에 f = 0.5 도입(나이 사다리 0.7/0.4의 중간값 — 그 자체는 근거가 있다).
+   *         그런데 **임계를 다시 보지 않았다.** 실효 임계가 40/50/60이 됐다.
+   *   실측(2026-10-27): 60종목 중 60종목이 기준일 불명 → tgtF.f의 서로 다른 값이 **단 2개**(0.5·0.25).
+   *   변하지 않는 계수는 신뢰도 신호가 아니라 **임계를 옮긴 것**이다. 삼성전자 원시 +114.3%가
+   *   화면에선 +17.9%로 찍혀 '여력 부족'으로 탈락했다. 주식 60종목 중 53종목이 등급 없음이었다.
+   *
+   * 어떻게 고치나 — §22-⑤는 "스냅샷에 맞춰 임계를 고치지 말라"고 한다. 그래서 **임계는 그대로 두고
+   * 임계가 보는 양**을 이름이 약속하는 것으로 되돌린다. fvTarget은 현재가를 앵커로 섞은
+   * '적정가 추정'이고 거기서 나온 여력은 목표가 가중(0.90×anaConf ≤ 0.45)만큼만 반영된 값이다.
+   *   · 현재가 희석(블렌드 앵커) → 뺀다. 관문이 묻는 것은 "애널이 보기에 얼마나 싼가"다.
+   *   · 노후·괴리 감쇠 중 **변하는 부분**은 유지한다: tgtF.f ÷ 0.5. 모든 종목에 똑같이 걸리는
+   *     0.5는 단위이지 정보가 아니므로 나눠서 걷어내고, 0.5보다 더 깎인 종목(0.25 = 고점 낙관)은
+   *     그 비율만큼 그대로 깎인다. 새 상수를 만들지 않는다 — 기존 0.5를 기준으로 쓴다.
+   *   · 급락 감쇠(crashPenalty)는 아래 upsideEff에서 종전처럼 한 번 더 곱한다.
+   *   · 분산 과다는 **자격 조건**으로 — spreadMul이 바닥(0.25, 분산 2.2배 이상)이면 목표가를
+   *     여력 근거로 쓰지 않는다. 임계를 완화하는 대신 분류축을 둔다(§22-㉖).
+   *
+   * ★ 적정가(fvTarget/fvNow) 자체는 건드리지 않는다. 보수적 혼합은 '값을 추정하는 자리'에
+   *   그대로 남고, 바뀌는 것은 '관문이 보는 양'뿐이다. 화면은 둘을 나란히 보여준다. */
+  k.upsideBlend=(k.fvTarget!=null&&price>0)?(k.fvTarget-price)/price*100:null;  // 적정가 기준(표시용)
+  const tgtVarF=(k.tgtF&&k.tgtF.f>0)?Math.min(1,k.tgtF.f/TGT_UNKNOWN_BASE):0;
+  const spreadOK=(fvr.spreadMul==null)||(fvr.spreadMul>TGT_SPREAD_FLOOR);
+  k.tgtVarF=tgtVarF; k.tgtSpreadOK=spreadOK;
+  k.upside=(k.tgtUsed!=null&&price>0&&tgtVarF>0&&spreadOK)
+    ? (k.tgtUsed-price)/price*100*tgtVarF : null;
   k.downside=(k.fvNow!=null&&price>0)?(k.fvNow-price)/price*100:null; // 양수면 현재기준 저평가
 
   /* ===== 낙폭 허수 페널티 ===== */
@@ -3146,7 +3182,14 @@ function detailHTML(id){
   /* --- 점수 분해: ② 가격매력도 --- */
   const aw=S.settings.aw||AW_DEF;
   const ap=k.aParts||{};
-  const aRows=[['상승여력','적정가 대비 '+fmtPct(k.upside)+(k.crashPenalty<1?' <span style="color:var(--violet)">·급락감쇠 '+Math.round(k.crashPenalty*100)+'%</span>':''),ap.up,aw.up],
+  /* (v6.0) 두 여력을 **나란히** 적는다. 하나만 보이면 "왜 탈락인지"를 화면이 설명하지 못한다 —
+   * 실제로 "거의 모든 종목이 안 삼으로 뜨는 이유가 뭐냐"는 질문을 받았고, 답이 이 두 숫자의
+   * 차이였다. 관문·등급이 보는 것은 앞의 값이고, 뒤의 값은 보수적으로 혼합한 적정가 기준이다. */
+  const aRows=[['상승여력','애널 목표가 대비 '+fmtPct(k.upside)
+      +(k.tgtVarF!=null&&k.tgtVarF<1?' <span style="opacity:.7">·노후/괴리 '+Math.round(k.tgtVarF*100)+'%</span>':'')
+      +(k.crashPenalty<1?' <span style="color:var(--violet)">·급락감쇠 '+Math.round(k.crashPenalty*100)+'%</span>':'')
+      +(k.upsideBlend!=null?'<br><span style="opacity:.72;font-size:11px">적정가(보수 혼합) 대비 '+fmtPct(k.upsideBlend)+' — 표시용, 관문에 쓰지 않음</span>':'')
+      +(k.tgtSpreadOK===false?'<br><span style="color:var(--amber);font-size:11px">목표가 분산 과다 — 여력 근거에서 제외</span>':''),ap.up,aw.up],
     ['RSI 반등','RSI '+(k.rsi!=null?k.rsi.toFixed(1):'—'),ap.rsi,aw.rsi],
     ['볼린저 위치','%B '+(k.pB!=null?k.pB.toFixed(2):'—'),ap.bb,aw.bb],
     ['매물대 위치','1Y POC 대비 '+fmtPct(dev(k.price,k.vp1?k.vp1.poc:null)),ap.vp,aw.vp],
@@ -3669,7 +3712,12 @@ const CONST_LOG=[
 function constNow(){ const m={}; for(const r of CONST_LOG)m[r.k]=r; return m; }
 /* ★ 판정 로직 버전. 이 값이 바뀌면 그 이전 로그와 이후 로그를 **같은 평균에 넣으면 안 된다**.
  * 판정에 영향을 주는 변경(임계값·게이트·등급식)이 있을 때만 올린다 — 표시 전용 변경은 그대로 둔다. */
-const RULE_VER='v5.5';   // (v5.5) 판정 변경 — 목표가 절벽·fvNow 폴백·G4/C1 독립성·봉 추가·확증 독립군·연속화·경험적 분위·ETF 매력 재정규화
+const RULE_VER='v6.0';   /* (v6.0) 판정 변경 — 상승여력의 기준을 '적정가 혼합'에서 '애널 목표가'로.
+  * v4.4가 모든 종목에 ×0.5를 넣으면서 v4.3 눈금의 임계 20/25/30을 다시 보지 않아 실효 임계가
+  * 40/50/60이 돼 있었다(실측: 60종목 전부 기준일 불명, tgtF.f의 서로 다른 값이 단 2개).
+  * 임계는 그대로 두고 **임계가 보는 양**을 이름이 약속하는 것으로 되돌린다.
+  * 함께: G3(「하」 등급 여력 조건과 중복) 제거 · G9(실적 ±2일) 관문 → 배지로 강등.
+  * ★ 이 버전부터 판정 로그가 새로 쌓인다 — v5.5 로그는 집계에서 빠지고 250거래일 시계가 0부터다. */
 
 function classifyDetail(k){
   /* (v4.34) 조기 반환도 정규 반환과 **같은 키 집합**을 갖는다. 격자 검증에서
@@ -3692,19 +3740,24 @@ function classifyDetail(k){
   /* (v4.34) 세 번째 원소 = 안정 코드. **라벨은 문구가 바뀌면 달라지지만 코드는 안 바뀐다.**
    * 판정 로그에 "어느 관문에서 걸렸는가"를 남기려면 시간이 지나도 같은 것을 가리키는
    * 식별자가 필요하다. 라벨을 그대로 저장하면 문구를 다듬는 순간 과거 로그와 갈라진다.
-   * 배열에 원소를 덧붙이는 방식을 택한 이유는, ETF 필터가 **인덱스**로 걸러내기 때문이다 —
-   * 코드 배열을 따로 두면 두 배열의 필터가 조용히 갈라질 수 있다(§19.10 '비대칭 검사'). */
+   * (v6.0) ETF 필터를 **인덱스에서 코드로** 바꿨다. G3·G9를 빼면서 인덱스가 밀렸고,
+   * 인덱스 필터는 그 사실을 조용히 삼킨다 — 실제로 기존 필터의 주석(G3·G4·G8)과 코드(2,3,7,8)가
+   * 이미 어긋나 있었다(8번은 G9였다). 코드로 거르면 관문을 더하거나 빼도 필터가 따라온다. */
+   /* 제거된 관문 (v6.0)
+    *  G3 '상승여력 ≥ MIN_MARGIN' — 「하」 등급의 여력 조건과 **값이 같아** 결과에 영향이 없었다.
+    *     지워도 등급은 하나도 안 바뀌고, 중복된 설명 한 줄만 사라진다.
+    *  G9 '실적 발표 ±2일 제외' — 실적 발표는 **변동성 사건이지 품질 신호가 아니다.** 발표가
+    *     임박했다는 사실은 📅 배지로 그대로 남고, 사는 것을 막지는 않는다. 손실 통제는
+    *     수량 사이징과 무효화선이 따로 맡는다. */
   const gates=[
     ['데이터 신선 — 캔들·시세 '+STALE_MAX_D+'일 이내', !k.dataStale,'G1'],
     ['가격 정합 — 현재가 이상 신호 없음', !k.priceAnomaly,'G2'],
-    ['휴리스틱 목표가 상승여력(급락 감쇠 후) ≥ +'+MIN_MARGIN+'%', UE!=null&&UE>=MIN_MARGIN,'G3'],
     [downAssess?'휴리스틱 현재가치 대비 괴리 −25% 이상 (손실한도 아님)'
                :'휴리스틱 현재가치 — 판정 불가 (근거가 목표가뿐이거나 없음)', downsideOK,'G4'],
     ['과열 아님 — RSI < '+(RH-5)+' · %B < 0.90', !((k.rsi!=null&&k.rsi>=RH-5)||(k.pB!=null&&k.pB>=0.9)),'G5'],
     ['떨어지는 칼날 아님 — 급락 중 신저가 갱신 아님', !fallingKnife,'G6'],
     ['데이터 충분 — 상장 '+MIN_BARS+'봉(≈6개월) 이상', k.listedBars>=MIN_BARS,'G7'],
     ['최소 품질 — 종합점수 ≥ 45', k.quality!=null&&k.quality>=45,'G8'],
-    ['다가오는 실적 일정 확인 · 발표 ±2일 제외', k.earnDays!=null&&k.earnDays>2&&!k.earnSoon,'G9'],
     ['악재 플래그 없음 — 수동 보류 미설정', !k.hasHardHazard,'G10']
   ];
   const conf=[
@@ -3723,7 +3776,8 @@ function classifyDetail(k){
    * RSI 하단권·볼린저 하단권·매물대 POC)는 ETF에도 그대로 유효하다.
    * 조건식을 새로 쓰지 않고 인덱스로 걸러낸다 — 주식 경로의 문구·임계값이 그대로 남는다. */
   const isETF=(k.assetType==='etf');
-  const gatesEff=isETF?gates.filter((_,i)=>i!==2&&i!==3&&i!==7&&i!==8):gates.concat([['필수 품질 성분 수신 · 수동 단위 확인',!(k.qMissW>0)&&!k.deUnitUnknown&&!(k.qInputMissing||[]).length,'G11']]);
+  const ETF_SKIP=['G4','G8'];   // (v6.0) 적정가·종합점수를 요구하는 관문만 뺀다. G3·G9는 이제 없다.
+  const gatesEff=isETF?gates.filter(g=>ETF_SKIP.indexOf(g[2])<0):gates.concat([['필수 품질 성분 수신 · 수동 단위 확인',!(k.qMissW>0)&&!k.deUnitUnknown&&!(k.qInputMissing||[]).length,'G11']]);
   const confEff =isETF?conf.filter((_,i)=>i!==0&&i!==4&&i!==5):conf;
   /* (v5.5) 확증은 **독립 정보군당 1표**다. 항목 수를 세면
    *  · C2 RSI · C3 %B · C4 POC는 모두 최근 2~4주 수익률의 단조함수에 가깝다 — 한 번의 급락으로 셋이 함께 참.
@@ -4502,7 +4556,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v5.9.17 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.0.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

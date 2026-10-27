@@ -48,8 +48,15 @@ test('ETF는 항목 수(nRaw)로 판정 — 2항목이어야 저점권',()=>{
   assert.notEqual(cd(K({assetType:'etf',rsi:20})).tier,'저점권');
   assert.equal(cd(K({assetType:'etf',rsi:20,pB:.1})).tier,'저점권');
 });
-test('G3·등급 여력은 급락 감쇠 후 여력(upsideEff)을 본다',()=>{
-  assert.equal(cd(K({upside:25,upsideEff:18.75})).blockedCode,'G3');
+/* (v6.0) G3는 사라졌지만 **등급**은 여전히 급락 감쇠 후 여력(upsideEff)을 본다.
+ * 감쇠가 점수에만 걸리고 등급은 원 여력을 보던 v5.4의 비대칭으로 되돌아가면 이 검사가 깨진다. */
+test('등급 여력은 급락 감쇠 후 여력(upsideEff)을 본다 (v6.0 — G3 제거 후에도)',()=>{
+  // 원 여력 25%는 「하」(≥20)를 넘지만, 감쇠 후 18.75%면 못 넘는다 → 등급 없음
+  const d=cd(K({upside:25,upsideEff:18.75}));
+  assert.equal(d.tier,null,'감쇠 후 값으로 떨어져야 한다');
+  assert.ok(!JSON.stringify(d.gates).includes('G3'),'G3 관문은 없다');
+  // 감쇠가 없으면 같은 원 여력으로 등급이 선다
+  assert.ok(cd(K({upside:25,upsideEff:25})).tier,'감쇠 없으면 등급이 선다');
 });
 test('하락추세 통계 경로 = 경험적 분위 ≤ Φ(−1)',()=>{
   assert.equal(cd(K({s200:120,ratioZ:-3,ratioPct:.30,slope50:1,slope200:1})).statDown,false);

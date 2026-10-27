@@ -362,7 +362,9 @@
    * 나중에 정의가 바뀌면 해시 불일치로 드러난다(SHADOW-5.6 §5). */
   /* (v5.9.3) 사전등록 판 번호. v1은 Firestore에 create-only로 굳어 있어 **고칠 수 없고**,
    * arm을 더하면 해시가 달라지므로 새 문서(v2)로 굳힌다. v1은 그대로 보존된다. */
-  const PREREG_VER='v2';
+  /* (v6.0) 판정 규칙이 바뀌면 그림자 장부도 새로 동결한다 — 규칙이 다른 관측을 한 장부에
+   * 섞으면 승격 판정이 두 규칙의 혼합을 평가하게 된다. supersedes가 이전 장부를 가리킨다. */
+  const PREREG_VER='v3';
   function preregBody(rv){
     const rows={arms:SHADOW_ARMS.map(a=>({key:a.key,label:a.label,note:a.note||(a.sample?'sample':a.always?'always':'')})),
       entry:'직전 문서에서 거짓→참 전이 · 직전 행이 없으면 판정 안 함',
@@ -373,7 +375,7 @@
       note:'x=지수 대비 · m=같은 날짜·시장·유형 중앙값 대비. 둘을 나란히 본다'};
     const promote=Object.assign({},PROMOTE,{correction:'holm',placebo:'arm D'});
     const body={id:rv+'_shadow_'+PREREG_VER,rows,outcomes,promote,
-      supersedes:(PREREG_VER==='v1')?null:(rv+'_shadow_v1'),
+      supersedes:(PREREG_VER==='v1')?null:(rv+'_shadow_v'+(+PREREG_VER.slice(1)-1)),
       note:'A~E의 정의는 v1과 동일하다. v2는 arm F·G·H를 **추가만** 한 판이다. '
           +'H의 입력(cfvState)은 v5.9.3부터 기록되므로 그 이전 문서에서는 null이라 진입하지 않는다.'};
     return Object.assign({},body,{hash:String(hashStr(settingsKey(body)))});

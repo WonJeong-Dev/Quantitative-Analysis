@@ -174,9 +174,11 @@ test('preregBody: 해시가 안정적이고 정의가 바뀌면 달라진다',()
   const a=D.preregBody('v5.5'),b=D.preregBody('v5.5');
   assert.equal(a.hash,b.hash);
   assert.equal(a.id,'v5.5_shadow_'+D.PREREG_VER);
-  /* (v5.9.3) v2는 v1을 **대체하지 않고 잇는다** — 어느 판을 이어받았는지 본문에 남긴다.
-   * Firestore가 create-only라 v1 문서 자체는 고칠 수 없고, 비교 가능성이 그래서 유지된다. */
-  if(D.PREREG_VER!=='v1')assert.equal(a.supersedes,'v5.5_shadow_v1');
+  /* (v5.9.3) 새 판은 이전 판을 **대체하지 않고 잇는다** — 어느 판을 이어받았는지 본문에 남긴다.
+   * Firestore가 create-only라 이전 문서 자체는 고칠 수 없고, 비교 가능성이 그래서 유지된다.
+   * (v6.0) 판 번호가 올라가도 '바로 앞 판'을 가리키는지 검사한다 — v1 고정이면 v3에서 틀린다. */
+  if(D.PREREG_VER!=='v1')
+    assert.equal(a.supersedes,'v5.5_shadow_v'+(+D.PREREG_VER.slice(1)-1));
   assert.equal(a.outcomes.primary,'x60');assert.equal(a.outcomes.secondary,'m60');
   assert.equal(a.promote.minEvents,30);assert.equal(a.promote.phases,2);
   const {hash,...body}=a;                                            // 해시가 본문 전체를 덮는가
