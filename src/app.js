@@ -2638,6 +2638,14 @@ function verdictOf(id){
   }else if(!k.tier&&!isETF&&!(d&&d.gates&&d.gates.length)){
     key='na'; why='평가할 자료 없음';
     tip='관문을 돌릴 입력이 없습니다 — 판정을 내리지 않았습니다';
+  }else if(!k.tier){
+    /* (v6.1.1) 관문은 전부 통과했는데 등급 기준(매력·종합·여력·확증)에 못 미친 경우.
+     * **평가해서 못 넘은 것**이므로 탈락이 맞다 — 평가 불가가 아니다.
+     * v6.1.0이 이 가지를 빠뜨려 등급 미달 종목이 아래 cfv 분기로 새어 '관망'으로 찍혔다
+     * (실측: 판정분포의 추천+관망 54 > 등급 보유 43). 검사는 통과했는데 분포가 들켰다. */
+    key='out'; why='등급 기준 미달';
+    tip='하드 게이트는 전부 통과했지만 등급 기준(가격매력도·종합점수·상승여력·확증)에 미치지 못했습니다'
+       +((d&&d.unknown||[]).length?(' · 함께 평가 불가: '+d.unknown.join(' / ')):'');
   }else if(isETF){
     /* ETF는 재무제표가 없어 보수 적정가를 만들 수 없다 — 결함이 아니라 구조다.
      * 보드 자신의 ETF 등급(저점권/관심권/중립)이 그 자리의 가치 신호다. */
@@ -4625,7 +4633,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.1.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.1.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

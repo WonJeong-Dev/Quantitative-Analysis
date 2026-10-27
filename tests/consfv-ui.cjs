@@ -126,6 +126,13 @@ ok('ETF도 관문 미통과면 탈락', M.verdictOf('US_ETF4').key==='out');
 ok('판정 단어는 셋 + 평가 불가', Object.keys(M.VERDICT).length===4&&
    ['추천','관망','탈락','평가 불가'].every(w=>Object.values(M.VERDICT).some(x=>x.w===w)));
 ok('평가 불가는 탈락과 다른 표식', M.VERDICT.na.mk!==M.VERDICT.out.mk&&M.VERDICT.na.cls==='na');
+{ /* (v6.1.1) 관문은 다 통과했는데 등급 기준에 못 미친 경우 — **평가해서 못 넘었으니 탈락**이다.
+   * v6.1.0이 이 가지를 빠뜨려 '관망'으로 샜다. 검사는 통과했고 실제 분포가 들켰다. */
+  put('US_UNDER',{tier:null,grd:{gates:[['x',true,'G1']],blocked:null,blockedCode:null,assessable:true,unknown:null}});
+  const u=M.verdictOf('US_UNDER');
+  ok('등급 미달은 탈락 (관망으로 새지 않는다)', u.key==='out'&&u.w==='탈락', u.key+'/'+u.w);
+  ok('그 이유를 적는다', u.why==='등급 기준 미달', u.why);
+  ok('평가 불가와 섞지 않는다', u.key!=='na'); }
 { /* 경고색으로 칠하면 '나쁘다'로 읽힌다 — 중립이어야 한다. */
   const css=T.slice(0,T.lastIndexOf('</style>'));
   const i=css.indexOf('.vd.na{'); const rule=i<0?'':css.slice(i,css.indexOf('}',i));
