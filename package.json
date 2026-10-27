@@ -1,10 +1,14 @@
 {
   "name": "qa-stock-board",
-  "version": "6.1.2",
+  "version": "6.2.0",
   "private": true,
   "scripts": {
     "build": "node scripts/build.cjs",
     "verify": "node scripts/verify.cjs",
-    "preview": "node scripts/serve.cjs"
+    "preview": "node scripts/serve.cjs",
+    "rulehash": "node scripts/rulehash.cjs --list"
+  },
+  "devDependencies": {
+    "acorn": "^8.19.0"
   }
 }
