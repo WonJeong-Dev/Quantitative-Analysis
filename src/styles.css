@@ -295,6 +295,15 @@
   .dstat .s{font-size:10.5px;font-weight:600;color:var(--sub)}
   .dsec{font-size:13px;font-weight:800;margin:16px 0 8px;color:var(--text);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .dsec small{font-weight:600;color:var(--sub)}
+  /* (v5.9.16) 차트 두 장 — 250거래일 / 14거래일.
+   * flex-basis로 접는다: 컨테이너가 좁아지면 두 장이 세로로 쌓인다. 뷰포트 미디어쿼리를
+   * 쓰지 않는 이유는 .detail의 실제 폭이 뷰포트 폭과 다르기 때문이다(v5.9.5에서 겪었다). */
+  .chartpair{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
+  .chartbox{min-width:0;display:flex;flex-direction:column;gap:4px}
+  .chartbox.long{flex:3 1 360px}
+  .chartbox.short{flex:1 1 210px}
+  .chlab{font-size:11.5px;font-weight:700;color:var(--sub);letter-spacing:-.01em}
+  .chlab small{font-weight:500;opacity:.72;margin-left:4px;letter-spacing:0}
   canvas.chart{width:100%;height:280px;background:#fff;border:1px solid var(--line);border-radius:10px}
   .flags{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
   .flag{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px}
