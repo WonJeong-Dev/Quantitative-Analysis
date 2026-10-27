@@ -2746,8 +2746,13 @@ function reviewOf(id,hd){
    * 종전엔 `failed=!k.tier`였다 — 등급이 없는 모든 경우를 거절로 읽었고, 그래서
    * 데이터가 없어 평가조차 못 한 종목에도 "지금이라면 안 삼"이 붙었다(실측: 삼성전자).
    * 근거 없이 내리는 부정 판정이다. 모르는 것은 모른다고 적는다. */
-  const failed=!k.tier&&!!(d&&d.blocked);                 // 평가했고 관문에서 거절됨
-  const unknown=!k.tier&&!(d&&d.blocked);                 // 평가할 자료가 없었음
+  /* (v6.1.2) 분류를 **판정과 같은 곳에서 가져온다.** v6.1.1은 여기서 `!k.tier && !blocked`로
+   * 따로 갈랐는데, 등급 미달(관문 통과·평가 완료)이 그 식에서 '모름'으로 떨어져
+   * 화면에 `탈락 [평가 불가]`라는 모순이 떴다(실측: INTU). 두 곳에서 같은 것을 따로 분류하면
+   * 반드시 갈라진다 — verdictOf 하나만 보게 한다(§22-⑲: 재사용은 주장이 아니라 검사). */
+  const VD=verdictOf(id);
+  const failed=!!(VD&&VD.key==='out');                    // 평가했고 못 넘음(관문 거절 또는 등급 미달)
+  const unknown=!!(VD&&VD.key==='na');                    // 평가할 자료가 없었음
   const breach=!!(so&&so.stop!=null&&k.price!=null&&k.price<=so.stop);
   return {held:true,qty:hd.qty,failed:failed,unknown:unknown,stop:so,breach:breach,
           /* 경고색(hit)은 거절·무효화 도달에만 켠다 — 모름에 빨간불을 켜면 §22-㉖ 위반이다. */
@@ -4633,7 +4638,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.1.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.1.2 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

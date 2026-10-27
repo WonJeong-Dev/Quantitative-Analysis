@@ -17,9 +17,15 @@ const RULE_VER='v5.5', CFV_STOP_H=20;
 const findStockId=o=>Object.keys(S.stocks).find(id=>{const s=S.stocks[id];
   return s.market===o.market&&(s.code===o.code||s.name===o.name);})||null;
 
-const M=new Function('S','QADomain','RULE_VER','CFV_STOP_H','findStockId',
+/* (v6.1.2) reviewOf는 분류를 **verdictOf에서 가져온다** — 두 곳에서 따로 가르면 갈라진다.
+ * 여기서는 그 배선을 검사한다(판정 자체의 분류는 tests/consfv-ui.cjs가 본다).
+ * 실제 verdictOf는 cfvOf·VERDICT 등 많은 것을 끌고 오므로, 조작 가능한 대역을 넣고
+ * **failed/unknown이 판정 키를 그대로 따라오는가**만 본다. */
+let VKEY=null;                                   // 테스트가 세우는 판정 키
+const verdictOf=id=>VKEY==null?null:{key:VKEY};
+const M=new Function('S','QADomain','RULE_VER','CFV_STOP_H','findStockId','verdictOf',
   srcReview+'\n'+srcSnap+'\n;return {maskEntry,stopOf,reviewOf,lgSnap};')
-  (S,QADomain,RULE_VER,CFV_STOP_H,findStockId);
+  (S,QADomain,RULE_VER,CFV_STOP_H,findStockId,verdictOf);
 
 let pass=0,fail=0;
 const ok=(n,c,x)=>{c?(pass++,console.log('  OK   '+n)):(fail++,console.log('  FAIL '+n+(x!==undefined?('  ← '+x):'')));};
@@ -73,31 +79,47 @@ S.trades=[buy('000001','A','2026-08-01',80000,{at:9,stop:71000,entry:80000,stopD
 stock('A',{k:{price:75000,tier:'중'}});
 let r=M.reviewOf('A',{qty:10});
 ok('선 위이고 관문 통과 → 아무 일 없음', r.hit===false&&r.failed===false&&r.breach===false, JSON.stringify(r));
-stock('A',{k:{price:70999,tier:'중'}});
+stock('A',{k:{price:70999,tier:'중'}}); VKEY='watch';
 r=M.reviewOf('A',{qty:10});
 ok('선 아래로 내려오면 무효화 도달', r.breach===true&&r.hit===true);
 ok('이유를 문장으로 남긴다', /무효화선 아래로/.test(r.why||''), r.why);
 /* (v6.1) '지금이라면 안 삼'은 **평가해서 거절했을 때만** 쓴다.
  * 종전엔 tier가 없으면 전부 거절로 읽어, 데이터가 없어 평가조차 못 한 종목에도 붙었다. */
 const BLK={blocked:'최소 품질 — 종합점수 ≥ 45',blockedCode:'G8',assessable:true};
-stock('A',{k:{price:90000,tier:null,grd:BLK}});
+stock('A',{k:{price:90000,tier:null,grd:BLK}}); VKEY='out';
 r=M.reviewOf('A',{qty:10});
 ok('관문 탈락이면 선 위여도 재심사 걸림', r.failed===true&&r.breach===false&&r.hit===true);
 ok('"지금 신규라면" 문장', /지금 신규라면 관문을 통과하지 못합니다/.test(r.why||''), r.why);
-stock('A',{k:{price:70000,tier:null,grd:BLK}});
+stock('A',{k:{price:70000,tier:null,grd:BLK}}); VKEY='out';
 r=M.reviewOf('A',{qty:10});
 ok('둘 다여도 관문 쪽을 먼저 말한다', r.failed&&r.breach&&/관문/.test(r.why));
 
 /* 평가 불가 — 거절이 아니다. 경고색도 켜지 않는다. */
 stock('A',{k:{price:90000,tier:null,grd:{blocked:null,blockedCode:null,assessable:false,
   unknown:['휴리스틱 현재가치 — 평가 불가 (근거가 목표가뿐이거나 없음)'],unknownCode:['G4']}}});
+VKEY='na';
 r=M.reviewOf('A',{qty:10});
 ok('데이터가 없으면 거절로 읽지 않는다', r.failed===false&&r.unknown===true, JSON.stringify([r.failed,r.unknown]));
 ok('모름에 경고색을 켜지 않는다 (선 위일 때)', r.hit===false, r.hit);
 ok('나쁘다는 뜻이 아님을 문장에 적는다', /나쁘다는 뜻이 아닙니다/.test(r.why||''), r.why);
+{ /* (v6.1.2) 배지와 판정이 어긋나면 안 된다 — 등급 미달(평가 완료)이 '평가 불가'로 떨어져
+   * `탈락 [평가 불가]`가 뜬 적이 있다. 두 곳에서 따로 분류하면 반드시 갈라진다. */
+  stock('A',{k:{price:90000,tier:null,grd:{gates:[['x',true,'G1']],blocked:null,blockedCode:null,
+    assessable:true,unknown:null}}});
+  VKEY='out';
+  const q=M.reviewOf('A',{qty:10});
+  ok('등급 미달은 거절로 읽는다 (평가 불가가 아니다)', q.failed===true&&q.unknown===false,
+     JSON.stringify([q.failed,q.unknown]));
+  VKEY='na';
+  const q2=M.reviewOf('A',{qty:10});
+  ok('판정이 평가 불가면 배지도 평가 불가', q2.unknown===true&&q2.failed===false);
+  VKEY='watch';
+  const q3=M.reviewOf('A',{qty:10});
+  ok('판정이 관망이면 둘 다 아니다', q3.failed===false&&q3.unknown===false); }
 /* 다만 무효화선을 깼다면 그건 **관측된 사실**이므로 경고는 켠다. */
 stock('A',{k:{price:70000,tier:null,grd:{blocked:null,blockedCode:null,assessable:false,
   unknown:['x'],unknownCode:['G4']}}});
+VKEY='na';
 r=M.reviewOf('A',{qty:10});
 ok('무효화선 도달은 모름과 무관하게 경고', r.breach===true&&r.hit===true);
 ok('보유가 아니면 null', M.reviewOf('A',null)===null);
