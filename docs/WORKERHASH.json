@@ -1,5 +1,5 @@
 {
   "주석": "워커 소스가 바뀌면 VER을 올리고 `node scripts/workerhash.cjs --write`로 다시 찍는다",
-  "ver": "7.2",
-  "hash": "8551e47ebd2b0654"
+  "ver": "7.3",
+  "hash": "5b45095b623102d8"
 }

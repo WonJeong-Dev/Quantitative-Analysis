@@ -1,5 +1,11 @@
 /**
- * Quant Stock Board 개인 프록시 v7.0 — Cloudflare Worker (무료, 하루 10만 요청)
+ * Quant Stock Board 개인 프록시 — Cloudflare Worker (무료, 하루 10만 요청)
+ *
+ * ★ 이 파일의 버전은 아래 `const VER` 하나뿐이다. **머리 주석에 버전을 다시 적지 않는다.**
+ *   v7.2까지 이 줄이 'v7.0'이라고 선언하고 있었는데 `VER`은 이미 7.2였다 — 파일을 연 사람이
+ *   "옛날 파일인가?"를 묻게 만들었다. 같은 값을 두 군데 적으면 반드시 갈라진다(§22-⑲).
+ *   아래 연혁에 (v6.9)·(v7.0) 같은 표기는 **과거 판을 가리키는 기록**이지 이 파일의 현재
+ *   버전이 아니다. 현재 버전은 `VER`이고, 소스와 `VER`의 짝은 docs/WORKERHASH.json이 지킨다.
  *
  * (v7.0 · 앱 v5.5) v5.4 워커(v6.8 + revenueBasis·deRatio·upstreamFetch·선택적 Origin/레이트리밋 래퍼)에
  *   v6.9 보안 설계를 합쳤다. 응답 본문 키는 v5.4와 같고, /summary 끝에 epsFwdSrc 하나가 늘었다.
@@ -96,7 +102,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 /* (v7.1) ★ 워커를 바꿀 때마다 올린다. v7.0에서 /dart를 더하고도 VER을 그대로 둬서,
  * /health가 'ver 7.0'을 돌려줘도 **그 7.0이 어느 7.0인지 알 수 없었다** — 배포됐는지
  * 확인할 방법이 없는 상태였다. 관측 장치가 두 상태를 구분하지 못하면 관측이 아니다(§22-㉒). */
-const VER = '7.2';
+const VER = '7.3';
 
 /* ============ (v6.9) CORS — `*`를 버리고 허용 Origin만 반사한다 ============
  * v6.8은 `Allow-Origin: *` + `Allow-Headers: *`였다. 인증이 없던 시절엔 어차피 공개라

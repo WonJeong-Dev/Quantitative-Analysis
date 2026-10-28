@@ -189,6 +189,10 @@ const hl0=await call('/health',{token:null});
   /* 소스가 바뀌었는데 VER이 그대로면 여기서 깨진다 — /health가 '무엇이 떠 있는가'를
    * 말할 수 있어야 배포 여부를 확인할 수 있다. 고치는 법: VER을 올리고
    * `node scripts/workerhash.cjs --write`. */
+  /* 머리 주석이 버전을 다시 선언하면 VER과 갈라진다 — 실제로 갈라져서 "이 파일 맞냐"는
+   * 질문을 받았다. 버전을 적는 자리는 VER 하나뿐이다. */
+  ok('머리 주석이 버전을 다시 선언하지 않는다',
+     !/프록시 v[0-9]/.test(fs.readFileSync(SRC,'utf8').split('\n').slice(0,6).join('\n')));
   const H=require('../scripts/workerhash.cjs'), PIN=JSON.parse(fs.readFileSync(H.PIN,'utf8'));
   ok('워커 소스 ↔ VER 핀이 맞는다 (hash '+H.hash+')', PIN.hash===H.hash&&PIN.ver===VERSRC,
      '핀 '+PIN.ver+'/'+PIN.hash+' ≠ 현재 '+VERSRC+'/'+H.hash); }
