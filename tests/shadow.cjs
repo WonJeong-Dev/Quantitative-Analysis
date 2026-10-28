@@ -241,3 +241,142 @@ test('shadowRun: 등록된 arm 전부가 나오고 D가 A와 같은 개수다',(
   assert.deepEqual(by.D.events.map(e=>e.id+e.d),
     Object.fromEntries(again.arms.map(a=>[a.key,a])).D.events.map(e=>e.id+e.d));
 });
+
+/* ══════════ (v7.0) 규칙 독립 arm 세트 ══════════
+ * 왜 필요한가. A~H는 8개 중 6개가 tier/tierNoCap을 읽는다 → RULE_VER이 올라가면 표본이 0으로
+ * 돌아간다. 실측: 같은 가중치로 기록된 24장(22거래일) 중 현행 필터가 고르는 것이 2장이었다.
+ * I·J·K는 판정 **입력**만 읽으므로 그 초기화를 받지 않는다. 아래가 그 '받지 않음'을 못 박는다. */
+
+/* ★ 가장 중요한 가드. 독립 arm을 더해도 기존 동결본(rv_shadow_v4)의 해시는 같아야 한다.
+ * 실측 대조: 배포본(v6.10, arm A~H)에서 읽은 preregBody('v6.2').hash = 2597661583,
+ * Firestore 저장 해시도 2597661583(frozen). 이 값이 바뀌면 '장부를 추가했다'는 이유만으로
+ * 기존 동결본이 drift로 뜬다 — preregBody의 .filter(a=>!a.indep)를 지우면 깨진다. */
+test('adding independent arms does not disturb the frozen v4 registration', () => {
+  assert.equal(D.preregBody('v6.2').hash, '2597661583');
+  assert.equal(D.PREREG_VER, 'v4');
+  assert.deepEqual(D.preregBody('v6.2').rows.arms.map(a=>a.key), ['A','B','C','D','E','F','G','H']);
+});
+
+test('independent registration is its own document and carries no rule version', () => {
+  const b = D.preregBodyIndep();
+  assert.equal(b.id, 'indep_shadow_' + D.PREREG_INDEP_VER);
+  assert.ok(!/v6|v5|RULE/.test(b.id), b.id);
+  assert.deepEqual(b.rows.arms.map(a=>a.key), ['E','I','J','K','L']);
+  assert.equal(b.supersedes, null);
+  assert.match(b.promote.window, /동결 시각/);
+  assert.notEqual(b.hash, D.preregBody('v6.2').hash);
+});
+
+test('arm sets partition by layer and share only the benchmark', () => {
+  const r = D.armSet('rule'), i = D.armSet('indep');
+  assert.deepEqual(r, ['A','B','C','D','E','F','G','H']);
+  assert.deepEqual(i, ['E','I','J','K','L']);
+  assert.deepEqual(r.filter(k=>i.includes(k)), ['E'], '공유되는 것은 벤치마크 하나뿐이어야 한다');
+  assert.equal(r.length + i.length - 1, D.SHADOW_ARMS.length, '어떤 arm도 빠지거나 겹치지 않는다');
+});
+
+/* 플라시보는 pair가 가리키는 arm의 개수를 쓴다. pair가 배열에서 **앞**에 있어야
+ * 개수가 이미 채워져 있다 — 순서를 바꾸면 조용히 0건이 된다. */
+test('every placebo arm has a pair declared earlier in the array', () => {
+  const keys = D.SHADOW_ARMS.map(a=>a.key);
+  for (const a of D.SHADOW_ARMS) {
+    if (!a.sample) continue;
+    assert.ok(a.pair, a.key + ' 에 pair 가 없다');
+    assert.ok(keys.indexOf(a.pair) >= 0 && keys.indexOf(a.pair) < keys.indexOf(a.key),
+      a.key + ' 의 pair(' + a.pair + ')가 앞에 없다');
+  }
+});
+
+/* 독립 arm의 진입 술어는 판정 산출물을 **한 글자도** 읽지 않아야 한다.
+ * ① 소스에 그 이름이 없는지 ② 그 값을 오염시켜도 결과가 변하지 않는지, 둘 다 본다.
+ *   (①만 보면 간접 호출로 새고, ②만 보면 우연히 같은 값이 나와 통과한다) */
+test('independent arms read no judgement output', () => {
+  const BAD = ['tier','tierNoCap','gate','upside','upEff','cfvState','blockedCode','downtrend'];
+  const indep = D.SHADOW_ARMS.filter(a=>a.indep && a.enter);
+  assert.equal(indep.length, 3);
+  for (const a of indep) {
+    const src = String(a.enter);
+    for (const b of BAD) assert.ok(src.indexOf(b) < 0, a.key + ' 가 ' + b + ' 를 읽는다: ' + src);
+  }
+  const base = {pB:0.10, qMissW:0, aMissW:0};
+  const poison = Object.assign({}, base, {tier:'범위밖', tierNoCap:'범위밖', gate:'G1',
+    upside:-99, upEff:-99, cfvState:'far', downtrend:1});
+  for (const a of indep)
+    assert.equal(a.enter(poison), a.enter(base), a.key + ' 가 판정 오염에 반응한다');
+});
+
+test('arm I uses the shared PB_LOW threshold and treats missing as missing', () => {
+  const I = D.SHADOW_ARMS.find(a=>a.key==='I');
+  assert.equal(D.PB_LOW, 0.30);
+  assert.equal(I.enter({pB:D.PB_LOW}), true, '경계는 포함');
+  assert.equal(I.enter({pB:D.PB_LOW + 1e-4}), false);
+  assert.equal(I.enter({pB:null}), false, 'null 은 거짓이 아니라 모름 — 진입하지 않는다');
+  assert.equal(I.enter({}), false);
+  assert.equal(I.enter({pB:NaN}), false);
+  assert.match(I.note, /0\.30/);
+});
+
+test('arm J treats a missing weight column as unknown, not as zero', () => {
+  const J = D.SHADOW_ARMS.find(a=>a.key==='J');
+  assert.equal(J.enter({qMissW:0, aMissW:0}), true);
+  assert.equal(J.enter({qMissW:0, aMissW:2}), false);
+  assert.equal(J.enter({qMissW:null, aMissW:0}), false, '열이 없던 문서는 결측 0이 아니다');
+  assert.equal(J.enter({}), false);
+});
+
+test('arm K is the conjunction of I and J with no restated predicate', () => {
+  const [I,J,K] = ['I','J','K'].map(k=>D.SHADOW_ARMS.find(a=>a.key===k));
+  const rows = [{pB:0.1,qMissW:0,aMissW:0},{pB:0.9,qMissW:0,aMissW:0},
+                {pB:0.1,qMissW:3,aMissW:0},{pB:0.9,qMissW:3,aMissW:0},{pB:null,qMissW:0,aMissW:0}];
+  for (const r of rows) assert.equal(K.enter(r), I.enter(r) && J.enter(r), JSON.stringify(r));
+  assert.ok(String(K.enter).indexOf('pB') < 0, 'K가 술어를 다시 적고 있다 (§22-⑲)');
+});
+
+/* shadowRun 의 arm 선택 — 장부당 문서 집합이 다르므로 섞어 돌릴 수 없다 */
+test('shadowRun runs only the requested arms and pairs each placebo with its own arm', () => {
+  const docs = [];
+  for (let i = 0; i < 10; i++) {
+    const d = '2026-06-' + String(i+1).padStart(2,'0'), spec = {}, fwd = {};
+    for (let j = 0; j < 6; j++) { spec['US_S'+j] = ['범위밖','범위밖']; fwd['US_S'+j] = R(((i*7+j*3)%19)-9); }
+    const doc0 = doc(d, spec, fwd);
+    /* pB·결측 열을 붙인다 — 4일마다 앞 3종목이 하단권으로 전이한다 */
+    doc0.cols = COLS.concat(['pB','qMissW','aMissW']);
+    for (let j = 0; j < 6; j++)
+      doc0.rows['US_S'+j] = doc0.rows['US_S'+j].concat([(i%4===0&&j<3)?0.2:0.6, (i%5===0)?3:0, 0]);
+    docs.push(doc0);
+  }
+  const all = D.shadowRun(docs, {h:60, iters:30});
+  assert.deepEqual(all.arms.map(a=>a.key), D.SHADOW_ARMS.map(a=>a.key), '지정 없으면 전부');
+
+  const ind = D.shadowRun(docs, {h:60, iters:30, arms:D.armSet('indep')});
+  assert.deepEqual(ind.arms.map(a=>a.key), ['E','I','J','K','L']);
+  const by = Object.fromEntries(ind.arms.map(a=>[a.key,a]));
+  assert.ok(by.I.events.length > 0, 'I 가 pB 전이를 잡지 못했다');
+  assert.ok(by.J.events.length > 0, 'J 가 결측 해소 전이를 잡지 못했다');
+
+  /* L은 I와 **같은 개수**를 뽑는다 — A가 표에 없어도 그렇다(옛 구현은 A에 고정이었다) */
+  const cnt = (a) => { const m = {}; for (const e of a.events) m[e.d] = (m[e.d]||0)+1; return m; };
+  assert.deepEqual(cnt(by.L), cnt(by.I), 'L 이 I 와 같은 날짜별 개수가 아니다');
+
+  /* 규칙 층만 돌려도 D는 여전히 A를 따라간다 */
+  const rul = D.shadowRun(docs, {h:60, iters:30, arms:D.armSet('rule')});
+  const br = Object.fromEntries(rul.arms.map(a=>[a.key,a]));
+  assert.deepEqual(cnt(br.D), cnt(br.A), 'D 가 A 와 같은 날짜별 개수가 아니다');
+
+  /* 같은 입력은 같은 결과 */
+  const again = D.shadowRun(docs, {h:60, iters:30, arms:D.armSet('indep')});
+  assert.deepEqual(again.arms.map(a=>a.events.map(e=>e.id+e.d).join()),
+                   ind.arms.map(a=>a.events.map(e=>e.id+e.d).join()));
+});
+
+/* arm I의 임계는 app.js 신뢰도 항목에 이미 있던 값이다 — 새 상수가 아니라는 것을 여기서 묶는다.
+ * app.js 쪽에서 QADomain.PB_LOW를 읽게 하면 판정 폐포에 의존이 늘어 RULEHASH가 바뀌고,
+ * 그러면 RULE_VER을 올려야 하고, 그러면 규칙 의존 층의 표본이 또 0으로 돌아간다.
+ * 그래서 코드는 떨어뜨려 두고 **값의 일치만** 검사한다(§20 (c) 기존상수 재사용). */
+test('shadow arm I reuses the confidence item threshold rather than introducing a constant', () => {
+  const app = require('node:fs').readFileSync(require('node:path').join(__dirname,'../src/app.js'),'utf8');
+  const m = app.match(/볼린저 하단권 \(%B ≤ ([\d.]+)\)',\s*k\.pB!=null&&k\.pB<=([\d.]+)\]/);
+  assert.ok(m, 'app.js 신뢰도 항목의 %B 임계를 찾지 못했다 — 표현이 바뀌면 이 가드가 조용히 죽는다');
+  assert.equal(Number(m[1]), D.PB_LOW, '화면 문구의 임계가 arm I 와 다르다');
+  assert.equal(Number(m[2]), D.PB_LOW, '판정 코드의 임계가 arm I 와 다르다');
+});

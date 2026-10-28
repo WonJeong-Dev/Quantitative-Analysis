@@ -204,19 +204,52 @@
    *   이것은 결함이 아니라 '그때는 측정하지 않았다'는 사실이다(§22-⑫ null≠거짓).
    * ★ qMissW/aMissW는 null을 0으로 치지 않는다. 열이 없던 문서는 '결측이 없다'가 아니라
    *   '모른다'이므로 G에서 빠진다. */
+  /* (v7.0) 공유 진입 술어 — 한 곳에만 적는다. K가 I·J를 다시 적으면 나중에 한쪽만
+   * 고쳐지고 조용히 갈라진다(§22-⑲ 로직 복제 금지).
+   * PB_LOW는 app.js 신뢰도 항목에 이미 있던 임계다 — 여기서 따로 맞추지 않고 그 상수를
+   * 이쪽으로 올려 app.js가 이것을 읽게 한다(§20 (c) 기존상수 재사용 · 중복 리터럴 제거).
+   *   ★ 두 술어 모두 tier·tierNoCap·gate·upside를 **한 글자도 읽지 않는다.** 그게 귀결이다. */
+  const PB_LOW=0.30;
+  const indepLow=r=>r.pB!=null&&Number.isFinite(r.pB)&&r.pB<=PB_LOW;
+  const indepFull=r=>r.qMissW===0&&r.aMissW===0;
+
   const SHADOW_ARMS=[
     {key:'A',label:'현행',      note:'tier ∈ {상,중}',      enter:r=>r.tier==='상'||r.tier==='중'},
     {key:'B',label:'캡 해제',    note:'tierNoCap ∈ {상,중}', enter:r=>r.tierNoCap==='상'||r.tierNoCap==='중'},
     {key:'C',label:'전등급',     note:'tier ∈ {상,중,하}',   enter:r=>r.tier==='상'||r.tier==='중'||r.tier==='하'},
-    {key:'D',label:'무작위',     note:'플라시보 — A와 같은 개수',sample:true},
-    {key:'E',label:'동일가중 보유',note:'벤치마크 — 전 종목',   always:true},
+    {key:'D',label:'무작위',     note:'플라시보 — A와 같은 개수',sample:true,pair:'A'},
+    {key:'E',label:'동일가중 보유',note:'벤치마크 — 전 종목',   always:true,bench:true},
     {key:'F',label:'상만',       note:"tier = '상'",
       enter:r=>r.tier==='상'},
     {key:'G',label:'결측 없음',   note:'tier ∈ {상,중} ∧ qMissW=0 ∧ aMissW=0',
       enter:r=>(r.tier==='상'||r.tier==='중')&&r.qMissW===0&&r.aMissW===0},
     {key:'H',label:'가치 이하만', note:"tier ∈ {상,중} ∧ cfvState = 'at' (현재가 ≤ 무성장 가치)",
-      enter:r=>(r.tier==='상'||r.tier==='중')&&r.cfvState==='at'}
+      enter:r=>(r.tier==='상'||r.tier==='중')&&r.cfvState==='at'},
+
+    /* ---- (v7.0) 규칙 독립 층 — 진입 술어가 판정을 읽지 않는 arm들 ----
+     * 어찌해 따로 다루는가. A~H는 8개 중 6개가 tier 또는 tierNoCap을 읽는다. 그래서
+     * RULE_VER이 올라가면 지나온 표본이 **0으로 돌아간다** — 실측으로, 2026-09-30~10-29
+     * 구간에서 v5.5·v6.1·v6.2 세 판이 지나가며 현행 필터가 고를 수 있는 문서가
+     * 24장 중 2장으로 줄었다. 상수를 고칠수록 표본이 죽는 구조다.
+     *
+     * I·J·K가 읽는 pB·qMissW·aMissW는 판정 결과가 아니라 판정 **입력**이다. 그래서
+     * 설정키에서 rule을 뺀 키로 문서를 고르면 구간이 유지된다(사전등록 indep_shadow_v1).
+     * ★ 새 상수 0개: PB_LOW는 신뢰도 항목에서, 0은 '결측이 없다'의 정의에서 왔다.
+     * ★ 한계를 분명히 적는다. 지표 산식(%B 창·결측 가중 정의) 자체가 바뀌면 그때는 이
+     *   장부도 섞인다 — 산식을 건드릴 때 이 판을 새로 동결해야 한다. 판정 변경에는
+     *   부동이지만 산식 변경에는 아니다.
+     * ★ 동결 이전 구간은 **소급 적용**이라 표본 내(in-sample)다. 승급 심사는 동결 시각
+     *   이후 사건만 센다 — 그러지 않으면 '이미 본 데이터로 고른 규칙'을 그 데이터로 승인한다. */
+    {key:'I',label:'볼린저 하단권',note:'%B ≤ '+PB_LOW.toFixed(2)+' — 판정 미사용',indep:true,enter:indepLow},
+    {key:'J',label:'근거 완비',    note:'qMissW = 0 ∧ aMissW = 0 — 판정 미사용',indep:true,enter:indepFull},
+    {key:'K',label:'둘 다',        note:'I ∧ J',indep:true,enter:r=>indepLow(r)&&indepFull(r)},
+    {key:'L',label:'무작위',       note:'플라시보 — I와 같은 개수',indep:true,sample:true,pair:'I'}
   ];
+  /* 어떤 arm을 어떤 장부에서 돌릴지. 벤치마크(E)는 **두 장부 모두**에 들어간다 —
+   * 벤치마크는 자기가 비교하는 arm과 같은 구간을 써야 비교가 된다. */
+  function armSet(layer){
+    return SHADOW_ARMS.filter(a=>(layer==='indep')?(!!a.indep||!!a.bench):!a.indep).map(a=>a.key);
+  }
 
   /* 진입 사건. 독립 관측 단위는 '등급 진입 이벤트'다 — 같은 종목의 연속된 날은 독립이 아니다.
    *  ① 직전 문서에서 진입 조건이 거짓이었다가 참이 된 전이만 센다
@@ -318,11 +351,18 @@
     for(const doc of list)mAll[doc.id]=crossMedianExcess(doc,h);
     const seedBase=opt.seed||'shadow|'+h;
     const rngFor=doc=>rngFrom(seedBase+'|'+(doc.id||doc.d));
+    /* (v7.0) 돌릴 arm을 고를 수 있다 — 장부당 문서 집합이 다르기 때문이다.
+     * 지정하지 않으면 전부: 기존 호출부의 동작은 한 글자도 변하지 않는다. */
+    const want=opt.arms?new Set(opt.arms):null;
+    const arms=SHADOW_ARMS.filter(a=>!want||want.has(a.key));
     const out={h,arms:[],docs:list.length};
-    let counts=null;
-    for(const arm of SHADOW_ARMS){
-      const res=shadowEvents(list,arm,h,{counts,rngFor});
-      if(arm.key==='A')counts=res.counts;                 // D가 A와 같은 개수를 뽑는다
+    /* 플라시보는 pair가 가리키는 arm의 그날 개수를 뽑는다(D←A, L←I).
+     * pair가 배열에서 앞에 있어야 개수가 이미 채워져 있다 — 정의상 보장되지 않으므로
+     * 테스트로 못 박고, 비었으면 0개를 뽑는다(조용한 오답 대신 표에 0으로 드러난다). */
+    const counts={};
+    for(const arm of arms){
+      const res=shadowEvents(list,arm,h,{counts:arm.sample?(counts[arm.pair||'A']||null):null,rngFor});
+      counts[arm.key]=res.counts;
       for(const e of res.events){const mm=(mAll[e.docId]||{})[e.id];if(mm){e.m=mm.m;e.mn=mm.mn;}
         if(opt.bench)e.regime=regimeOf(opt.bench[e.market],e.at,opt.regimeH||120);}
       const so={blockLen:Math.max(1,Math.round(h/20)),iters,rng:rngFrom(seedBase+'|ci|'+arm.key)};
@@ -366,7 +406,11 @@
    * 섞으면 승격 판정이 두 규칙의 혼합을 평가하게 된다. supersedes가 이전 장부를 가리킨다. */
   const PREREG_VER='v4';
   function preregBody(rv){
-    const rows={arms:SHADOW_ARMS.map(a=>({key:a.key,label:a.label,note:a.note||(a.sample?'sample':a.always?'always':'')})),
+    /* (v7.0) ★ 장부에 **새 arm을 더해도 이 해시는 같아야 한다.** 그렇지 않으면 독립
+     * 장부를 추가했다는 이유만으로 v4 동결본이 drift로 뜨고, 기존 장부를 한 글자도
+     * 건드리지 않았는데 새 판을 동결해야 한다. 그래서 여기는 **규칙 의존 arm만** 등록하고,
+     * 독립 arm은 preregBodyIndep에 따로 동결한다. */
+    const rows={arms:SHADOW_ARMS.filter(a=>!a.indep).map(a=>({key:a.key,label:a.label,note:a.note||(a.sample?'sample':a.always?'always':'')})),
       entry:'직전 문서에서 거짓→참 전이 · 직전 행이 없으면 판정 안 함',
       embargo:'같은 종목은 직전 사건의 청산 시각 이후에만 재진입',
       regime:'벤치마크 직전 120거래일 수익률의 부호',
@@ -378,6 +422,32 @@
       supersedes:(PREREG_VER==='v1')?null:(rv+'_shadow_v'+(+PREREG_VER.slice(1)-1)),
       note:'A~E의 정의는 v1과 동일하다. v2는 arm F·G·H를 **추가만** 한 판이다. '
           +'H의 입력(cfvState)은 v5.9.3부터 기록되므로 그 이전 문서에서는 null이라 진입하지 않는다.'};
+    return Object.assign({},body,{hash:String(hashStr(settingsKey(body)))});
+  }
+
+  /* (v7.0) 규칙 독립 층의 사전등록 — **id에 RULE_VER이 없다.** 그게 이 판의 요점이다.
+   * 상위 판(rv_shadow_v4)은 판정이 바뀔 때마다 새 문서로 다시 동결되고 그때 at이 초기화된다.
+   * 독립 arm은 판정과 무관하므로 동결 시각도 판정과 무관해야 하고, 그래서 문서를 따로 둔다.
+   * 이 at이 '소급 구간'과 '동결 후 구간'을 가르는 유일한 기준점이다. */
+  const PREREG_INDEP_VER='v1';
+  function preregBodyIndep(){
+    const rows={arms:SHADOW_ARMS.filter(a=>a.indep||a.bench).map(a=>({key:a.key,label:a.label,note:a.note||(a.sample?'sample':a.always?'always':'')})),
+      entry:'직전 문서에서 거짓→참 전이 · 직전 행이 없으면 판정 안 함',
+      embargo:'같은 종목은 직전 사건의 청산 시각 이후에만 재진입',
+      regime:'벤치마크 직전 120거래일 수익률의 부호',
+      portfolio:'동일가중 사건 포트폴리오 · 자본제약·사이징·경로의존 청산 없음',
+      docs:'설정키에서 rule을 뺀 키로 문서를 고른다 — 판정 규칙이 바뀌어도 같은 장부에 쌓인다. '
+          +'같은 날짜에 문서가 둘이면 at이 큰 쪽 하나만 쓴다(판정 규칙이 바뀐 날 두 장이 생긴다)',
+      indep:'진입 술어가 tier·tierNoCap·gate·upside·cfvState를 한 글자도 읽지 않는다 — 그래서 RULE_VER과 무관하다',
+      limit:'지표 산식(%B 창·결측 가중 정의) 자체가 바뀌면 표본이 섞인다. 그때는 이 판을 새로 동결한다'};
+    const outcomes={primary:'x60',secondary:'m60',horizons:[20,60,120],
+      note:'x=지수 대비 · m=같은 날짜·시장·유형 중앙값 대비. 둘을 나란히 본다'};
+    const promote=Object.assign({},PROMOTE,{correction:'holm',placebo:'arm L',
+      window:'동결 시각(at) 이후 사건만 심사한다 — 그 전 구간은 소급 적용이라 표본 내(in-sample)다'});
+    const body={id:'indep_shadow_'+PREREG_INDEP_VER,rows,outcomes,promote,supersedes:null,
+      note:'규칙 독립 층. 판정 규칙이 바뀌어도 표본이 초기화되지 않는 arm만 모은다. '
+          +'I·J·K가 쓰는 pB·qMissW·aMissW는 스키마 2 문서에 처음부터 기록된 열이라 과거 로그에도 적용된다. '
+          +'A~H의 정의와 상위 판(rv_shadow_v4)은 이 판 때문에 한 글자도 바뀌지 않는다.'};
     return Object.assign({},body,{hash:String(hashStr(settingsKey(body)))});
   }
 
@@ -651,6 +721,7 @@
 
   return {num,isYMD,accountKind,normCode,instrument,positionKey,debtRatio,tradeError,fingerprint,importPlan,positions,lastIndex,forward,forwardTaint,settingsKey,BACKUP_COLLECTIONS,RESTORE_SKIP,validateBackup,
     hashStr,rngFrom,sampleK,quantile,median,rowOf,crossMedianExcess,SHADOW_ARMS,PREREG_VER,
+    PB_LOW,armSet,PREREG_INDEP_VER,preregBodyIndep,
     shadowEvents,regimeOf,blockBootstrap,shadowStats,shadowRun,PROMOTE,promoteCheck,preregBody,
     normCdf,invPhi,touchProb,probFloor,conservativeFV,buyPlan,positionSize};
 });

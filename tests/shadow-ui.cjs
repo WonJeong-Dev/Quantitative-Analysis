@@ -12,10 +12,15 @@ const src=L.slice(a,b).join('\n');
 const RULE_VER=(T.match(/const RULE_VER='([^']+)'/)||[])[1];
 
 const SEC=d=>Date.parse(d+'T00:00:00Z')/1000;
-const COLS=['tier','tierNoCap','qMissW','aMissW','anaTgt','estE','estR','surpD','surpPct','ugdD','ugdAct','revNet','basisB','tgtW','anaN','dataAnomN'];
+const COLS=['tier','tierNoCap','qMissW','aMissW','anaTgt','estE','estR','surpD','surpPct','ugdD','ugdAct','revNet','basisB','tgtW','anaN','dataAnomN',
+  /* (v7.0) 규칙 독립 arm I가 읽는 열. **끝에 붙인다** — 가운데에 끼우면 §1~9의 행 순서가 밀린다. */
+  'pB'];
 const S={uid:'u1',glog:{},bench:{},settings:{qw:{},aw:{},weights:{}},lg:{hz:60},view:'ledger'};
 const esc=x=>String(x==null?'':x);
-const glSettingsKey=()=>'K';
+/* (v7.0) 설정키 스텁을 **실제와 같은 모양**으로 바꾼다. 'K' 같은 가짜 문자열이면
+ * glWeightsKeyOf(JSON 파싱 후 rule 제거)가 돌지 않아 독립 층을 전혀 검사하지 못한다. */
+const SETK=rv=>QADomain.settingsKey({rule:rv,qw:S.settings.qw,aw:S.settings.aw,weights:S.settings.weights});
+const glSettingsKey=()=>SETK(RULE_VER);
 const glGet=(doc,row,name)=>{const cs=(doc&&doc.cols)||COLS,i=cs.indexOf(name);return (i<0||!row||i>=row.length)?null:row[i];};
 const D=()=>({get:async()=>({exists:false}),set:async()=>{}});
 const GL_HORIZ=[20,60,120],GL_MIN_N=30,ANA_MIN=3;
@@ -25,7 +30,9 @@ const $=()=>({set innerHTML(v){HTMLOUT=v;}});
 
 const M=new Function('S','esc','QADomain','RULE_VER','glSettingsKey','glGet','D','$',
   'GL_HORIZ','GL_MIN_N','ANA_MIN','STIER','TIER_RANK',
-  src+'\n;return {lgShadowHTML,lgShadowCause,glShadowDocs,glObs,revCause,glEstSrc,glPlaceboArgs,preregEnsure,setPrereg:v=>{preregState=v;}};')
+  src+'\n;return {lgShadowHTML,lgShadowCause,glShadowDocs,glObs,revCause,glEstSrc,glPlaceboArgs,preregEnsure,'
+      +'lgShadowIndepHTML,glShadowDocsIndep,glWeightsKey,glWeightsKeyOf,glElapsedTD,glIndepMatured,'
+      +'setPrereg:v=>{preregState=v;},setPreregIndep:v=>{preregIndepState=v;}};')
   (S,esc,QADomain,RULE_VER,glSettingsKey,glGet,D,$,GL_HORIZ,GL_MIN_N,ANA_MIN,
    ['상','중','하','범위밖'],{'상':3,'중':2,'하':1,'범위밖':0});
 
@@ -40,11 +47,13 @@ function build(days){
     for(let j=0;j<8;j++){
       const sid='US_S'+j, up=(i%3===0&&j<3);
       rows[sid]=[up?'상':'범위밖', (j===7&&up===false&&i%3===1)?'상':(up?'상':'범위밖'),
-        0,0, 100+i, 5+i*0.1, 1000+i, i, 2.5, i, 1, 1, 7, 0.9, 10, 0];
+        0,0, 100+i, 5+i*0.1, 1000+i, i, 2.5, i, 1, 1, 7, 0.9, 10, 0,
+        /* pB — 4일마다 앞 4종목이 하단권으로 들어간다(독립 arm I의 전이를 만든다) */
+        (i%4===0&&j<4)?0.20:0.60];
       inputs[sid]={cls:{type:'stock'}};
       fwd[sid]={r60:((i*7+j*13)%21)-10, x60:((i*5+j*11)%17)-8, e60:SEC(d)+86400, z60:SEC(d)+86400*2};
     }
-    S.glog[id]={schema:2,d,at:SEC(d)*1000,rv:RULE_VER,cols:COLS,rows,inputs,fwd,settings:'K'};
+    S.glog[id]={schema:2,d,at:SEC(d)*1000,rv:RULE_VER,cols:COLS,rows,inputs,fwd,settings:glSettingsKey()};
   }
   // 벤치는 로그 구간(2026-05-01~)을 반드시 덮어야 한다 — 안 덮으면 커버리지 비율이 안 나온다
   const t=[],c=[];for(let k=0;k<400;k++){t.push(SEC('2026-01-01')+k*86400);c.push(100+k*0.5);}
@@ -217,6 +226,101 @@ console.log('\n[9] 성숙 관측 0건 — 「차이 없음」처럼 그리지 �
   build(14);
   const hBack=M.lgShadowHTML(60);
   ok('결과가 있으면 안내문이 사라지고 표가 돌아온다', !/성숙 관측 없음/.test(hBack)&&/무작위/.test(hBack));
+}
+
+/* ── 10. (v7.0) 규칙 독립 층 — 문서 선택 ───────────────────────────────────────
+ * 실측 동기: 같은 가중치로 기록된 24장(22거래일) 중 현행 필터가 고르는 것은 2장이었다.
+ * rv가 바뀌어도 구간이 유지되는지, 같은 날 두 장이 생길 때 하나만 쓰는지를 못 박는다. */
+console.log('\n[10] 규칙 독립 층 — rv가 달라도 같은 장부에 쌓인다');
+{
+  /* 12일: 앞 8일은 옛 규칙(v5.0), 뒤 4일은 현행. 9일차는 **두 판 모두** 기록돼 중복이다. */
+  build(12);
+  const ids=Object.keys(S.glog).sort();
+  const oldKey=SETK('v5.0');
+  for(let i=0;i<8;i++){const d=S.glog[ids[i]];d.rv='v5.0';d.settings=oldKey;}
+  const dupSrc=S.glog[ids[8]], dupId='v50_'+dupSrc.d;
+  S.glog[dupId]=Object.assign({},dupSrc,{rv:'v5.0',settings:oldKey,at:dupSrc.at-1000});
+
+  const sel=M.glShadowDocsIndep();
+  ok('독립 층은 거래일 12일을 모두 고른다', sel.docs.length===12, sel.docs.length);
+  ok('현행 층은 4일만 고른다 (이것이 구간 손실의 크기)', M.glShadowDocs().length===4, M.glShadowDocs().length);
+  ok('중복 1장을 셌다', sel.dup===1, sel.dup);
+  ok('규칙 버전 2종을 보고한다', sel.rvs.length===2&&sel.rvs.join()==='v5.0,'+RULE_VER, sel.rvs.join());
+  /* ★ 삽입 순서에 기대지 않는다. '먼저 본 쪽을 남긴다'는 구현도 한쪽 순서에서는 통과한다 —
+   * 그래서 두 순서를 **모두** 넣고 같은 승자가 나오는지 본다(돌연변이 테스트에서 실제로 샜다). */
+  {
+    const keep=S.glog, A=S.glog[ids[8]], B=S.glog[dupId];   // A: at 큼(현행) · B: at 작음(옛 규칙)
+    for(const order of [[A,B],[B,A]]){
+      S.glog={}; S.glog['x1']=order[0]; S.glog['x2']=order[1];
+      const r=M.glShadowDocsIndep();
+      ok('중복일은 at이 큰 쪽을 남긴다 (순서 '+(order[0]===A?'A→B':'B→A')+')',
+         r.docs.length===1&&r.docs[0].at===A.at&&r.docs[0].rv===RULE_VER&&r.dup===1,
+         r.docs.length+'장 · at '+(r.docs[0]&&r.docs[0].at)+' · dup '+r.dup);
+    }
+    /* at이 같으면 id 큰 쪽 — 임의가 아니라 결정적이어야 한다(같은 로그는 같은 화면) */
+    S.glog={}; S.glog['v50_z']=Object.assign({},A,{at:A.at,rv:'v5.0',settings:oldKey});
+    S.glog['v62_z']=Object.assign({},A,{at:A.at,rv:RULE_VER});
+    const tie=M.glShadowDocsIndep();
+    ok('at 동률은 id 큰 쪽으로 결정적', tie.docs.length===1&&tie.docs[0].id==='v62_z', tie.docs[0]&&tie.docs[0].id);
+    S.glog=keep;
+  }
+  ok('날짜 오름차순으로 넘긴다',
+     sel.docs.map(d=>d.d).join()===sel.docs.map(d=>d.d).sort().join());
+
+  /* rule 만 다른 두 키는 같은 가중치 키로 떨어진다 — 그게 이 층의 작동 원리다 */
+  ok('rule 만 다른 설정키는 같은 가중치 키',
+     M.glWeightsKeyOf({settings:oldKey})===M.glWeightsKeyOf({settings:SETK(RULE_VER)}));
+  ok('가중치 키는 현재 설정과 일치', M.glWeightsKeyOf({settings:oldKey})===M.glWeightsKey());
+  ok('rule 이 키에서 실제로 빠졌다', M.glWeightsKey().indexOf('rule')<0, M.glWeightsKey());
+  /* 돌연변이: 파싱 불가/누락은 0이 아니라 **제외**다 — 조용히 통과시키면 안 된다 */
+  ok('파싱 불가 설정키는 null (제외)', M.glWeightsKeyOf({settings:'K'})===null);
+  ok('설정키 없음은 null', M.glWeightsKeyOf({})===null);
+  /* 가중치가 다르면 같은 층에 섞지 않는다 */
+  const keepW=S.settings.weights; S.settings.weights={up:1};
+  ok('가중치가 다르면 전부 빠진다', M.glShadowDocsIndep().docs.length===0);
+  S.settings.weights=keepW;
+}
+
+/* ── 11. (v7.0) 규칙 독립 층 — 렌더 ───────────────────────────────────────────── */
+console.log('\n[11] 규칙 독립 층 — 렌더·소급 구분·arm 분리');
+{
+  const docs=M.glShadowDocsIndep().docs;
+  const mid=docs[6].at;                     // 12일 중 7일차를 동결 시각으로
+  M.setPreregIndep({state:'frozen',at:mid,stored:'h',now:'h',id:'indep_shadow_v1'});
+  const h=M.lgShadowIndepHTML(60);
+  ok('독립 층 머리글', /규칙 독립 층/.test(h));
+  ok('두 층의 거래일을 나란히 적는다', /독립 층 거래일[\s\S]*?12일/.test(h)&&/규칙 의존 층 거래일[\s\S]*?4일/.test(h));
+  ok('포함된 규칙 버전을 적는다', /2종/.test(h)&&new RegExp('v5\\.0 · '+RULE_VER.replace('.','\\.')).test(h));
+  ok('중복 제거 장수를 숨기지 않는다', /같은 날 중복 제거[\s\S]*?1장/.test(h));
+  ok('동결 시각을 적는다', /동결 \d{4}-\d{2}-\d{2}/.test(h));
+  ok('소급 구간이 표본 내임을 명시', /소급[\s\S]*?표본 내\(in-sample\)/.test(h));
+
+  /* arm 분리 — 독립 층 표에 규칙 의존 arm이 섞이면 구간이 다른 것을 한 표에 넣는 것이다 */
+  ok('독립 arm 4개가 모두 있다', /볼린저 하단권/.test(h)&&/근거 완비/.test(h)&&/둘 다/.test(h)&&/I와 같은 개수/.test(h));
+  ok('벤치마크 E는 함께 있다', /동일가중 보유/.test(h));
+  ok('규칙 의존 arm은 없다',
+     !/현행<|캡 해제|전등급|상만|결측 없음|가치 이하만|A와 같은 개수/.test(h));
+  ok('승급 심사는 동결 후 구간임을 밝힌다', /변경 후보 심사 \(동결 후 구간\)/.test(h));
+  ok('한계 3개를 적는다', /지표 산식/.test(h)&&/배선 확인/.test(h)&&/귀속\(3층\)은 붙이지 않습니다/.test(h));
+
+  /* 동결 후 사건 수는 전체보다 작아야 한다 — 같으면 소급을 승급에 쓰고 있는 것이다 */
+  const rows=h.split('<tr>').filter(x=>/<b>I<\/b>/.test(x));
+  const nums=(rows[0]||'').match(/text-align:right">(\d+)</g)||[];
+  const tot=+((nums[0]||'').match(/(\d+)/)||[])[1], post=+((nums[1]||'').match(/(\d+)/)||[])[1];
+  ok('arm I 사건이 0건이 아니다 (pB 전이가 실제로 잡힌다)', tot>0, tot);
+  ok('동결 후 사건 < 전체 사건', post<tot, post+'/'+tot);
+
+  /* 동결 정보가 없으면 동결 후 칸을 숫자로 꾸며내지 않는다 */
+  M.setPreregIndep(null);
+  const h2=M.lgShadowIndepHTML(60);
+  ok('동결 시각 없으면 동결 후는 — 로 둔다', />—</.test(h2)&&!/변경 후보 심사 \(동결 후 구간\)[\s\S]*후보 성립/.test(h2));
+  ok('동결 상태 없어도 터지지 않는다', /규칙 독립 층/.test(h2));
+
+  /* 독립 층이 2일 미만이면 표를 그리지 않는다 */
+  const keep=S.glog; S.glog={};
+  for(const k of Object.keys(keep).slice(0,1))S.glog[k]=keep[k];
+  ok('1일이면 안내만 낸다', /2일 미만/.test(M.lgShadowIndepHTML(60)));
+  S.glog=keep;
 }
 
 console.log('\n────────────────────────────');

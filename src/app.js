@@ -2439,7 +2439,13 @@ function glSplitDates(id){
 async function glBackfill(){
  if(glBackfillBusy||!S.uid)return 0;glBackfillBusy=true;let wrote=0;
  try{for(const key of Object.keys(S.glog)){
-  const doc=S.glog[key];if(doc.schema!==2||doc.rv!==RULE_VER||!doc.rows)continue;
+  /* (v7.0) ★ rv 필터를 뺀다. 전방수익률은 doc.at과 가격 시계열만의 함수이고 판정 규칙과
+   * 아무 관계가 없다. 그런데 이 한 줄이 '어느 판정으로 기록됐나'와 '어느 문서를 유지하나'를
+   * 같이 쥐고 있어서(① 한 값이 두 역할), 규칙이 올라간 순간 지난 문서의 전방수익률이
+   * **영구히 채워지지 않게** 됐다 — 실측으로 24장 중 22장이 그 상태였다. 독립 장부는
+   * 그 22장을 쓰려고 만든 것이므로 이 줄을 고치지 않으면 영원히 빈 표가 된다.
+   * 집계 쪽 rv 필터(glObs·glShadowDocs)는 그대로다 — 판정 섞임은 그쪽에서 막는다. */
+  const doc=S.glog[key];if(doc.schema!==2||!doc.rows)continue;
   const fwd={...(doc.fwd||{})};let changed=false;
   for(const id of Object.keys(doc.rows)){
    let ch=null;
@@ -2470,6 +2476,7 @@ async function glBoot(){
      * (오늘은 어떤 지평도 아직 성숙하지 않았다.) */
     await benchRefresh();
     await preregEnsure();         // (v5.6) 사전등록 동결·대조 — 숫자를 보기 전에
+    await preregEnsureIndep();    // (v7.0) 규칙 독립 층 — 동결 시각이 소급/전향 경계가 된다
     await glBackfill();
     /* 오늘치는 요약 패스가 끝난 뒤에 남긴다. 기다리지 않고 지연 재시도로 처리한다 —
      * 패스가 실패해 영영 안 끝나는 경우에도 기록이 통째로 빠지지 않게 두 번 시도한다. */
@@ -4809,7 +4816,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.10.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.11.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -6814,6 +6821,26 @@ async function preregEnsure(){
   }catch(e){ preregState={state:'error',msg:(e&&e.code)||'unknown',now:body.hash,id:body.id}; }
   return preregState;
 }
+/* (v7.0) 규칙 독립 층의 동결. 문서 id에 RULE_VER이 없다 — 판정이 바뀌어도 같은 문서를 본다.
+ * 그래서 at(동결 시각)이 판정 변경에 초기화되지 않고, '소급 구간 / 동결 후 구간'의
+ * 경계가 한 번만 정해진다. 승급 심사는 at 이후 사건만 센다. */
+let preregIndepState=null;
+async function preregEnsureIndep(){
+  if(!S.uid)return null;
+  const body=QADomain.preregBodyIndep(), ref=D('qa_prereg/'+body.id.replace(/\./g,''));
+  try{
+    const snap=await ref.get();
+    if(snap.exists){
+      const cur=snap.data();
+      preregIndepState={state:cur.hash===body.hash?'frozen':'drift',at:cur.at||null,
+        stored:cur.hash||null,now:body.hash,id:body.id};
+    }else{
+      await ref.set(Object.assign({at:Date.now()},body));
+      preregIndepState={state:'created',at:Date.now(),stored:body.hash,now:body.hash,id:body.id};
+    }
+  }catch(e){ preregIndepState={state:'error',msg:(e&&e.code)||'unknown',now:body.hash,id:body.id}; }
+  return preregIndepState;
+}
 
 /* ================= (v5.6) 그림자 장부 — 검증 탭 =================
  * 전부 qa_gradelog의 순수함수다(domain.js). 여기서 하는 일은 문서를 모아 넘기고 그리는 것뿐.
@@ -6822,6 +6849,56 @@ function glShadowDocs(){
   return Object.keys(S.glog||{})
     .filter(id=>{const d=S.glog[id];return d&&d.schema===2&&d.rv===RULE_VER&&d.settings===glSettingsKey();})
     .map(id=>Object.assign({id},S.glog[id]));
+}
+/* ===== (v7.0) 규칙 독립 장부의 문서 선택 =====
+ * 문제: glShadowDocs는 rv와 설정키를 **둘 다** 본다. 그런데 설정키 자체가 rule을 품고 있어
+ * (glSettingsKey), 판정 규칙이 한 번 올라가면 지나온 로그가 통째로 빠진다. 실측:
+ * 같은 가중치로 기록된 문서 24장(22거래일) 중 현행 필터가 고르는 것은 2장(2거래일)이다.
+ *
+ * 그래서 독립 층은 저장된 설정키에서 **rule만 빼고** 비교한다. 문자열을 자르지 않는다 —
+ * 파싱해서 키를 지우고 **같은 settingsKey로 다시 만든다**. 직렬화 규칙이 한 벌로 남고
+ * (§22-⑲), 파싱이 깨지면 null로 떨어뜨려 그 문서만 층에서 빠진다(조용한 오답 금지). */
+function glWeightsKey(){return QADomain.settingsKey({qw:S.settings.qw,aw:S.settings.aw,weights:S.settings.weights});}
+function glWeightsKeyOf(d){
+  const t=d&&d.settings; if(typeof t!=='string')return null;
+  let o; try{o=JSON.parse(t);}catch(e){return null;}
+  if(!o||typeof o!=='object')return null;
+  delete o.rule;
+  return QADomain.settingsKey(o);
+}
+/* 같은 날짜에 문서가 둘일 수 있다 — 판정 규칙이 바뀐 날은 v62_날짜와 v61_날짜가 함께 남는다.
+ * shadowEvents는 직전 **문서**를 직전 날로 보므로 하루에 두 장이 들어오면 전이 판정이 틀어진다.
+ * at이 큰 쪽(그날 나중에 저장된 쪽) 하나만 쓴다. 버린 장수는 숨기지 않고 화면에 적는다(§22-㉕). */
+function glShadowDocsIndep(){
+  const wk=glWeightsKey(),byDay={};
+  let dup=0;
+  for(const id of Object.keys(S.glog||{})){
+    const d=S.glog[id];
+    if(!d||d.schema!==2||glWeightsKeyOf(d)!==wk)continue;
+    const cur=byDay[d.d];
+    if(!cur){byDay[d.d]=Object.assign({id},d);continue;}
+    dup++;
+    if((d.at||0)>(cur.at||0)||((d.at||0)===(cur.at||0)&&id>cur.id))byDay[d.d]=Object.assign({id},d);
+  }
+  const docs=Object.keys(byDay).sort().map(k=>byDay[k]);
+  const rvs=Array.from(new Set(docs.map(d=>d.rv))).sort();
+  return {docs,dup,rvs,key:wk};
+}
+/* 어느 날짜로부터 지난 거래일 수 — 벤치마크 캔들로 센다(휴장일 표를 만들지 않는다).
+ * 같은 셈을 세 곳에서 따로 적고 있었다. 한 곳으로 모은다(§22-⑲). */
+function glElapsedTD(ymd){
+  const b=(S.bench&&(S.bench.KR||S.bench.US))||null;
+  if(!b||!Array.isArray(b.t)||!ymd)return null;
+  const lo=Date.parse(ymd+'T00:00:00Z')/1000;
+  return b.t.filter(t=>t>=lo).length;
+}
+/* 독립 층의 성숙 관측 수 — glObs는 rv로 걸러서 쓸 수 없다(그게 이 층이 피하려는 바로 그 필터다).
+ * 오염(q{h})은 여기서도 똑같이 뺀다. */
+function glIndepMatured(docs,hz){
+  let n=0;
+  for(const d of docs||[]){const f=d.fwd||{};
+    for(const id of Object.keys(f)){const x=f[id]||{};if(x['r'+hz]!=null&&isFinite(x['r'+hz])&&!x['q'+hz])n++;}}
+  return n;
 }
 /* (v5.6) 귀속 3층 — v5.5의 (A)/(B)/(B*)/(C) 분류기를 **체결 단위**로 돌린다.
  * 분류기도 플라시보도 새로 만들지 않는다. 바뀌는 것은 집계 단위뿐이다(종목-일 → 진입 사건).
@@ -6911,9 +6988,7 @@ function lgShadowHTML(hz){
   const matN=glObs(hz).obs.length;
   if(!matN){
     const d0=docs.map(d=>d.d).sort()[0];
-    const b=(S.bench&&(S.bench.KR||S.bench.US))||null;
-    let el=null;
-    if(b&&Array.isArray(b.t)){ const lo=Date.parse(d0+'T00:00:00Z')/1000; el=b.t.filter(t=>t>=lo).length; }
+    const el=glElapsedTD(d0);
     const shorter=GL_HORIZ.filter(h=>h<hz);
     return g+'<div class="lgcard" style="margin-top:8px"><b>성숙 관측 없음 — 지평 '+hz+'거래일이 아직 경과하지 않았습니다</b>'
       +'<div style="margin-top:5px;font-size:12px">전방수익률은 기록일로부터 '+hz+'거래일이 지나야 확정됩니다. '
@@ -7002,6 +7077,123 @@ function lgShadowHTML(hz){
    +'<b>국면 '+QADomain.PROMOTE.phases+'개 각각에서 CI90이 0을 배제하고 부호가 같을 것</b>. '
    +'미달할 때 조건을 완화하는 것이 바로 §22-⑤ 위반입니다.<br>'
    +'국면은 벤치마크의 직전 120거래일 수익률 부호로 정의합니다 — 판정 시점에 이미 아는 값이라 선견이 없습니다.</div>';
+  return g;
+}
+
+/* ================= (v7.0) 규칙 독립 층 =================
+ * 왜 층을 둘로 나누는가. A~H는 8개 중 6개가 tier/tierNoCap을 읽는다. 판정 규칙이 올라가면
+ * 그 arm들의 표본은 0으로 돌아간다 — 상수를 고칠수록 검증이 불가능해지는 구조다.
+ * I·J·K는 판정 **입력**(pB·결측 가중)만 읽으므로 규칙과 무관하고, 설정키에서 rule을 뺀
+ * 키로 문서를 모으면 구간이 유지된다. 두 층을 한 표에 섞지 않는다 — 구간이 다르다.
+ *
+ * 귀속(3층)은 여기 붙이지 않는다. revCause가 쓰는 입력(qm·basisB·tgtW)이 규칙 의존이라
+ * 섞으면 뜻이 없어진다. 독립 층은 arm 비교까지만 한다. */
+function lgShadowIndepHTML(hz){
+  const sel=glShadowDocsIndep(),docs=sel.docs;
+  const pct=v=>v==null?'—':((v>=0?'+':'−')+Math.abs(v).toFixed(1)+'%p');
+  const ruleDays=glShadowDocs().length;
+  let g='<div class="lgsec" style="margin-top:14px"><span class="t">규칙 독립 층</span>'
+   +'<span class="m">진입 조건이 판정을 읽지 않는 arm — 판정 규칙이 바뀌어도 표본이 초기화되지 않습니다</span></div>';
+
+  /* 측정값 먼저. 이 층을 만든 이유가 이 네 숫자다. */
+  g+='<div class="lgcards">'
+   +'<div class="lgtot"><div class="lb">독립 층 거래일</div><div class="vl">'+docs.length+'일</div>'
+     +'<div class="sb">'+(docs.length?esc(docs[0].d)+' ~ '+esc(docs[docs.length-1].d):'없음')+'</div></div>'
+   +'<div class="lgtot"><div class="lb">규칙 의존 층 거래일</div><div class="vl">'+ruleDays+'일</div>'
+     +'<div class="sb">'+esc(RULE_VER)+' 판정만</div></div>'
+   +'<div class="lgtot"><div class="lb">포함된 규칙 버전</div><div class="vl" style="font-size:15px">'+sel.rvs.length+'종</div>'
+     +'<div class="sb">'+esc(sel.rvs.join(' · ')||'—')+'</div></div>'
+   +'<div class="lgtot"><div class="lb">같은 날 중복 제거</div><div class="vl">'+sel.dup+'장</div>'
+     +'<div class="sb">at이 큰 쪽만 사용</div></div>'
+   +'</div>';
+
+  /* 사전등록 — 이 층의 동결 시각이 소급/전향의 경계다 */
+  const fz=(preregIndepState&&preregIndepState.state!=='error')?(preregIndepState.at||null):null;
+  if(preregIndepState){
+    const st=preregIndepState.state;
+    const label={frozen:'동결됨',created:'이번에 동결',drift:'⚠ 정의 불일치',error:'확인 실패'}[st]||st;
+    g+='<div class="lgnote" style="margin-top:8px'+(st==='drift'?';border-color:var(--down)':'')+'">'
+      +'<b>사전등록 '+esc(label)+'</b> — <code>'+esc(preregIndepState.id)+'</code>'
+      +(fz?(' · 동결 '+esc(new Date(fz).toISOString().slice(0,10))):'')
+      +(st==='drift'
+        ? '<br>저장된 정의(해시 '+esc(String(preregIndepState.stored))+')와 현재 코드(해시 '
+          +esc(String(preregIndepState.now))+')가 다릅니다. <b>아래 수치는 사전등록된 정의의 결과가 아닙니다.</b>'
+        : '<br>동결 <b>이전</b> 구간은 이미 쌓여 있던 로그에 규칙을 <b>소급</b>한 것이라 표본 내(in-sample)입니다. '
+          +'아래 승급 심사는 <b>동결 후 사건만</b> 셉니다.')
+      +'</div>';
+  }
+
+  if(docs.length<2)
+    return g+'<div class="lgcard" style="margin-top:8px"><b>독립 층 로그가 2일 미만입니다</b>'
+      +'<div style="margin-top:5px;font-size:12px">진입은 전이(직전 문서에서 거짓→참)로만 셉니다.</div></div>';
+
+  const matN=glIndepMatured(docs,hz);
+  if(!matN){
+    const el=glElapsedTD(docs[0].d), shorter=GL_HORIZ.filter(h=>h<hz);
+    return g+'<div class="lgcard" style="margin-top:8px"><b>성숙 관측 없음 — 지평 '+hz+'거래일이 아직 경과하지 않았습니다</b>'
+      +'<div style="margin-top:5px;font-size:12px">가장 이른 기록은 '+esc(docs[0].d)+'이고, '
+      +(el!=null?('벤치마크 거래일이 '+el+'일 지났습니다 — <b>약 '+Math.max(0,hz-el+1)+'거래일</b> 남았습니다.')
+               :'벤치마크 캔들이 이 구간을 덮지 않아 남은 일수를 셀 수 없습니다.')
+      +'<br>이 층이 지금 하는 일은 <b>구간을 잃지 않는 것</b>입니다 — 판정 규칙이 또 올라가도 위 '
+      +docs.length+'일은 그대로 남습니다.'
+      +(shorter.length?(' 더 짧은 지평('+shorter.join('·')+'일)이 먼저 성숙합니다.'):'')
+      +'</div></div>';
+  }
+
+  const out=QADomain.shadowRun(docs,{h:hz,iters:300,bench:S.bench,regimeH:120,arms:QADomain.armSet('indep'),seed:'indep|'+hz});
+  const bl=Math.max(1,Math.round(hz/20));
+  const postOf=a=>(fz==null)?[]:a.events.filter(e=>e.at!=null&&e.at>=fz);
+  g+='<table class="lgtbl" style="margin-top:8px"><tr>'
+   +'<th>arm</th><th>진입 조건</th><th style="text-align:right">사건</th>'
+   +'<th style="text-align:right">동결 후</th><th style="text-align:right">종목</th>'
+   +'<th style="text-align:right">x 중앙값</th><th style="text-align:right">x CI90</th>'
+   +'<th style="text-align:right">m 중앙값</th><th style="text-align:right">MDE</th><th style="text-align:right">적중</th></tr>';
+  for(const a of out.arms){
+    const hl=(a.key==='L'||a.key==='E')?' style="color:var(--muted)"':'';
+    g+='<tr'+hl+'><td><b>'+esc(a.key)+'</b> '+esc(a.label)+'</td><td><small>'+esc(a.note||'')+'</small></td>'
+      +'<td style="text-align:right">'+a.x.n+'</td>'
+      +'<td style="text-align:right">'+(fz==null?'—':postOf(a).length)+'</td>'
+      +'<td style="text-align:right">'+a.x.uniq+'</td>'
+      +'<td style="text-align:right">'+pct(a.x.med)+'</td>'
+      +'<td style="text-align:right"><small>'+(a.x.ci?('['+a.x.ci.lo+', '+a.x.ci.hi+']'):'—')+'</small></td>'
+      +'<td style="text-align:right">'+pct(a.m.med)+'</td>'
+      +'<td style="text-align:right"><small>'+(a.x.mde!=null?('±'+a.x.mde):'—')+'</small></td>'
+      +'<td style="text-align:right">'+(a.x.hit!=null?a.x.hit+'%':'—')+'</td></tr>';
+  }
+  g+='</table>';
+
+  const by=Object.fromEntries(out.arms.map(a=>[a.key,a]));
+  const I=by.I,L=by.L,E=by.E;
+  if(I&&L&&E){
+    const d1=(I.x.med!=null&&L.x.med!=null)?+(I.x.med-L.x.med).toFixed(1):null;
+    const d2=(I.x.med!=null&&E.x.med!=null)?+(I.x.med-E.x.med).toFixed(1):null;
+    g+='<div class="lgnote"><b>읽는 법</b> — I − L = <b>'+pct(d1)+'</b>(플라시보 대비) · '
+      +'I − E = <b>'+pct(d2)+'</b>(아무것도 안 하기 대비)'
+      +(I.x.mde!=null?(' · 현재 MDE ±'+I.x.mde+'%p'):'')
+      +'<br>L은 그날 I와 <b>같은 개수</b>를 같은 모집단에서 무작위로 뽑은 것입니다.</div>';
+  }
+
+  /* 승급 심사 — 동결 후 사건만. 소급 구간으로 승급시키면 '이미 본 데이터로 고른 규칙'을
+   * 그 데이터로 승인하는 것이 된다. 그래서 전체 사건 수가 많아도 여기 숫자는 작다. */
+  const postDays=(fz==null)?0:docs.filter(d=>(d.at||0)>=fz).length;
+  g+='<div class="lgsec" style="margin-top:10px"><span class="t">변경 후보 심사 (동결 후 구간)</span>'
+   +'<span class="m">소급 구간은 세지 않습니다 — 통과해도 코드는 상수를 바꾸지 않습니다</span></div>';
+  g+='<table class="lgtbl"><tr><th>후보</th><th style="text-align:right">E 대비</th><th>판정</th><th>미충족 조건</th></tr>';
+  for(const k of ['I','J','K']){
+    if(!by[k])continue;
+    const pa={x:QADomain.shadowStats(postOf(by[k]),'x',{blockLen:bl,iters:300,rng:QADomain.rngFrom('indep|post|'+k)}),events:postOf(by[k])};
+    const pb={x:QADomain.shadowStats(postOf(E),'x',{blockLen:bl,iters:300,rng:QADomain.rngFrom('indep|post|E')}),events:postOf(E)};
+    const r=QADomain.promoteCheck(pa,pb,{key:'x',days:postDays,blockLen:bl});
+    g+='<tr><td><b>'+k+'</b> '+esc(by[k].label)+'</td>'
+      +'<td style="text-align:right">'+pct(r.delta)+'</td>'
+      +'<td>'+(r.ok?'<b style="color:var(--up)">후보 성립</b>':'<span class="muted">미성립</span>')+'</td>'
+      +'<td><small>'+(r.reasons.length?esc(r.reasons.join(' · ')):'—')+'</small></td></tr>';
+  }
+  g+='</table>';
+  g+='<div class="lgnote">이 층의 한계를 적어 둡니다. ① <b>지표 산식</b>(%B 창·결측 가중 정의)이 바뀌면 '
+   +'판정이 그대로여도 표본이 섞입니다 — 산식을 건드릴 때는 이 판을 새로 동결해야 합니다. '
+   +'② 동결 전 '+Math.max(0,docs.length-postDays)+'일은 소급 구간이라 <b>증거가 아니라 배선 확인</b>입니다. '
+   +'③ 귀속(3층)은 붙이지 않습니다 — 분류기 입력이 규칙 의존이라 섞으면 뜻이 없어집니다.</div>';
   return g;
 }
 
@@ -7167,6 +7359,7 @@ function lgViewVerify(){
     +'위 버튼은 수동 재시도용입니다 — 하루에 여러 번 눌러도 같은 날짜 문서를 덮어쓸 뿐 중복 기록되지 않습니다.</div>'
     +'<div id="glMsg" style="margin-top:8px;font-size:12px"></div>';
   g+=lgShadowHTML(hz);          // (v5.6) 그림자 장부 · 변경 후보 심사
+  g+=lgShadowIndepHTML(hz);     // (v7.0) 규칙 독립 층 — 판정 변경에 초기화되지 않는 arm
   return g;
 }
 /* 판단 감사 패널. lgViewVerify에서 분리한 이유는 길이가 아니라 책임이다 —

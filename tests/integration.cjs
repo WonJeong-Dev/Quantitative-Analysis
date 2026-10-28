@@ -19,6 +19,23 @@ test('backfill retries excess return when benchmark recovers',async()=>{
  await run(piece('let glBackfillBusy=false','async function glBoot(){'),{S,GL_HORIZ:[20],RULE_VER:'v5.2',splitAdjustable:()=>true,QADomain:{forward:()=>({value:5,entryAt:1,exitAt:2}),forwardTaint:()=>null,normCode:(m,c)=>c},D:()=>({set:async()=>writes++})},'glBackfill()');
  assert.equal(writes,1);assert.equal(S.glog.x.fwd.US_X.x20,0);
 });
+/* (v7.0) 전방수익률은 doc.at과 가격 시계열만의 함수다 — 판정 규칙과 아무 관계가 없다.
+ * 옛 규칙 문서를 건너뛰면 규칙 독립 장부가 **영구히 빈 표**가 된다(실측 24장 중 22장이 그 상태).
+ * 돌연변이: glBackfill에 rv 필터를 되살리면 이 테스트가 깨진다. */
+test('backfill fills forward returns for documents from earlier rule versions',async()=>{
+ const S={uid:'x',glog:{
+   cur:{schema:2,rv:'v6.2',at:1000,rows:{US_X:[]},fwd:{}},
+   old:{schema:2,rv:'v5.5',at:2000,rows:{US_Y:[]},fwd:{}},
+   s1 :{schema:1,rv:'v5.5',at:3000,rows:{US_Z:[]},fwd:{}}},
+  stocks:{US_X:{},US_Y:{},US_Z:{}},fullOK:{US_X:1,US_Y:1,US_Z:1},splits:[],
+  cache:{US_X:{},US_Y:{},US_Z:{}},bench:{US:{}}};
+ let writes=0;
+ await run(piece('let glBackfillBusy=false','async function glBoot(){'),{S,GL_HORIZ:[20],RULE_VER:'v6.2',splitAdjustable:()=>true,QADomain:{forward:()=>({value:5,entryAt:1,exitAt:2}),forwardTaint:()=>null,normCode:(m,c)=>c},D:()=>({set:async()=>writes++})},'glBackfill()');
+ assert.equal(S.glog.cur.fwd.US_X.r20,5,'현행 규칙 문서');
+ assert.equal(S.glog.old.fwd.US_Y.r20,5,'옛 규칙 문서도 채운다');
+ assert.equal(S.glog.s1.fwd.US_Z,undefined,'스키마 1은 그대로 건너뛴다');
+ assert.equal(writes,2);
+});
 test('unknown event coverage has separate U status',()=>{
  const r=run(piece('function revCause(','function glLaterRow('),{REV_A:[],REV_DIR:[],ANA_MIN:3},'revCause({x:-10},null)');assert.equal(r.cause,'U');
 });
