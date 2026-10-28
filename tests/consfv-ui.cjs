@@ -263,7 +263,8 @@ put('US_V2',{qMissW:23,aMissW:9,qMiss:['ROE','마진'],aMiss:['매물대']});
 { /* 편재는 이 숫자에 들어가 있지 않다 — 합치면 둘 다 안 보인다. 그 사실을 툴팁이 말한다. */
   put('US_V2b',{qMissW:0,aMissW:0,aParts:{up:60,rsi:null,bb:null,vp:null,prox:null}});
   const h=M.evHTML(S.calc['US_V2b']);
-  ok('결측 0이면 입력 100%', /입력 100%/.test(h), h.slice(0,160));
+  /* (v6.6.1) 100%는 기본값이라 줄에 적지 않는다 — 막대와 툴팁에는 남는다. */
+  ok('결측 0이면 입력 줄을 적지 않는다', !/>입력 /.test(h)&&/입력 100%/.test(h), h.slice(0,200));
   ok('그래도 편재 경고는 따로 뜬다 (100%가 「확실」이 아니다)', /⚠ 단일 100%/.test(h), h);
   ok('편재가 이 숫자에 반영돼 있지 않다고 적는다', /반영돼 있지 않습니다/.test(h)); }
 
@@ -280,7 +281,9 @@ console.log('\n[6a] 가치 근거 — 점수 입력과 **같은 칸, 다른 수�
   const e1=M.evidenceOf(S.calc['US_EV1'],'US_EV1'), h1=M.evHTML(S.calc['US_EV1'],'US_EV1');
   ok('가치 근거 수를 함께 낸다', e1.vn===M.cfvOf('US_EV1').n&&e1.vn>0, e1.vn);
   ok('칸의 큰 숫자는 가치 근거다', /<span class="lbl">근거<\/span> \d+종/.test(h1), h1.slice(0,120));
-  ok('점수 입력 비율은 작은 줄로 남는다', /class="s"[^>]*>입력 \d+%/.test(h1), h1.slice(0,260));
+  ok('점수 입력이 덜 왔으면 작은 줄로 적는다',
+     /class="s"[^>]*>입력 \d+%/.test(M.evHTML(S.calc['US_V2'],'US_V2')), M.evHTML(S.calc['US_V2'],'US_V2').slice(0,260));
+  ok('다 왔으면 그 줄을 적지 않는다', !/>입력 /.test(h1), h1.slice(0,200));
   ok('id를 안 주면 가치 근거를 지어내지 않는다', M.evidenceOf(S.calc['US_EV1']).vn===null); }
 { put('US_EV0',{perAuto:null,perFwdAuto:null,psrAuto:null,pbrAuto:null,fcf:null,qMissW:0,aMissW:0});
   const e0=M.evidenceOf(S.calc['US_EV0'],'US_EV0'), h0=M.evHTML(S.calc['US_EV0'],'US_EV0');

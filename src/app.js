@@ -2978,7 +2978,10 @@ function evHTML(k,id){
   /* 숫자 앞에 이름표를 붙인다 — 한 행에 성격이 다른 %가 둘 있으면 둘 다 뜻을 잃는다. */
   return '<div class="n"'+(vzero?' style="color:var(--down)"':'')+' title="'+esc(tip)+'">'
     +'<span class="lbl">근거</span> '+(vn!=null?(vn+'종'):'—')+'</div>'
-    +b+'<div class="s"'+(low?' style="color:var(--amber)"':'')+' title="'+esc(tip)+'">입력 '+e.dens+'%</div>'+warn;
+    /* (v6.6.1) 입력%는 **100%가 아닐 때만** 적는다. 도달확률에 적용한 원칙과 같다 —
+     * 기본값은 줄에 쓰지 않고 벗어날 때만 쓴다. 실측 56/60이 100%여서, 늘 적으면 그 줄이
+     * 상수가 되어 읽을 이유가 없어진다. 막대 5칸은 남는다(한눈에 보이는 몫은 그쪽이다). */
+    +b+((e.dens<100)?('<div class="s"'+(low?' style="color:var(--amber)"':'')+' title="'+esc(tip)+'">입력 '+e.dens+'%</div>'):'')+warn;
 }
 /* (v5.9.2) 상세 — 보유 재심사. 보유 중일 때만 그린다. */
 function reviewDetailHTML(id){
@@ -4736,7 +4739,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.6.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.6.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -4785,7 +4788,10 @@ function diagCollect(){
         /* (v6.6) 화면에 **있는 것**을 잰다. 칸의 내용이 바뀌면 계측 대상도 함께 바꾼다 —
          * 안 바꾸면 계측기가 없는 칸을 재면서 영원히 경고한다. */
         col('가치 근거',r=>{const e=evidenceOf(r.k,r.id);return e&&e.vn!=null?e.vn+'종':null;}),
-        col('입력',r=>{const e=evidenceOf(r.k,r.id);return e&&e.dens!=null?e.dens+'%':null;}),
+        /* 입력%는 100%가 아닐 때만 화면에 있다 — 모집단도 그 종목들뿐이다.
+         * 전체를 분모로 삼으면 '대부분 입력이 다 왔다'는 **정상**이 경고로 뜬다(§22-㉒). */
+        col('입력',r=>{const e=evidenceOf(r.k,r.id);return (e&&e.dens!=null&&e.dens<100)?e.dens+'%':null;},
+          r=>{const e=evidenceOf(r.k,r.id);return !!(e&&e.dens!=null&&e.dens<100);}),
         col('지정가 할인',r=>{const c2=cfvOf(r.id);
           return (c2&&c2.limit!=null&&r.k.price>0)?((c2.limit/r.k.price-1)*100).toFixed(1)+'%':null;}),
         col('지정가',r=>{const c2=cfvOf(r.id);return (c2&&c2.limit!=null)?Math.round(c2.limit):null;}),
