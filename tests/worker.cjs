@@ -12,7 +12,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  r=await call('/summary?sym=NVDA',{headers:{Origin:'https://untrusted.test'}},{ALLOWED_EMAILS:'a@b.c'});ok('untrusted origin without token -> 401, no ACAO',r.status===401&&!r.headers.get('Access-Control-Allow-Origin'));
  r=await call('/summary?sym=NVDA',{},{});ok('allowlist unset fails closed (503)',r.status===503);
  r=await call('/?url='+encodeURIComponent('https://query1.finance.yahoo.com/test'),{},{AUTH_MODE:'reprot',ALLOWED_EMAILS:'a@b.c'});ok('typo in AUTH_MODE falls back to enforce',r.status===401);
- r=await call('/health');ok('/health is the only unauthenticated GET',r.status===200&&(await r.json()).ver==='7.0');
+ r=await call('/health');ok('/health is the only unauthenticated GET',r.status===200&&(await r.json()).ver==='7.1');
  ok('KRX key never over plain http by default',!/http:\/\/data-dbg/.test(source.replace(/KRX_SCHEME[^\n]*http[^\n]*/g,'')));
 
  /* (v7.1) DART 탐침 — 키는 **서버에서만** 붙고, 무인증으로는 닿지 않는다.

@@ -181,7 +181,17 @@ const op3=await call('/health',{token:null,headers:{Origin:'https://a.example'},
   env:Object.assign({},ENV,{ALLOWED_ORIGINS:'https://a.example, https://b.example'})});
 ok('ALLOWED_ORIGINS env 반사', op3.h.get('Access-Control-Allow-Origin')==='https://a.example');
 const hl0=await call('/health',{token:null});
-ok('/health 무인증 200 · {ver:"7.0"}만', hl0.status===200&&JSON.stringify(hl0.b)==='{"ver":"7.0"}', hl0.text);
+/* (v7.1) 버전 문자열은 **소스에서 읽는다** — 올릴 때마다 검사를 고치게 두면 "검사가 막아서
+ * 안 올린다"가 된다. 여기서 지키려는 것은 숫자가 아니라 **ver 하나만 실린다**는 사실이다. */
+{ const VERSRC=(fs.readFileSync(SRC,'utf8').match(/const VER = '([^']+)'/)||[])[1];
+  ok('/health 무인증 200 · {ver} 하나만 (ver='+VERSRC+')',
+     hl0.status===200&&JSON.stringify(hl0.b)===JSON.stringify({ver:VERSRC}), hl0.text);
+  /* 소스가 바뀌었는데 VER이 그대로면 여기서 깨진다 — /health가 '무엇이 떠 있는가'를
+   * 말할 수 있어야 배포 여부를 확인할 수 있다. 고치는 법: VER을 올리고
+   * `node scripts/workerhash.cjs --write`. */
+  const H=require('../scripts/workerhash.cjs'), PIN=JSON.parse(fs.readFileSync(H.PIN,'utf8'));
+  ok('워커 소스 ↔ VER 핀이 맞는다 (hash '+H.hash+')', PIN.hash===H.hash&&PIN.ver===VERSRC,
+     '핀 '+PIN.ver+'/'+PIN.hash+' ≠ 현재 '+VERSRC+'/'+H.hash); }
 const hlNoEnv=await call('/health',{token:null,env:{}});
 ok('/health는 ALLOWED_EMAILS 없어도 200', hlNoEnv.status===200);
 ok('응답에 `*` 없음 · Cache-Control 없음', r.h.get('Access-Control-Allow-Origin')===ORIGIN&&r.h.get('Cache-Control')===null);

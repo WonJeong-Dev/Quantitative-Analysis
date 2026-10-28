@@ -93,7 +93,10 @@ const KRX_STK_PATHS = [                      /* (v6.9) 경로만 — 스킴·호
  * 실제 KRX 호출은 이보다 적다. 평상시 관측 2~3회. */
 const KRX_LOOKBACK = 12;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36';
-const VER = '7.0';
+/* (v7.1) ★ 워커를 바꿀 때마다 올린다. v7.0에서 /dart를 더하고도 VER을 그대로 둬서,
+ * /health가 'ver 7.0'을 돌려줘도 **그 7.0이 어느 7.0인지 알 수 없었다** — 배포됐는지
+ * 확인할 방법이 없는 상태였다. 관측 장치가 두 상태를 구분하지 못하면 관측이 아니다(§22-㉒). */
+const VER = '7.1';
 
 /* ============ (v6.9) CORS — `*`를 버리고 허용 Origin만 반사한다 ============
  * v6.8은 `Allow-Origin: *` + `Allow-Headers: *`였다. 인증이 없던 시절엔 어차피 공개라
