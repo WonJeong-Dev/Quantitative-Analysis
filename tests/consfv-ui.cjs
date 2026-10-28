@@ -517,6 +517,15 @@ console.log('\n[11] 국내 주당순자산 — DART 1차 출처 배선 (v6.9 · 
   ok('같은 종목을 동시에 두 번 부르지 않는다', /bpsPending/.test(body));
   const pin=require('../docs/RULEHASH.json');
   ok('판정 입력이 늘었으므로 RULE_VER을 올렸다 (v6.2)', pin.ruleVer==='v6.2', pin.ruleVer);
+  /* (v6.10) 후행 EPS는 **compute를 고치지 않고** 들어간다 — Feff가 캐시(F)의 복사본이라
+   * `epsTtm`을 심으면 기존 문으로 그대로 흐른다. PBR 때 compute를 고쳐야 했던 것은
+   * 캐시에 **비율**밖에 없었기 때문이고, 여기는 같은 양이 다른 출처로 올 뿐이다. */
+  ok('후행 EPS는 캐시의 epsTtm에 심는다', /f\.epsTtm=ni\.ttm\/shares/.test(body), '');
+  ok('야후 값을 덮지 않는다 (미국은 야후 경로)', /f\.epsTtm==null\|\|f\.epsTtmSrc==='dart'/.test(body));
+  ok('출처와 기준을 남긴다', /f\.epsTtmSrc='dart'/.test(body)&&/epsTtmBasis/.test(body));
+  ok('TTM이 없으면 사유만 남기고 심지 않는다', /f\.epsTtmWhy=ni\.why/.test(body));
+  ok('compute의 PER 경로는 손대지 않았다 (Feff.epsTtm 그대로)',
+     /k\.perAuto=\(price>0&&Feff\.epsTtm!=null&&Feff\.epsTtm>0\)\?price\/Feff\.epsTtm:null/.test(T));
 }
 
 console.log('\n────────────────────────────');

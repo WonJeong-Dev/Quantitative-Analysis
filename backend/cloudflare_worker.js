@@ -102,7 +102,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 /* (v7.1) ★ 워커를 바꿀 때마다 올린다. v7.0에서 /dart를 더하고도 VER을 그대로 둬서,
  * /health가 'ver 7.0'을 돌려줘도 **그 7.0이 어느 7.0인지 알 수 없었다** — 배포됐는지
  * 확인할 방법이 없는 상태였다. 관측 장치가 두 상태를 구분하지 못하면 관측이 아니다(§22-㉒). */
-const VER = '7.5';
+const VER = '7.6';
 
 /* ============ (v6.9) CORS — `*`를 버리고 허용 Origin만 반사한다 ============
  * v6.8은 `Allow-Origin: *` + `Allow-Headers: *`였다. 인증이 없던 시절엔 어차피 공개라
@@ -1029,7 +1029,7 @@ async function route(request, env, u) {
        *  ★ 손익계산서는 여기서 쓰지 않는다. 실측 결과 분기 보고서의 IS는 **누적이 아니라
        *    3개월분**이어서(2025 반기 22.2조 · 3Q 24.4조 · 연간 97.1조) 후행 EPS는 4개 분기를
        *    모아야 한다. 그건 호출이 4배이므로 다음 판에서 따로 한다. */
-      if (u.pathname === '/dartequity') {
+      if (u.pathname === '/dartfin') {
         const key = env && env.DART_API_KEY;
         if (!key) return json({ error: 'DART_API_KEY secret이 설정되지 않았습니다' }, 500);
         const code = String(u.searchParams.get('code') || '').replace(/[^0-9]/g, '');
@@ -1060,8 +1060,34 @@ async function route(request, env, u) {
             if (!e) continue;
             const num2 = Number(String(e.thstrm_amount || '').replace(/,/g, ''));   // 쉼표 제거
             if (!isFinite(num2) || num2 === 0) continue;
+            /* (v7.6) ★ 후행 순이익(TTM). 손익계산서는 **연초부터의 누계(YTD)** 다 —
+             * 기간 표기가 `2026.01.01 ~ 2026.06.30` 으로 그렇게 적혀 있고, 3개월 행은 **없다**
+             * (실측: CFS/IS 6행 전부 YTD, 당기순이익은 ord29·ord61 중복인데 금액이 같다).
+             * 그래서 표준 항등식을 쓴다:
+             *     TTM = 직전 사업연도 전체 + 당기 YTD − 전기 동기 YTD
+             * 같은 응답에 `frmtrm_amount`(전기 동기 YTD)가 함께 오므로 **추가 호출은 연간 하나**다.
+             * 최신 보고서가 사업보고서(11011)면 그 자체가 1년치이므로 TTM = 그 값이다. */
+            const niRow = rows.find(r3 => r3.fs_div === fsd && r3.sj_div === 'IS' && /당기순이익/.test(r3.account_nm || ''));
+            const cash = v => { const n3 = Number(String(v == null ? '' : v).replace(/,/g, '')); return isFinite(n3) ? n3 : null; };
+            const ni = { ytd: null, ytdPrev: null, ytdDt: null, ytdPrevDt: null, fy: null, fyYear: null, ttm: null, why: null };
+            if (!niRow) { ni.why = '당기순이익 행 없음'; }
+            else {
+              ni.ytd = cash(niRow.thstrm_amount); ni.ytdDt = niRow.thstrm_dt || null;
+              ni.ytdPrev = cash(niRow.frmtrm_amount); ni.ytdPrevDt = niRow.frmtrm_dt || null;
+              if (rc === '11011') { ni.ttm = ni.ytd; ni.fy = ni.ytd; ni.fyYear = yy; }
+              else if (ni.ytd == null) { ni.why = '당기 누계 금액 없음'; }
+              else if (ni.ytdPrev == null) { ni.why = '전기 동기 누계 없음 — TTM을 낼 수 없습니다'; }
+              else {
+                const fj2 = await jread(await dq('fnlttSinglAcnt.json', { corp_code: corp, bsns_year: String(yy - 1), reprt_code: '11011' }));
+                const rows2 = (fj2 && Array.isArray(fj2.list)) ? fj2.list : [];
+                const fyRow = rows2.find(r4 => r4.fs_div === fsd && r4.sj_div === 'IS' && /당기순이익/.test(r4.account_nm || ''));
+                ni.fy = fyRow ? cash(fyRow.thstrm_amount) : null; ni.fyYear = yy - 1;
+                if (ni.fy == null) ni.why = (yy - 1) + ' 사업보고서의 당기순이익을 찾지 못했습니다';
+                else ni.ttm = ni.fy + ni.ytd - ni.ytdPrev;
+              }
+            }
             return json({ code, corp, equity: num2, fs: fsd, cur: e.currency || null,
-              at: e.thstrm_dt || null, term: e.thstrm_nm || null, year: yy, rpt: rc, tried });
+              at: e.thstrm_dt || null, term: e.thstrm_nm || null, year: yy, rpt: rc, tried, ni });
           }
         }
         return json({ code, corp, error: '자본총계를 찾지 못했습니다', tried }, 200);

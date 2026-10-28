@@ -41,12 +41,12 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  /* (v7.5) 자본총계 수집 — 인증·시크릿·입력 검증, 그리고 **최신 보고서 역순 탐색**.
   * 실측에서 같은 종목의 자본총계가 2025.12.31 120.7조 → 2026.06.30 262.7조였다.
   * 낡은 사업보고서를 집으면 PBR이 두 배 넘게 틀린다 — 순서가 곧 정확도다. */
- r=await call('/dartequity?code=000660',{},{ALLOWED_EMAILS:'a@b.c'});
- ok('equity endpoint needs auth',r.status===401);
- r=await call('/dartequity?code=000660',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c'});
- ok('equity endpoint without the secret explains itself',r.status===500&&/DART_API_KEY/.test(await r.text()));
- r=await call('/dartequity?code=12',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'k'});
- ok('equity endpoint rejects a non-6-digit code',r.status===400);
+ r=await call('/dartfin?code=000660',{},{ALLOWED_EMAILS:'a@b.c'});
+ ok('dartfin endpoint needs auth',r.status===401);
+ r=await call('/dartfin?code=000660',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c'});
+ ok('dartfin endpoint without the secret explains itself',r.status===500&&/DART_API_KEY/.test(await r.text()));
+ r=await call('/dartfin?code=12',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'k'});
+ ok('dartfin endpoint rejects a non-6-digit code',r.status===400);
  { /* 최신 분기가 비어 있으면 그 다음 보고서로 내려가고, 쉼표 금액을 숫자로 읽는지 본다. */
    const seen=[]; const prev=global.fetch;
    global.fetch=async(u2)=>{ const url=String((u2&&u2.url)||u2); seen.push(url);
@@ -55,11 +55,18 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
      return new Response(JSON.stringify({status:'000',list:[
        {fs_div:'OFS',sj_div:'BS',account_nm:'자본총계',thstrm_amount:'1,000',currency:'KRW',thstrm_dt:'2026.06.30 현재'},
        {fs_div:'CFS',sj_div:'IS',account_nm:'매출액',thstrm_amount:'9,999'},
+       {fs_div:'CFS',sj_div:'IS',account_nm:'당기순이익(손실)',thstrm_amount:'100',thstrm_dt:'2026.01.01 ~ 2026.06.30',frmtrm_amount:'10',frmtrm_dt:'2025.01.01 ~ 2025.06.30'},
        {fs_div:'CFS',sj_div:'BS',account_nm:'자본총계',thstrm_amount:'262,693,228,000,000',currency:'KRW',thstrm_dt:'2026.06.30 현재',thstrm_nm:'제 79 기반기말'}
      ]}),{status:200}); };
-   const rr=await call('/dartequity?code=000660',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'K'});
+   const rr=await call('/dartfin?code=000660',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'K'});
    const b=await rr.json(); global.fetch=prev;
    ok('빈 분기를 건너뛰고 다음 보고서를 쓴다',b.rpt==='11012'&&(b.tried||[]).length===2,JSON.stringify(b.tried));
+   /* (v7.6) TTM = 직전 연간 + 당기 누계 − 전기 동기 누계. 손익계산서는 **연초부터의 누계**다
+    * (실측: 기간 표기가 `2026.01.01 ~ 2026.06.30`, 3개월 행은 없다). 스텁은 모든 보고서에
+    * 같은 행을 돌려주므로 연간도 같은 값이고, 항등식대로 fy + ytd − ytdPrev 가 나와야 한다. */
+   ok('TTM을 항등식으로 낸다',b.ni&&b.ni.ttm===(b.ni.fy+b.ni.ytd-b.ni.ytdPrev),JSON.stringify(b.ni));
+   ok('전기 동기 누계를 같은 응답에서 읽는다 (추가 호출은 연간 하나뿐)',b.ni.ytdPrev===10,b.ni.ytdPrev);
+   ok('기간 표기를 그대로 싣는다',/2026\.01\.01/.test(b.ni.ytdDt||''),b.ni.ytdDt);
    ok('쉼표 금액을 숫자로 읽는다',b.equity===262693228000000,b.equity);
    ok('연결을 개별보다 먼저 쓴다',b.fs==='CFS',b.fs);
    ok('기준일을 함께 돌려준다 (PBR이 기준일에 따라 두 배 갈린다)',/2026\.06\.30/.test(b.at||''),b.at);
