@@ -935,6 +935,52 @@ async function route(request, env, u) {
        * 앱이 쓰지도 않을 payload가 수 MB가 된다.
        * CPU: 무료 플랜 한도 때문에 JSON.parse를 쓰지 않는다. 행은 '{'로 갈라지므로
        * 청크마다 코드 1회 매칭 → 관심 코드일 때만 나머지 필드를 뽑는다(§v6.3과 같은 방침). */
+      /* (v7.1) ★ DART 1차 출처 — **탐침만. 파서는 아직 쓰지 않는다.**
+       *
+       * 왜 필요한가(실측): 국내 11종목은 야후가 후행 재무를 주지 않는다 — 후행 EPS 0/11 ·
+       * PBR 0/11(2026-10-28). 그래서 SK하이닉스·삼성전자는 장부가 축이 막혀 무성장 가치가
+       * 아예 없고, 전체 60종목 중 PBR 결측이 12건이다. KRX Open API의 일별매매정보는
+       * 15필드 전부 시세·시총·상장주식수라 PER·PBR·EPS·BPS가 없다(2026-10-27 실측).
+       * 남은 1차 출처는 DART다.
+       *
+       * 왜 파서가 아니라 탐침인가: DART 개발가이드가 robots로 막혀 있어 **응답 필드명을
+       * 문서로 확인할 수 없었다.** 추측으로 파서를 쓰면 조용히 틀린 값을 만든다 — KRX 때와
+       * 같은 절차를 쓴다. 먼저 탐침으로 **실제 응답의 필드 목록을 눈으로 확인**하고,
+       * 그 다음에 좁은 엔드포인트와 파서를 쓴다. 그때 이 경로는 지운다.
+       *
+       * 안전: 호스트와 경로 접두사를 고정하고(opendart.fss.or.kr/api/), 인증키는 **서버에서만**
+       * 붙인다 — 호출자가 crtfc_key를 넣어도 무시하고 덮어쓴다. 응답은 upstreamFetch의
+       * 크기·시간 상한을 그대로 받는다. 이 경로도 다른 경로와 같이 인증·레이트리밋 뒤에 있다. */
+      if (u.pathname === '/dart') {
+        const key = env && env.DART_API_KEY;
+        if (!key) return json({ error: 'DART_API_KEY secret이 설정되지 않았습니다',
+          받는법: 'opendart.fss.or.kr 에서 인증키를 발급한 뒤 워커 시크릿 DART_API_KEY로 등록하세요' }, 500);
+        const api = String(u.searchParams.get('api') || '').replace(/[^A-Za-z0-9._-]/g, '');
+        if (!api) return json({ error: "api 파라미터가 필요합니다 (예: api=fnlttSinglAcnt.json)" }, 400);
+        const qs = new URLSearchParams();
+        for (const [k2, v2] of u.searchParams) {
+          if (k2 === 'api' || k2 === 'crtfc_key') continue;       // 키는 호출자가 못 정한다
+          if (String(v2).length > 200) return json({ error: 'parameter too long: ' + k2 }, 400);
+          qs.set(k2, v2);
+        }
+        qs.set('crtfc_key', String(key).trim());
+        const url = 'https://opendart.fss.or.kr/api/' + api + '?' + qs.toString();
+        const rr = await upstreamFetch(url);
+        const txt = await rr.text();
+        /* 탐침이므로 **구조만** 돌려준다. 전 종목 재무를 그대로 흘리지 않는다. */
+        let j = null, perr = null;
+        try { j = JSON.parse(txt); } catch (e) { perr = String(e); }
+        const list = (j && Array.isArray(j.list)) ? j.list : null;
+        return json({ api, status: rr.status, parse오류: perr,
+          status코드: j ? (j.status || null) : null, 메시지: j ? (j.message || null) : null,
+          최상위키: j ? Object.keys(j) : null,
+          행수: list ? list.length : null,
+          필드수: (list && list.length) ? Object.keys(list[0]).length : null,
+          필드목록: (list && list.length) ? Object.keys(list[0]) : null,
+          첫행: (list && list.length) ? list[0] : null,
+          둘째행: (list && list.length > 1) ? list[1] : null,
+          본문앞부분: list ? undefined : txt.slice(0, 300) });
+      }
       if (u.pathname === '/krxshrs') {
         const key = env && env.KRX_AUTH_KEY;
         if (!key) return json({ error: 'KRX_AUTH_KEY secret이 설정되지 않았습니다' }, 500);

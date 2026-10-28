@@ -15,6 +15,17 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  r=await call('/health');ok('/health is the only unauthenticated GET',r.status===200&&(await r.json()).ver==='7.0');
  ok('KRX key never over plain http by default',!/http:\/\/data-dbg/.test(source.replace(/KRX_SCHEME[^\n]*http[^\n]*/g,'')));
 
+ /* (v7.1) DART 탐침 — 키는 **서버에서만** 붙고, 무인증으로는 닿지 않는다.
+  * 이 경로는 필드명을 눈으로 확인하기 위한 임시 계측기다. 파서가 생기면 지운다. */
+ r=await call('/dart?api=fnlttSinglAcnt.json',{},{ALLOWED_EMAILS:'a@b.c'});
+ ok('DART probe needs auth like every other route',r.status===401);
+ r=await call('/dart?api=fnlttSinglAcnt.json',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c'});
+ ok('DART probe without the secret explains itself (no upstream call)',r.status===500&&/DART_API_KEY/.test(await r.text()));
+ r=await call('/dart',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'k'});
+ ok('DART probe refuses without an api name',r.status===400);
+ ok('DART host and path prefix are fixed in source',/https:\/\/opendart\.fss\.or\.kr\/api\/'/.test(source));
+ ok('caller can never set crtfc_key',/k2 === 'crtfc_key'\) continue/.test(source)&&/qs\.set\('crtfc_key'/.test(source));
+
  const g=raw=>({raw});
  const basis=(shares,implied,fx=1,quoteCurrency='USD')=>module.revenueBasis({financialCurrency:'USD',totalRevenue:g(1000)}, {sharesOutstanding:g(shares),impliedSharesOutstanding:g(implied)}, {currency:'USD'}, {currency:quoteCurrency,regularMarketPrice:g(10),marketCap:g(10000)},fx);
  ok('economic share count reconciles to quote market cap',basis(500,1000).revPSQuote===1&&basis(500,1000).shareSource==='impliedSharesOutstanding');
