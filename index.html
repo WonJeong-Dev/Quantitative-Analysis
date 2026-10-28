@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-KCXsRj0RDR1bKiOM2c/avsuA7SWJepzhvxz53XiwLUA=' 'sha256-VFiI6ExOyCEXoMRuXTrpSmnuNf2nHVeohvSPx9FXEtE=' 'sha256-M2idpbRGZsWhkH+xg5XDNbsnbWn0/TmnM9hSB/UG/c8=' 'sha256-okYgrpOYTQn4uF4FDOj+ITyJp8Wpkd+S20zkkP5GeB0=' 'sha256-7gQyP1bcfxqPs7nfQkMDQqIHf6cOzaa9PXyQW4z1h8o=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-KCXsRj0RDR1bKiOM2c/avsuA7SWJepzhvxz53XiwLUA=' 'sha256-VFiI6ExOyCEXoMRuXTrpSmnuNf2nHVeohvSPx9FXEtE=' 'sha256-RjR8qH9IAGXIciuqDGfn7FrkrRfJjM1FfiQKC9zir7I=' 'sha256-okYgrpOYTQn4uF4FDOj+ITyJp8Wpkd+S20zkkP5GeB0=' 'sha256-7gQyP1bcfxqPs7nfQkMDQqIHf6cOzaa9PXyQW4z1h8o=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quant Stock Board — KR·US</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3ClinearGradient%20id='bg'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%234c1d95'/%3E%3Cstop%20offset='.5'%20stop-color='%230e7490'/%3E%3Cstop%20offset='1'%20stop-color='%230f9d8a'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='pk'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fde68a'/%3E%3Cstop%20offset='1'%20stop-color='%23fb5f57'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='gl'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fff'%20stop-opacity='.20'/%3E%3Cstop%20offset='.55'%20stop-color='%23fff'%20stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23bg)'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-opacity='.20'%20stroke-width='13'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-width='8.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='51'%20cy='18'%20r='8'%20fill='url(%23pk)'/%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23gl)'/%3E%3C/svg%3E">
@@ -5806,7 +5806,7 @@ async function ensureDartBps(id){
   const base=p.split('?')[0].replace(/\/+$/,''); if(!/^https:\/\//.test(base))return false;
   bpsPending[id]=(async()=>{
     try{
-      const r=await fetchComplete(base+'/dartequity?code='+encodeURIComponent(code));
+      const r=await fetchComplete(base+'/dartfin?code='+encodeURIComponent(code));
       if(!r.ok)return false;
       const b=await r.json();
       const rb=f.revenueBasis||{}, shares=(rb.shares>0)?+rb.shares:null;
@@ -5816,6 +5816,19 @@ async function ensureDartBps(id){
       if(!shares){ f.bpsWhy='상장주식수 미확보 — 주당순자산을 낼 수 없습니다'; f.bpsTs=Date.now(); return false; }
       f.bps=b.equity/shares; f.bpsAt=b.at||null; f.bpsRpt=(b.year||'')+'/'+(b.rpt||'');
       f.bpsFs=b.fs||null; f.bpsSrc='dart'; f.bpsWhy=null; f.bpsTs=Date.now();
+      /* (v6.10) 후행 EPS — 워커가 낸 TTM 순이익을 같은 주식수로 나눈다.
+       * ★ compute는 손대지 않는다. `Feff`가 캐시(F)의 복사본이라 `epsTtm`을 심으면
+       *   기존 문으로 그대로 들어간다 — 판정 폐포 해시도 RULE_VER도 그대로다.
+       *   PBR 때 compute를 고쳐야 했던 것은 캐시에 **비율**밖에 없었기 때문이고,
+       *   여기는 같은 양(후행 EPS)이 다른 출처로 올 뿐이다.
+       * ★ 야후가 준 값을 덮지 않는다 — 미국 종목은 야후 경로가 맞다. 국내는 실측 0/11이라
+       *   빈자리에만 들어간다. 출처를 남겨 어느 쪽인지 화면이 말할 수 있게 한다. */
+      const ni=b.ni||{};
+      if(ni.ttm!=null&&isFinite(ni.ttm)&&(f.epsTtm==null||f.epsTtmSrc==='dart')){
+        f.epsTtm=ni.ttm/shares; f.epsTtmSrc='dart';
+        f.epsTtmAt=ni.ytdDt||null; f.epsTtmBasis=(ni.fyYear!=null?(ni.fyYear+' 연간 + 당기 누계 − 전기 동기 누계'):'연간');
+        f.epsTtmWhy=null;
+      }else if(ni.ttm==null){ f.epsTtmWhy=ni.why||'TTM 순이익 미확보'; }
       saveCache(id,true,['fund']); S.calc[id]=compute(id); renderSoon();
       return true;
     }catch(e){ return false; }
@@ -6305,7 +6318,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.9.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.10.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
