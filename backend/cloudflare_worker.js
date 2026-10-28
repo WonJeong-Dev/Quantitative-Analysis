@@ -102,7 +102,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 /* (v7.1) ★ 워커를 바꿀 때마다 올린다. v7.0에서 /dart를 더하고도 VER을 그대로 둬서,
  * /health가 'ver 7.0'을 돌려줘도 **그 7.0이 어느 7.0인지 알 수 없었다** — 배포됐는지
  * 확인할 방법이 없는 상태였다. 관측 장치가 두 상태를 구분하지 못하면 관측이 아니다(§22-㉒). */
-const VER = '7.4';
+const VER = '7.5';
 
 /* ============ (v6.9) CORS — `*`를 버리고 허용 Origin만 반사한다 ============
  * v6.8은 `Allow-Origin: *` + `Allow-Headers: *`였다. 인증이 없던 시절엔 어차피 공개라
@@ -1011,6 +1011,60 @@ async function route(request, env, u) {
             ? list.slice(0, 200).map(r2 => { const o = {}; for (const k4 of pick) if (r2[k4] != null) o[k4] = r2[k4]; return o; })
             : undefined,
           본문앞부분: list ? undefined : txt.slice(0, 300) });
+      }
+      /* (v7.5) ★ DART 자본총계 — 국내 종목의 **장부가 축**을 연다. 한 번에 한 종목만 받는다.
+       *
+       * 실측으로 정해진 설계(2026-10-28, SK하이닉스 corp_code 00164779):
+       *  ① 티커 → corp_code 는 `list.json?stock_code=` 의 첫 행에서 얻는다(corp_code 없이
+       *     쓰면 검색기간 3개월 상한이라 최근 80일로 좁힌다).
+       *  ② 재무는 `fnlttSinglAcnt.json`. 계정은 CFS(연결)/OFS(개별) × BS/IS로 나뉘고,
+       *     자본총계는 BS의 `account_nm === '자본총계'`에 온다. 금액은 **쉼표 포함 문자열**이다.
+       *  ③ ★ **반드시 최신 보고서를 써야 한다.** 같은 종목의 자본총계가
+       *       2025.12.31 → 120.7조 · 2026.03.31 → 164.4조 · 2026.06.30 → **262.7조** 였다.
+       *       10개월 낡은 사업보고서를 쓰면 PBR이 4.2배 대신 **9.1배**로 나온다 — 두 배 넘게
+       *       틀린다. 그래서 최신 분기부터 **역순으로 탐색**한다.
+       *  ④ 2026 3분기(11014)는 아직 `013 조회된 데이타가 없습니다` 였다(10/28). 없는 보고서를
+       *     건너뛰는 것은 결함이 아니라 정상 경로다.
+       *  ★ 한 요청에 한 종목만 받는다 — 무료 플랜의 서브리퀘스트 상한(50) 안에 확실히 든다.
+       *  ★ 손익계산서는 여기서 쓰지 않는다. 실측 결과 분기 보고서의 IS는 **누적이 아니라
+       *    3개월분**이어서(2025 반기 22.2조 · 3Q 24.4조 · 연간 97.1조) 후행 EPS는 4개 분기를
+       *    모아야 한다. 그건 호출이 4배이므로 다음 판에서 따로 한다. */
+      if (u.pathname === '/dartequity') {
+        const key = env && env.DART_API_KEY;
+        if (!key) return json({ error: 'DART_API_KEY secret이 설정되지 않았습니다' }, 500);
+        const code = String(u.searchParams.get('code') || '').replace(/[^0-9]/g, '');
+        if (code.length !== 6) return json({ error: 'code 파라미터(6자리 종목코드)가 필요합니다' }, 400);
+        const dq = (api, params) => {
+          const qs2 = new URLSearchParams(params); qs2.set('crtfc_key', String(key).trim());
+          return upstreamFetch('https://opendart.fss.or.kr/api/' + api + '?' + qs2.toString(),
+            { headers: { 'User-Agent': 'QA-Stock-Board/1.0 (+worker)', 'Accept': 'application/json' } });
+        };
+        const jread = async r2 => { try { return JSON.parse(await r2.text()); } catch (e) { return null; } };
+        const ymd = d2 => d2.toISOString().slice(0, 10).replace(/-/g, '');
+        const now = new Date(), from = new Date(now.getTime() - 80 * 86400e3);
+        const lj = await jread(await dq('list.json', { stock_code: code, bgn_de: ymd(from), end_de: ymd(now), page_count: '1' }));
+        const corp = lj && Array.isArray(lj.list) && lj.list[0] && lj.list[0].corp_code;
+        if (!corp) return json({ code, error: '공시검색에서 corp_code를 찾지 못했습니다',
+          dart: lj ? { status: lj.status, message: lj.message } : null }, 200);
+        const Y = now.getUTCFullYear();
+        const tries = [[Y, '11014'], [Y, '11012'], [Y, '11013'], [Y - 1, '11011'], [Y - 1, '11014']];
+        const tried = [];
+        for (const [yy, rc] of tries) {
+          const fj = await jread(await dq('fnlttSinglAcnt.json', { corp_code: corp, bsns_year: String(yy), reprt_code: rc }));
+          const rows = (fj && Array.isArray(fj.list)) ? fj.list : [];
+          tried.push({ y: yy, rpt: rc, status: fj ? fj.status : null, rows: rows.length });
+          if (!rows.length) continue;
+          /* 연결을 먼저 본다 — 연결재무제표가 없는 회사만 개별로 내려간다. */
+          for (const fsd of ['CFS', 'OFS']) {
+            const e = rows.find(r3 => r3.fs_div === fsd && r3.sj_div === 'BS' && r3.account_nm === '자본총계');
+            if (!e) continue;
+            const num2 = Number(String(e.thstrm_amount || '').replace(/,/g, ''));   // 쉼표 제거
+            if (!isFinite(num2) || num2 === 0) continue;
+            return json({ code, corp, equity: num2, fs: fsd, cur: e.currency || null,
+              at: e.thstrm_dt || null, term: e.thstrm_nm || null, year: yy, rpt: rc, tried });
+          }
+        }
+        return json({ code, corp, error: '자본총계를 찾지 못했습니다', tried }, 200);
       }
       if (u.pathname === '/krxshrs') {
         const key = env && env.KRX_AUTH_KEY;

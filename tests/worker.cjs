@@ -38,6 +38,33 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
    ok('probe-only params never reach DART',!/[?&]pick=/.test(captured)&&!/[?&]follow=/.test(captured));
    ok('upstream request carries a User-Agent (302 원인이었다)',/opendart\.fss\.or\.kr\/api\/x\.json/.test(captured)); }
 
+ /* (v7.5) 자본총계 수집 — 인증·시크릿·입력 검증, 그리고 **최신 보고서 역순 탐색**.
+  * 실측에서 같은 종목의 자본총계가 2025.12.31 120.7조 → 2026.06.30 262.7조였다.
+  * 낡은 사업보고서를 집으면 PBR이 두 배 넘게 틀린다 — 순서가 곧 정확도다. */
+ r=await call('/dartequity?code=000660',{},{ALLOWED_EMAILS:'a@b.c'});
+ ok('equity endpoint needs auth',r.status===401);
+ r=await call('/dartequity?code=000660',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c'});
+ ok('equity endpoint without the secret explains itself',r.status===500&&/DART_API_KEY/.test(await r.text()));
+ r=await call('/dartequity?code=12',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'k'});
+ ok('equity endpoint rejects a non-6-digit code',r.status===400);
+ { /* 최신 분기가 비어 있으면 그 다음 보고서로 내려가고, 쉼표 금액을 숫자로 읽는지 본다. */
+   const seen=[]; const prev=global.fetch;
+   global.fetch=async(u2)=>{ const url=String((u2&&u2.url)||u2); seen.push(url);
+     if(/list\.json/.test(url))return new Response(JSON.stringify({status:'000',list:[{corp_code:'00164779'}]}),{status:200});
+     if(/reprt_code=11014/.test(url))return new Response(JSON.stringify({status:'013',message:'조회된 데이타가 없습니다.'}),{status:200});
+     return new Response(JSON.stringify({status:'000',list:[
+       {fs_div:'OFS',sj_div:'BS',account_nm:'자본총계',thstrm_amount:'1,000',currency:'KRW',thstrm_dt:'2026.06.30 현재'},
+       {fs_div:'CFS',sj_div:'IS',account_nm:'매출액',thstrm_amount:'9,999'},
+       {fs_div:'CFS',sj_div:'BS',account_nm:'자본총계',thstrm_amount:'262,693,228,000,000',currency:'KRW',thstrm_dt:'2026.06.30 현재',thstrm_nm:'제 79 기반기말'}
+     ]}),{status:200}); };
+   const rr=await call('/dartequity?code=000660',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'K'});
+   const b=await rr.json(); global.fetch=prev;
+   ok('빈 분기를 건너뛰고 다음 보고서를 쓴다',b.rpt==='11012'&&(b.tried||[]).length===2,JSON.stringify(b.tried));
+   ok('쉼표 금액을 숫자로 읽는다',b.equity===262693228000000,b.equity);
+   ok('연결을 개별보다 먼저 쓴다',b.fs==='CFS',b.fs);
+   ok('기준일을 함께 돌려준다 (PBR이 기준일에 따라 두 배 갈린다)',/2026\.06\.30/.test(b.at||''),b.at);
+   ok('손익계산서 계정을 자본총계로 집지 않는다',b.equity!==9999); }
+
  const g=raw=>({raw});
  const basis=(shares,implied,fx=1,quoteCurrency='USD')=>module.revenueBasis({financialCurrency:'USD',totalRevenue:g(1000)}, {sharesOutstanding:g(shares),impliedSharesOutstanding:g(implied)}, {currency:'USD'}, {currency:quoteCurrency,regularMarketPrice:g(10),marketCap:g(10000)},fx);
  ok('economic share count reconciles to quote market cap',basis(500,1000).revPSQuote===1&&basis(500,1000).shareSource==='impliedSharesOutstanding');
