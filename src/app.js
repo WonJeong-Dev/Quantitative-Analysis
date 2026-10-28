@@ -884,7 +884,7 @@ function fairPSR(growth){
 /* 펀더멘털 기반 적정가 산출.
  * epsFwd: 선행 EPS(1년), epsTtm: 후행 EPS, revPS: 주당매출, growth: 성장률%, quality: 종합점수
  * 반환 { now, target, basis } — now=현재실적기준, target=선행기준(성장반영) */
-function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality, revenueGrowth){
+function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality, revenueGrowth, bps, bookOK){
   const gp = (growth!=null&&isFinite(growth))?growth:null;
   /* (v4.4) 선행EPS가 음수면 적자 전환이다. v4.3까지는 '후행·선행 중 하나라도 양수'면 PER
    * 경로로 갔으므로, 과거 흑자로 미래 밸류를 매기는 오류가 났다.
@@ -915,6 +915,15 @@ function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality, revenueGrowth){
     const target = revPS*(1+(rg||0)/100)*psr;    // 미래 매출 반영
     return {now, target, basis:'PSR'};
   }
+  /* (v6.3) ③ 자산 — 주당순자산 × 1.0배. **마지막 수단이고 호출부가 열어줘야 돈다**(bookOK).
+   * 왜 필요한가. 실측 SK하이닉스·삼성전자는 이익 축이 '배제'된 것이 아니라 **이상치 천장**
+   * (현재가 3배)에 걸려 now가 null로 떨어졌고, PSR 신뢰도도 0이라 대체 축이 없었다. 그래서
+   * 현재 적정가의 근거가 애널 목표가 하나뿐이 되고 nowIndep=false → G4를 판정할 수 없었다.
+   * ★ 배수는 1.0 — 무성장 가치의 자산 축과 **같은 정의**다(domain.js consFV 'book').
+   *   새 상수가 아니라 장부가의 정의이고 자유 파라미터가 0개다.
+   * ★ target은 내지 않는다. 장부가가 자라는 속도는 ROE 전망이고, 그건 이 함수가 피하려는
+   *   종류의 값이다. 자산 축은 **하방 축**이다(§22-⑯ 모르는 값은 그리지 않는다). */
+  if(bookOK&&bps!=null&&isFinite(bps)&&bps>0) return {now:bps, target:null, basis:'BOOK'};
   return null;
 }
 /* 이원 적정가 산출: 현재적정가(fvNow, 하방) + 적정목표가(fvTarget, 상방·성장반영)
@@ -922,7 +931,7 @@ function fundamentalFV(epsFwd, epsTtm, revPS, growth, quality, revenueGrowth){
  *  - 애널 목표가가 있으면 그것이 '주 앵커'(전문가의 12개월 밸류에이션). 펀더멘털은 교차검증·폴백.
  *  - 목표가가 없거나(신규상장) 커버리지 얇으면 펀더멘털이 주 앵커.
  *  - 현재적정가(하방)는 성장을 '완화 반영'(제거가 아님) — 고성장주가 프리미엄받는 현실 인정. */
-function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, psrReliable, price){
+function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, psrReliable, price, pbrReliable){
   // Valuation weights are versioned model policy, not adjustable UI sliders.
   const num=x=>(x!=null&&x!==''&&isFinite(+x)&&+x>0)?+x:null;
 
@@ -959,14 +968,15 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, psrR
   // 펀더멘털 비중을 크게 낮추고, 애널 목표가(사이클 정상화 반영)를 신뢰한다.
   //  perReliable: 2=정상, 1=참고(사이클 주의), 0=제외 — VM_META의 vmPer 값을 받음.
   const pr = (perReliable==null)?2:perReliable;
-  const isPERbasis = fund2 && fund2.basis==='PER';
+  let isPERbasis = fund2 && fund2.basis==='PER';
   // 사이클주 펀더멘털 가중 승수: PER 신뢰 낮을수록 축소
   /* (v4.4) PSR 경로에도 신뢰도를 적용한다. v4.3까지 PSR 경로는 무조건 1.0이어서 VM_META의
    * psr 등급(2/1/0)이 적정가 엔진에서 전혀 쓰이지 않았다. 위 epsPos 수정으로 적자 전환 종목이
    * PSR 경로로 옮겨가므로, 그대로 두면 신뢰 낮은 PSR이 만점 가중을 받는 새 구멍이 열린다. */
   const ps = (psrReliable==null)?2:psrReliable;
-  const fundMul = isPERbasis ? (pr>=2?1.0:(pr===1?0.35:0.0))
-                             : (ps>=2?1.0:(ps===1?0.35:0.0));
+  const pb = (pbrReliable==null)?2:pbrReliable;
+  const mulOf=(lv)=>(lv>=2?1.0:(lv===1?0.35:0.0));
+  let fundMul = isPERbasis ? mulOf(pr) : mulOf(ps);
 
   /* 사이클주 안전장치 (v4.3 변경): 펀더멘털이 애널목표의 2배(현재값 1.6배)를 넘으면
    *  상한 '대입'이 아니라 '이상치 배제'한다.
@@ -981,9 +991,15 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, psrR
    * 0.18→0.85로 뛰었다(재현: 여력 +25% → +210.8%). 목표가를 '믿고 쓰는 것'과 다른 값의
    * 크기를 재는 '자'로 쓰는 것은 다른 일이다 — 후자는 목표가가 낡아도 유효하다. */
   let fundOutlier=false;
-  if(fund2 && anaTgt!=null){
-    if(fund2.target!=null && fund2.target>anaTgt*2.0){ fund2.target=null; fundOutlier=true; }
-    if(fund2.now!=null    && fund2.now   >anaTgt*1.6){ fund2.now=null;    fundOutlier=true; }
+  /* (v6.3) 이상치 기준을 **한 곳에만** 적는다 — 자산 축도 같은 자로 재야 하고, 두 벌로 두면
+   * 한쪽만 고쳐져 조용히 갈라진다(§22-⑲). 식·상수는 v5.5와 한 글자도 다르지 않다. */
+  const hiCeil=(v,anaMul,ceil)=>(v==null)?false:(
+    (anaTgt!=null&&v>anaTgt*anaMul)||(price!=null&&isFinite(price)&&price>0&&v>price*ceil));
+  const nowTooHigh=v=>hiCeil(v,1.6,FUND_CEIL_N);
+  const tgtTooHigh=v=>hiCeil(v,2.0,FUND_CEIL_T);
+  if(fund2){
+    if(tgtTooHigh(fund2.target)){ fund2.target=null; fundOutlier=true; }
+    if(nowTooHigh(fund2.now)){    fund2.now=null;    fundOutlier=true; }
   }
   /* 절대천장 (v4.3 신규) — 애널목표가 없거나 배제된 종목에서도 반드시 작동해야 하는 방어.
    * 위 캡은 애널목표를 기준으로 삼으므로, 목표가가 배제되면(스케일 이상 등) 폭주한 펀더멘털이
@@ -992,9 +1008,18 @@ function fairValue(man, tw, fund, quality, tgtSpread, techRef, perReliable, psrR
    * 기준: 가격매력도 여력 점수곡선의 상한이 +300%(=현재가 4배)이므로, 그를 넘는 값은
    * 점수 체계가 표현할 수 있는 범위를 벗어난 산출물로 보고 배제한다(현재값은 3배).
    * 실측 국장 9종목의 펀더멘털/현재가 = 0.83~2.84배로, 통과 종목 대비 1.4배 여유. */
-  if(fund2 && price!=null && isFinite(price) && price>0){
-    if(fund2.target!=null && fund2.target>price*FUND_CEIL_T){ fund2.target=null; fundOutlier=true; }
-    if(fund2.now!=null    && fund2.now   >price*FUND_CEIL_N){ fund2.now=null;    fundOutlier=true; }
+  /* (v6.3) ★ 자산 축 — **이익·매출 축이 현재값을 하나도 남기지 못한 종목만.**
+   * 조건을 'PER 신뢰도 0'이 아니라 '현재값이 살아남지 못했다'로 쓴다. 실측에서 SK하이닉스는
+   * per=1(배제 아님)인데도 이상치 천장에 걸려 now가 null이었다 — 신뢰도로 조건을 걸면
+   * 그 종목을 못 집는다. 그래서 **결과**를 본다.
+   * 이미 현재값이 있는 종목은 건드리지 않는다 — 돌아가고 있는 판정을 근거 없이 흔들지 않는다.
+   * 자산 축도 같은 이상치 자로 잰다(장부가가 현재가의 3배를 넘으면 쓰지 않는다). */
+  if(fund && pb!==0 && !(fund2 && fund2.now!=null && fundMul>0)){
+    const book=fundamentalFV(null,null,null,null,quality,null,num(fund.bps),true);
+    if(book && book.now!=null){
+      if(nowTooHigh(book.now)) fundOutlier=true;
+      else { fund2=book; isPERbasis=false; fundMul=mulOf(pb); }
+    }
   }
   const fundUsable = !!(fund2 && (fund2.target!=null || fund2.now!=null));
 
@@ -1352,6 +1377,11 @@ function compute(id,simPrice){
   k.pbrAuto=(price>0&&bpsQ!=null)?price/bpsQ
            :((F.pbrY!=null&&isFinite(F.pbrY)&&fxq!=null&&fxq>0)?F.pbrY/fxq:null);
   k.pbrSrc=(price>0&&bpsQ!=null)?'dart':((k.pbrAuto!=null)?'yahoo':null);
+  /* (v6.3) 자산 축의 입력. fundInput은 위에서 만들어졌고 주당순자산은 여기서야 생기므로
+   * 여기서 붙인다. 통화가 섞이면 비율을 믿을 수 없어 **넣지 않는다**(consFV의 book과 같은 조건).
+   * PBR 역산(야후 비율)도 허용한다 — 비율이 있으면 주당순자산은 price/pbr로 나온다. */
+  fundInput.bps = curMismatch ? null
+    : ((bpsQ!=null) ? bpsQ : ((price>0&&k.pbrAuto!=null&&k.pbrAuto>0)?price/k.pbrAuto:null));
   // 교차검증용 원값 — 자기점검 패널에서 야후 스냅샷과 재계산값의 정합을 눈으로 본다.
   k.psrY=(F.psrY!=null&&isFinite(F.psrY))?+F.psrY:null;
   k.psrNoFx=(price>0&&F.revPS!=null&&F.revPS>0)?price/F.revPS:null;
@@ -1524,7 +1554,7 @@ function compute(id,simPrice){
     targetLow:  (man.targetLow!=null&&man.targetLow!=='')? man.targetLow  : (Feff.tgtLo!=null?Feff.tgtLo:null)
   });
   const vmR=effVM(id); // 사업분야별 지표 신뢰도 (per/pbr/psr: 2핵심/1참고/0제외)
-  const fvr=fairValue(manFV, tgtW, fundInput, k.quality, tgtSpread, techRef, vmR.per, vmR.psr, price);
+  const fvr=fairValue(manFV, tgtW, fundInput, k.quality, tgtSpread, techRef, vmR.per, vmR.psr, price, vmR.pbr);
   k.valuationInputs={epsFwd:fundInput.epsFwd??null,epsTtm:fundInput.epsTtm??null,revPS:fundInput.revPS??null,
     revenueGrowth:fundInput.revenueGrowth??null,revSource:man.revPS!=null&&man.revPS!==''?'manual':(Feff.revPS!=null?'auto':'unavailable'),
     psrWeight:vmR.psr,perWeight:vmR.per};
@@ -3372,19 +3402,16 @@ function detailHTML(id){
   const fnd=(S.cache[id]&&S.cache[id].fund)||{};
   const autoHint=(v,unit)=>v!=null&&isFinite(v)?('자동 '+(+v).toFixed(0)+(unit||'')):'';
   const autoHint2=(v)=>v!=null&&isFinite(v)?('자동 '+(+v).toFixed(2)):'';   // (v4.28) 배수는 소수 2자리
-  /* (v6.12) **어느 자본·어느 순이익을 분자로 썼는지 적는다.** 수집하고 그리지 않으면 없는
-   * 항목이다(§22-㉕) — v6.10의 epsTtmBasis가 그 상태였다.
-   * 측정된 차이가 자본 최대 26.2%(LG에너지솔루션)·순이익 27.4%(삼성SDI)여서 '어느 기준인가'가
-   * 값 자체만큼 중요하다. 총계 기준으로 떨어진 경우에는 **그 사실과 이유**를 적는다. */
-  const bpsNote=(fnd.bpsSrc==='dart')
-    ? ' <small class="muted">'+((fnd.bpsBasis==='owners')
-        ? ('지배주주지분 기준'+((fnd.nciPct!=null&&fnd.nciPct!==0)?(' · 비지배 '+fnd.nciPct+'%'):''))
-        : ('자본총계 기준 — '+esc(fnd.bpsBasisWhy||'지배주주지분 미확보')))
-      +(fnd.bpsAt?(' · '+esc(fnd.bpsAt)):'')+'</small>'
-    : '';
-  const epsNote=(fnd.epsTtmSrc==='dart'&&fnd.epsTtmBasis)
-    ? ' <small class="muted">후행 '+esc(fnd.epsTtmBasis)+'</small>'
-    : ((fnd.epsTtmWhy)?' <small class="muted">후행 EPS — '+esc(fnd.epsTtmWhy)+'</small>':'');
+  /* (v6.13) **이상할 때만 말한다.** v6.12는 정상 상태에도 「지배주주지분 기준 · 비지배 n% ·
+   * 기준일」을 적었다 — 정확하지만 투자 판단에 쓰이지 않는 문자열이고, 그런 것이 쌓이면
+   * 정작 봐야 할 것이 묻힌다. 기준·비율·기준일은 내부에서 처리하고, 화면에는 **지배주주
+   * 기준으로 못 낸 경우**만 남긴다. 그때는 PBR·후행 PER이 최대 26% 낙관 쪽으로 틀어지므로
+   * 투자 판단에 꼭 필요한 정보다. 정상이면 아무것도 적지 않는다. */
+  const bpsNote=(fnd.bpsSrc==='dart'&&fnd.bpsBasis==='total')
+    ? ' <small class="muted">자본총계 기준 — 지배주주지분 미확보</small>' : '';
+  const epsNote=(fnd.epsTtmSrc==='dart'&&fnd.epsTtmOwn===false)
+    ? ' <small class="muted">후행 순이익 총계 기준</small>'
+    : ((fnd.epsTtmWhy)?' <small class="muted">후행 EPS 미산출</small>':'');
   const manual='<div class="manual">'
     +F('myFair','내 적정가 ('+curSym(C)+')','직접 산정 값')
     +F('target','애널리스트 목표가','컨센서스 목표가')
@@ -3884,7 +3911,18 @@ const CONST_LOG=[
 function constNow(){ const m={}; for(const r of CONST_LOG)m[r.k]=r; return m; }
 /* ★ 판정 로직 버전. 이 값이 바뀌면 그 이전 로그와 이후 로그를 **같은 평균에 넣으면 안 된다**.
  * 판정에 영향을 주는 변경(임계값·게이트·등급식)이 있을 때만 올린다 — 표시 전용 변경은 그대로 둔다. */
-const RULE_VER='v6.2';   /* (v6.2) 판정 변경 — 국내 종목의 PBR이 **처음으로 생긴다.**
+const RULE_VER='v6.3';   /* (v6.3) 판정 변경 — 현재 적정가에 **자산 축(장부가)** 을 연다.
+                          * 실측 원인: SK하이닉스·삼성전자는 이익 축이 '배제'된 것이 아니라
+                          * **이상치 천장(현재가 3배)에 걸려 now가 null**로 떨어졌고, PSR 신뢰도도
+                          * 0이라 대체 축이 없었다. 그래서 현재 적정가의 근거가 애널 목표가 하나뿐이
+                          * 되고 nowIndep=false → G4를 판정할 수 없었다(두 종목 모두 판정 '—').
+                          * 배수는 1.0으로 무성장 가치의 자산 축과 **같은 정의**이므로 새 상수 0개.
+                          * 조건은 '신뢰도 0'이 아니라 **'현재값이 하나도 살아남지 못했다'** 다 —
+                          * 이미 값이 있는 종목은 건드리지 않는다(실측 예측: 11종목 중 2종목만 변화).
+                          * 대가는 실측했다: 현행 v6.2의 누적 판정 로그는 **2거래일**뿐이다. 규칙
+                          * 변경이 가장 싼 시점은 직전 변경 직후이고, 규칙 독립 층(I·J·K·L)의
+                          * 22거래일은 이 인상에 **초기화되지 않는다** — 그게 그 층을 만든 이유다.
+                          * (v6.2) 판정 변경 — 국내 종목의 PBR이 **처음으로 생긴다.**
                           * 야후는 KRX 티커에 priceToBook을 한 건도 주지 않아(실측 0/11) 국내
                           * 11종목의 장부가 축이 통째로 막혀 있었다. DART 보고서의 자본총계를
                           * 상장주식수로 나눠 주당순자산을 캐시에 심고, compute가 현재가로 직접
@@ -4853,7 +4891,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.12.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.13.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

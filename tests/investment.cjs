@@ -78,3 +78,116 @@ assert.ok(d.blockedCode!=='G3','G3로 막혔다고 말하지 않는다');
 ctx.k={...base,upside:40};assert.equal(vm.runInContext('classifyDetail(k).tier',ctx),'상');});
 test('excluded PER can use an available sector-allowed PSR model',()=>{const code=piece('function pl(','/*')+piece('function fairPER(','/* 이원 적정가')+piece('function fairValue(','function rubricFlags(');const ctx=vm.createContext({FUND_CEIL_T:4,FUND_CEIL_N:3});vm.runInContext(code,ctx);const r=vm.runInContext("fairValue({},0,{epsFwd:1,epsTtm:1,revPS:10,growth:20,revenueGrowth:20},60,null,null,0,2,100)",ctx);assert.ok(r.fvTarget>0);assert.equal(r.fundFV.basis,'PSR');});
 test('a recent analyst action does not certify a consensus target update date',()=>{const code=piece('const AGE_FRESH=','/* ============================================================================');const r=vm.runInNewContext(code+';targetFresh({}, {ana:{lg:Date.now()/1000}},100,120,130)',{});assert.equal(r.ts,null);assert.equal(r.f,.5);});
+
+/* ── (v6.3) 현재 적정가의 자산 축 ──────────────────────────────────────────────
+ * 실측 원인: SK하이닉스·삼성전자는 이익 축이 '배제'된 것이 아니라 **이상치 천장(현재가 3배)**
+ * 에 걸려 now가 null로 떨어졌고, PSR 신뢰도도 0이라 대체 축이 없었다. 그래서 현재 적정가의
+ * 근거가 애널 목표가 하나뿐이 되고 nowIndep=false → G4를 판정할 수 없었다.
+ * ★ 조건은 '신뢰도 0'이 아니라 **'현재값이 하나도 살아남지 못했다'** 다. per=1(배제 아님)인
+ *   종목이 바로 그 사례였으므로, 신뢰도로 조건을 걸면 그 종목을 못 집는다. */
+const FV=()=>{const code=piece('function pl(','/*')+piece('function fairPER(','/* 이원 적정가')
+  +piece('function fairValue(','function rubricFlags(');
+ const ctx=vm.createContext({FUND_CEIL_T:4,FUND_CEIL_N:3});vm.runInContext(code,ctx);
+ return expr=>vm.runInContext(expr,ctx);};
+
+test('book value opens the current fair value when no earnings or sales axis survives',()=>{
+ const run=FV();
+ /* 선행EPS 65 · 현재가 100 → PER 경로 now가 천장(3배)을 넘어 배제된다. revPS 없음 → PSR 불가.
+    주당순자산 40 → 자산 축이 열려야 한다. (per=1 로 '배제 아님'인 상태를 일부러 쓴다) */
+ const r=run("fairValue({},0,{epsFwd:65,epsTtm:65,revPS:null,growth:10,bps:40},60,null,null,1,0,100,2)");
+ assert.equal(r.fundFV&&r.fundFV.basis,'BOOK');
+ assert.equal(r.fundFV.now,40);
+ assert.equal(r.fundFV.target,null,'자산 축은 상방 목표를 내지 않는다 (ROE 전망이 되어버린다)');
+ assert.equal(r.nowIndep,true,'이것이 G4를 판정 가능하게 만드는 지점이다');
+ assert.ok(r.fvNow!=null&&r.fvNow<100,'장부가 40이 섞였으므로 현재가 아래여야 한다');
+ assert.match(r.basis,/BOOK/);
+});
+test('a surviving earnings axis is never replaced by book value',()=>{
+ const run=FV();
+ /* 선행EPS 8 · 현재가 100 → PER 경로 now가 천장 안에 든다. 자산 축이 끼어들면 안 된다. */
+ const r=run("fairValue({},0,{epsFwd:8,epsTtm:8,revPS:null,growth:10,bps:40},60,null,null,2,0,100,2)");
+ assert.equal(r.fundFV.basis,'PER');
+ const noBps=run("fairValue({},0,{epsFwd:8,epsTtm:8,revPS:null,growth:10,bps:null},60,null,null,2,0,100,2)");
+ assert.equal(noBps.fvNow,r.fvNow,'주당순자산 유무가 살아있는 종목의 값을 바꾸면 안 된다');
+});
+test('the sales axis still takes precedence over book value',()=>{
+ const run=FV();
+ const r=run("fairValue({},0,{epsFwd:65,epsTtm:65,revPS:10,growth:20,revenueGrowth:20,bps:40},60,null,null,0,2,100,2)");
+ assert.equal(r.fundFV.basis,'PSR','PSR이 가능하면 자산 축으로 내려가지 않는다');
+});
+test('book value is measured by the same outlier ceiling as the other axes',()=>{
+ const run=FV();
+ /* 주당순자산 400 = 현재가의 4배 > FUND_CEIL_N(3) → 쓰지 않는다. 0으로 메우지도 않는다. */
+ const r=run("fairValue({},0,{epsFwd:65,epsTtm:65,revPS:null,growth:10,bps:400},60,null,null,1,0,100,2)");
+ assert.equal(r.fundFV,null);
+ assert.equal(r.nowIndep,false,'배제됐으면 독립 근거가 생기지 않는다');
+ assert.equal(r.fundOutlier,true);
+});
+test('book value is refused where PBR has no discriminating power',()=>{
+ const run=FV();
+ /* vmPbr=0 (무형·자산경량) — consFV의 book 축과 같은 조건이다 */
+ const r=run("fairValue({},0,{epsFwd:65,epsTtm:65,revPS:null,growth:10,bps:40},60,null,null,1,0,100,0)");
+ assert.equal(r.fundFV,null);
+ assert.equal(r.nowIndep,false);
+ /* vmPbr=1 (참고)이면 쓰되 가중을 0.35로 줄인다 — 다른 축과 같은 승수 체계 */
+ const ref=run("fairValue({},0,{epsFwd:65,epsTtm:65,revPS:null,growth:10,bps:40},60,null,null,1,0,100,1)");
+ assert.equal(ref.fundFV.basis,'BOOK');
+ const full=run("fairValue({},0,{epsFwd:65,epsTtm:65,revPS:null,growth:10,bps:40},60,null,null,1,0,100,2)");
+ assert.ok(full.fvNow<ref.fvNow,'가중이 낮으면 현재가 앵커 쪽으로 끌려 값이 더 높아야 한다');
+});
+test('missing or non-positive book value never becomes a valuation',()=>{
+ const run=FV();
+ for(const bad of ['null','0','-40',"''",'NaN'])
+  assert.equal(run("fairValue({},0,{epsFwd:65,epsTtm:65,revPS:null,growth:10,bps:"+bad+"},60,null,null,1,0,100,2).fundFV"),
+    null,'bps='+bad);
+});
+test('refactored outlier ceilings behave exactly as the two separate checks did',()=>{
+ const run=FV();
+ /* 애널 목표가 기준(now 1.6배 · target 2.0배)과 현재가 기준(3배 · 4배)이 둘 다 살아 있어야 한다 */
+ const byAna=run("fairValue({target:50},1,{epsFwd:12,epsTtm:12,revPS:null,growth:10,bps:null},60,null,null,2,0,100,2)");
+ assert.equal(byAna.fundOutlier,true,'목표가 50의 1.6배=80을 넘는 now는 배제');
+ const byPrice=run("fairValue({},0,{epsFwd:30,epsTtm:30,revPS:null,growth:10,bps:null},60,null,null,2,0,100,2)");
+ assert.equal(byPrice.fundOutlier,true,'현재가 100의 3배를 넘는 now는 배제');
+ const inside=run("fairValue({},0,{epsFwd:8,epsTtm:8,revPS:null,growth:10,bps:null},60,null,null,2,0,100,2)");
+ assert.equal(inside.fundOutlier,false);
+});
+
+/* 돌연변이 테스트가 샌 세 자리를 메운다. 하나는 테스트 공백이 아니라 **중복 코드**였다 —
+ * pb!==0 게이트를 지워도 대부분의 경우 mulOf(0)=0이 같은 결과를 만든다. 다만 PER의
+ * target만 살아남은 상태에서는 다르다: 자산 축이 fund2를 덮으면 그 target이 사라진다. */
+test('book value does not displace a surviving earnings target where PBR is meaningless',()=>{
+ const run=FV();
+ /* 후행 100 · 선행 20 · 성장 0 → now=(100+20)/2×PER 가 현재가 3배를 넘어 배제되고,
+    target=20×PER 는 4배 안에 들어 살아남는다. 이 상태에서 vmPbr=0 이면 자산 축은
+    **시도조차 하지 않아야** 한다 — 덮으면 살아있던 상방 근거가 사라진다. */
+ const kept=run("fairValue({},0,{epsFwd:20,epsTtm:100,revPS:null,growth:0,bps:40},60,null,null,2,0,100,0)");
+ assert.equal(kept.fundFV.basis,'PER','이익 축이 그대로 남아 있어야 한다');
+ assert.equal(kept.fundFV.now,null,'now는 천장에 걸려 배제된 상태다');
+ assert.ok(kept.fundFV.target>0,'target은 살아남은 상태다 — 이 검사의 전제');
+ const noBook=run("fairValue({},0,{epsFwd:20,epsTtm:100,revPS:null,growth:0,bps:null},60,null,null,2,0,100,0)");
+ assert.equal(kept.fvTarget,noBook.fvTarget,'자산 축이 끼어들어 상방 목표를 지우면 안 된다');
+ assert.ok(kept.fvTarget>0,'PER target 이 살아 있어야 이 검사가 뜻을 갖는다');
+});
+/* fundamentalFV 의 내부 가드를 **직접** 고정한다. fairValue 경로에서는 num()이 먼저
+ * 0·음수·빈값을 걸러내므로 내부 가드가 닿지 않고, 그래서 돌연변이가 보이지 않았다.
+ * 호출부가 하나 더 생기면 그때는 내부 가드가 유일한 방어다. */
+test('fundamentalFV itself refuses a non-positive book value',()=>{
+ const code=piece('function pl(','/*')+piece('function fairPER(','/* 이원 적정가');
+ const ctx=vm.createContext({});vm.runInContext(code,ctx);
+ const f=(bps,ok)=>vm.runInContext('fundamentalFV(null,null,null,null,60,null,'+bps+','+ok+')',ctx);
+ assert.equal(f(0,true),null);
+ assert.equal(f(-40,true),null);
+ assert.equal(f('NaN',true),null);
+ assert.equal(f('null',true),null);
+ /* 다른 realm의 객체라 deepEqual은 프로토타입에서 걸린다 — 필드로 본다 */
+ const ok40=f(40,true);
+ assert.equal(ok40.basis,'BOOK'); assert.equal(ok40.now,40); assert.equal(ok40.target,null);
+ assert.equal(f(40,false),null,'호출부가 열어주지 않으면 돌지 않는다');
+});
+/* 통화 불일치 가드는 compute 안의 배선이라 이 하네스가 실행하지 못한다 — 식을 고정한다.
+ * (소스 수준 가드임을 명시한다: 동작 검사가 아니다) */
+test('the asset axis input is withheld on currency mismatch (wiring pinned at source)',()=>{
+ const src=fs.readFileSync(require('node:path').join(__dirname,'../src/app.js'),'utf8');
+ assert.match(src,/fundInput\.bps = curMismatch \? null/,
+   '통화가 섞이면 PBR 비율을 믿을 수 없다 — consFV의 book 축과 같은 조건이어야 한다');
+});

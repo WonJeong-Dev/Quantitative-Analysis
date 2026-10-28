@@ -525,7 +525,7 @@ console.log('\n[11] 국내 주당순자산 — DART 1차 출처 배선 (v6.9 · 
   ok('하루에 몇 번씩 부르지 않는다 (재무제표는 분기마다 바뀐다)', /BPS_TTL/.test(body));
   ok('같은 종목을 동시에 두 번 부르지 않는다', /bpsPending/.test(body));
   const pin=require('../docs/RULEHASH.json');
-  ok('판정 입력이 늘었으므로 RULE_VER을 올렸다 (v6.2)', pin.ruleVer==='v6.2', pin.ruleVer);
+  ok('판정 입력이 늘었으므로 RULE_VER을 올렸다 (v6.3)', pin.ruleVer==='v6.3', pin.ruleVer);
   /* (v6.10) 후행 EPS는 **compute를 고치지 않고** 들어간다 — Feff가 캐시(F)의 복사본이라
    * `epsTtm`을 심으면 기존 문으로 그대로 흐른다. PBR 때 compute를 고쳐야 했던 것은
    * 캐시에 **비율**밖에 없었기 때문이고, 여기는 같은 양이 다른 출처로 올 뿐이다. */
@@ -533,10 +533,19 @@ console.log('\n[11] 국내 주당순자산 — DART 1차 출처 배선 (v6.9 · 
   ok('야후 값을 덮지 않는다 (미국은 야후 경로)', /f\.epsTtm==null\|\|f\.epsTtmSrc==='dart'/.test(body));
   ok('출처와 기준을 남긴다', /f\.epsTtmSrc='dart'/.test(body)&&/epsTtmBasis/.test(body));
   ok('TTM이 없으면 사유만 남기고 심지 않는다', /f\.epsTtmWhy=ni\.why/.test(body));
-  /* (v6.12) 수집하고 안 그리면 없는 항목이다(§22-㉕) — v6.10의 epsTtmBasis가 그 상태였다 */
-  ok('PBR 칸에 어느 자본 기준인지 그린다', /const bpsNote=/.test(T)&&/지배주주지분 기준/.test(T)&&/자본총계 기준/.test(T));
-  ok('PER 칸에 후행 EPS 기준을 그린다', /const epsNote=/.test(T)&&/F\('per','PER \(비우면 자동\)'\+epsNote/.test(T));
-  ok('PBR 칸이 실제로 그 문구를 받는다', /F\('pbr','PBR \(비우면 자동\)'\+bpsNote/.test(T));
+  /* (v6.13) **이상할 때만 말한다.** v6.12는 정상 상태에도 기준·비율·기준일을 적었다 —
+   * 정확하지만 판단에 쓰이지 않는 문자열이고, 그런 것이 쌓이면 봐야 할 것이 묻힌다.
+   * ★ 이 가드는 한 번 **주석에 걸려** 통과했다(/지배주주지분 기준/이 설명문과 일치). 그래서
+   *   문구가 아니라 **조건식**을 고정한다 — 산문에 우연히 걸릴 수 없는 모양으로. */
+  ok('PBR 칸 문구는 총계로 떨어진 경우에만 만든다',
+     /const bpsNote=\(fnd\.bpsSrc==='dart'&&fnd\.bpsBasis==='total'\)/.test(T));
+  ok('PER 칸 문구는 지배주주 기준이 아닐 때만 만든다',
+     /const epsNote=\(fnd\.epsTtmSrc==='dart'&&fnd\.epsTtmOwn===false\)/.test(T));
+  ok('두 칸이 실제로 그 문구를 받는다',
+     /F\('pbr','PBR \(비우면 자동\)'\+bpsNote/.test(T)&&/F\('per','PER \(비우면 자동\)'\+epsNote/.test(T));
+  /* 비지배 비율·기준일은 내부 처리로 남긴다 — 화면 문구에 다시 들어오면 이 가드가 깨진다 */
+  ok('정상 상태에는 비율·기준일을 적지 않는다',
+     !/비지배 '\+fnd\.nciPct/.test(T)&&!/bpsNote[\s\S]{0,200}fnd\.bpsAt/.test(T));
   ok('compute의 PER 경로는 손대지 않았다 (Feff.epsTtm 그대로)',
      /k\.perAuto=\(price>0&&Feff\.epsTtm!=null&&Feff\.epsTtm>0\)\?price\/Feff\.epsTtm:null/.test(T));
 }

@@ -1,7 +1,7 @@
 {
- "주석": "판정 폐포 해시 핀. 의도한 판정 변경이면 RULE_VER을 올리고 `node scripts/rulehash.cjs --list > docs/RULEHASH.json`로 다시 찍는다. 의도하지 않았는데 깨졌다면, 판정영역에 들어가면 안 될 코드가 들어간 것이다.",
- "hash": "2f464d043e5bf110",
- "ruleVer": "v6.2",
+ "주석": "판정 폐포 해시 핀. 의도한 판정 변경이면 RULE_VER을 올리고 `node scripts/rulehash.cjs --list > docs/RULEHASH.json`로 다시 찍는다(주석 줄은 다시 넣는다). 의도하지 않았는데 깨졌다면, 판정영역에 들어가면 안 될 코드가 들어간 것이다.",
+ "hash": "6f68ace58f9a3d93",
+ "ruleVer": "v6.3",
  "count": 69,
  "functions": [
   "ADX_P",
