@@ -102,7 +102,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 /* (v7.1) ★ 워커를 바꿀 때마다 올린다. v7.0에서 /dart를 더하고도 VER을 그대로 둬서,
  * /health가 'ver 7.0'을 돌려줘도 **그 7.0이 어느 7.0인지 알 수 없었다** — 배포됐는지
  * 확인할 방법이 없는 상태였다. 관측 장치가 두 상태를 구분하지 못하면 관측이 아니다(§22-㉒). */
-const VER = '7.7';
+const VER = '7.8';
 
 /* ============ (v6.9) CORS — `*`를 버리고 허용 Origin만 반사한다 ============
  * v6.8은 `Allow-Origin: *` + `Allow-Headers: *`였다. 인증이 없던 시절엔 어차피 공개라
@@ -1067,7 +1067,16 @@ async function route(request, env, u) {
              *     TTM = 직전 사업연도 전체 + 당기 YTD − 전기 동기 YTD
              * 같은 응답에 `frmtrm_amount`(전기 동기 YTD)가 함께 오므로 **추가 호출은 연간 하나**다.
              * 최신 보고서가 사업보고서(11011)면 그 자체가 1년치이므로 TTM = 그 값이다. */
-            const cash = v => { const n3 = Number(String(v == null ? '' : v).replace(/,/g, '')); return isFinite(n3) ? n3 : null; };
+            /* (v7.8) ★ 근본 원인이던 함수다. 종전 구현은 `Number(String('').replace(...))`이라
+             * **빈 값·없는 필드가 0이 됐다**(`Number('')===0`이고 `isFinite(0)`이 참이다).
+             * 그래서 `fy + ytd − 0` 으로 TTM이 부풀었다 — 실측 풍산 165,444,669,160 →
+             * 229,644,320,039(+38.8%). 결측을 값으로 취급한 것이고(§22-④·⑫), 숫자 모양을
+             * 먼저 확인한 뒤에만 변환한다. 진짜 0("0")은 그대로 0이다. */
+            const cash = v => {
+              const t = String(v == null ? '' : v).replace(/,/g, '').trim();
+              if (!/^-?\d+(\.\d+)?$/.test(t)) return null;
+              const n3 = Number(t); return isFinite(n3) ? n3 : null;
+            };
             const niRow = rows.find(r3 => r3.fs_div === fsd && r3.sj_div === 'IS' && /당기순이익/.test(r3.account_nm || ''));
             const ni = { ytd: null, ytdPrev: null, ytdDt: null, ytdPrevDt: null, fy: null, fyYear: null, ttm: null, why: null };
             if (!niRow) { ni.why = '당기순이익 행 없음'; }
@@ -1113,6 +1122,16 @@ async function route(request, env, u) {
             const EQ_OWN = 'ifrs-full_EquityAttributableToOwnersOfParent';
             const EQ_NCI = 'ifrs-full_NoncontrollingInterests';
             const NI_OWN = 'ifrs-full_ProfitLossAttributableToOwnersOfParent';
+            const NI_NCI = 'ifrs-full_ProfitLossAttributableToNoncontrollingInterests';
+            /* (v7.8) 교차검증 — **지배 + 비지배 = 총계.** 실측 5종목(풍산·SK하이닉스·현대차·
+             * LG에너지솔루션·삼성SDI) 전부 당기·전기 동기 모두 **정확히** 성립했다.
+             * 허용오차를 두지 않는다: DART는 정수를 내므로 어긋나면 행을 잘못 집은 것이다
+             * (자유 파라미터 0개). 비지배지분 행이 **없는** 회사는 지배 = 총계여야 한다. */
+            const idOK = (tot, own, nci) => {
+              if (tot == null || own == null) return false;
+              if (nci == null) return own === tot;
+              return own + nci === tot;
+            };
             const allOf = async (yy2, rc2) => {
               const aj = await jread(await dq('fnlttSinglAcntAll.json',
                 { corp_code: corp, bsns_year: String(yy2), reprt_code: rc2, fs_div: fsd }));
@@ -1122,31 +1141,64 @@ async function route(request, env, u) {
             const pickRow = (ls, id2, sjs) => ls.find(r5 =>
               r5.account_id === id2 && (!sjs || sjs.indexOf(r5.sj_div) >= 0)) || null;
             const owners = { equity: null, nci: null, niYtd: null, niYtdPrev: null, niFy: null, ttm: null,
-              rows: null, why: null };
+              rows: null, prevField: null, check: null, why: null, niWhy: null };
             try {
               const A = await allOf(yy, rc);
               owners.rows = A.n;
               if (!A.n) { owners.why = '전체계정 조회 결과가 없습니다 (' + (A.status || '?') + ')'; }
               else {
+                /* ── 자본 ── */
                 const eo = pickRow(A.rows, EQ_OWN, ['BS']), en = pickRow(A.rows, EQ_NCI, ['BS']);
-                owners.equity = eo ? cash(eo.thstrm_amount) : null;
-                owners.nci = en ? cash(en.thstrm_amount) : null;
-                /* 귀속 행이 아예 없는 회사도 있다(비지배지분이 없으면 행을 내지 않는다).
-                 * 그때는 자본총계 = 지배주주지분이므로 **총계를 그대로 귀속값으로 쓴다.**
-                 * 단 그 판단의 전제는 'BS 행을 전부 받았다'이므로 조건을 명시한다. */
+                const eqOwnRaw = eo ? cash(eo.thstrm_amount) : null;
+                const eqNci = en ? cash(en.thstrm_amount) : null;
+                const eqTot = (() => { const r6 = pickRow(A.rows, 'ifrs-full_Equity', ['BS']); return r6 ? cash(r6.thstrm_amount) : null; })();
                 const bsN = A.rows.filter(r5 => r5.sj_div === 'BS').length;
-                if (owners.equity == null && bsN > 0 && A.n < 200) { owners.equity = num2; owners.why = '지배지분 행 없음 — 비지배지분이 없는 것으로 보아 총계를 씁니다'; }
-                else if (owners.equity == null) owners.why = '지배지분 행을 찾지 못했습니다 (행 ' + A.n + ')';
+                owners.nci = eqNci;
+                if (eqOwnRaw != null) {
+                  /* 같은 응답 안의 세 수로 검산한다 — 주요계정의 총계와 섞지 않는다(단위·시점 차이) */
+                  if (idOK(eqTot != null ? eqTot : num2, eqOwnRaw, eqNci)) owners.equity = eqOwnRaw;
+                  else owners.why = '지배지분 + 비지배지분 ≠ 자본총계 — 행을 잘못 집었을 수 있어 쓰지 않습니다';
+                } else if (bsN > 0 && A.n < 200) {
+                  owners.equity = num2;
+                  owners.why = '지배지분 행 없음 — 비지배지분이 없는 것으로 보아 총계를 씁니다';
+                } else owners.why = '지배지분 행을 찾지 못했습니다 (행 ' + A.n + ')';
+
+                /* ── 후행 순이익 ──
+                 * ★ 전기 동기 누계는 **`frmtrm_q_amount`** 에 온다. IS/CIS 행에는
+                 *   `frmtrm_amount`가 **아예 없다**(실측 5종목 전부 undefined) — 종전 판은 그것을
+                 *   읽어 0으로 떨어졌고, 그래서 TTM이 부풀었다. 보고서에 따라 `frmtrm_amount`가
+                 *   올 수도 있으니 숫자일 때만 차선으로 받고, 어느 필드를 썼는지 남긴다. */
                 const no = pickRow(A.rows, NI_OWN, ['IS', 'CIS']);
-                if (no) {
+                const nn = pickRow(A.rows, NI_NCI, ['IS', 'CIS']);
+                const nt = pickRow(A.rows, 'ifrs-full_ProfitLoss', ['IS', 'CIS']);
+                if (!no) { owners.niWhy = '지배주주순이익 행 없음'; }
+                else {
                   owners.niYtd = cash(no.thstrm_amount);
-                  owners.niYtdPrev = cash(no.frmtrm_amount);
-                  if (rc === '11011') { owners.niFy = owners.niYtd; owners.ttm = owners.niYtd; }
-                  else if (owners.niYtd != null && owners.niYtdPrev != null) {
+                  const q1 = cash(no.frmtrm_q_amount), q2 = cash(no.frmtrm_amount);
+                  owners.niYtdPrev = (q1 != null) ? q1 : q2;
+                  owners.prevField = (q1 != null) ? 'frmtrm_q_amount' : ((q2 != null) ? 'frmtrm_amount' : null);
+                  const cur = idOK(nt ? cash(nt.thstrm_amount) : null, owners.niYtd, nn ? cash(nn.thstrm_amount) : null);
+                  const prv = (owners.niYtdPrev == null) ? null
+                    : idOK(nt ? (cash(nt.frmtrm_q_amount) != null ? cash(nt.frmtrm_q_amount) : cash(nt.frmtrm_amount)) : null,
+                           owners.niYtdPrev,
+                           nn ? (cash(nn.frmtrm_q_amount) != null ? cash(nn.frmtrm_q_amount) : cash(nn.frmtrm_amount)) : null);
+                  owners.check = { cur, prv };
+                  if (!cur) { owners.niWhy = '당기 지배 + 비지배 ≠ 당기순이익 — 쓰지 않습니다'; }
+                  else if (rc === '11011') { owners.niFy = owners.niYtd; owners.ttm = owners.niYtd; }
+                  else if (owners.niYtd == null) { owners.niWhy = '당기 누계 없음'; }
+                  else if (owners.niYtdPrev == null) { owners.niWhy = '전기 동기 누계 없음 — TTM을 낼 수 없습니다'; }
+                  else if (prv === false) { owners.niWhy = '전기 동기 지배 + 비지배 ≠ 당기순이익 — 쓰지 않습니다'; }
+                  else {
                     const B = await allOf(yy - 1, '11011');
                     const nf = B.n ? pickRow(B.rows, NI_OWN, ['IS', 'CIS']) : null;
+                    const nfN = B.n ? pickRow(B.rows, NI_NCI, ['IS', 'CIS']) : null;
+                    const nfT = B.n ? pickRow(B.rows, 'ifrs-full_ProfitLoss', ['IS', 'CIS']) : null;
                     owners.niFy = nf ? cash(nf.thstrm_amount) : null;
-                    if (owners.niFy != null) owners.ttm = owners.niFy + owners.niYtd - owners.niYtdPrev;
+                    const fyOK = idOK(nfT ? cash(nfT.thstrm_amount) : null, owners.niFy, nfN ? cash(nfN.thstrm_amount) : null);
+                    owners.check.fy = fyOK;
+                    if (owners.niFy == null) owners.niWhy = (yy - 1) + ' 사업보고서의 지배주주순이익을 찾지 못했습니다';
+                    else if (!fyOK) owners.niWhy = (yy - 1) + ' 연간 지배 + 비지배 ≠ 당기순이익 — 쓰지 않습니다';
+                    else owners.ttm = owners.niFy + owners.niYtd - owners.niYtdPrev;
                   }
                 }
               }

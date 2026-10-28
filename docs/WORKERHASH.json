@@ -1,7 +1,7 @@
 {
   "주석": "워커 소스가 바뀌면 VER을 올리고 `node scripts/workerhash.cjs --write`로 다시 찍는다. paths는 워커가 받는 경로 — 경로를 지우려면 한 판 동안 별칭을 남기거나 앱을 먼저 배포한 뒤 다시 찍는다",
-  "ver": "7.7",
-  "hash": "54747b4998cc4bee",
+  "ver": "7.8",
+  "hash": "122da5412504aa1f",
   "paths": [
     "/dart",
     "/dartfin",

@@ -4356,7 +4356,10 @@ async function ensureDartBps(id){
       if(niUsed!=null&&(f.epsTtm==null||f.epsTtmSrc==='dart')){
         f.epsTtm=niUsed/shares; f.epsTtmSrc='dart';
         f.epsTtmAt=ni.ytdDt||null;
-        f.epsTtmBasis=((niOwn!=null)?'지배주주순이익 · ':'당기순이익(총계) · ')
+        /* 총계로 떨어졌다면 **왜** 그랬는지 붙인다 — 워커가 교차검증(지배+비지배=총계)에
+         * 실패했거나 전기 동기 누계를 못 찾은 경우가 있고, 그 사실이 보이지 않으면
+         * '지배주주 기준이구나' 하고 읽게 된다(§22-㉕). */
+        f.epsTtmBasis=((niOwn!=null)?'지배주주순이익 · ':('당기순이익(총계) · '+(ow.niWhy?(ow.niWhy+' · '):'')))
           +(ni.fyYear!=null?(ni.fyYear+' 연간 + 당기 누계 − 전기 동기 누계'):'연간');
         f.epsTtmOwn=(niOwn!=null);
         f.epsTtmWhy=null;
@@ -4850,7 +4853,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.12.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.12.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

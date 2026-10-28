@@ -80,11 +80,16 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
    const main=[
      {fs_div:'CFS',sj_div:'BS',account_nm:'자본총계',thstrm_amount:'1,000',currency:'KRW',thstrm_dt:'2026.06.30 현재'},
      {fs_div:'CFS',sj_div:'IS',account_nm:'당기순이익(손실)',thstrm_amount:'200',thstrm_dt:'2026.01.01 ~ 2026.06.30',frmtrm_amount:'20'}];
+   /* (v7.8) 실측 모양으로 맞춘다. IS/CIS 행에는 `frmtrm_amount`가 **아예 없고**
+    * 전기 동기 누계는 `frmtrm_q_amount`에 온다(5종목 전부 확인). 그리고
+    * 지배 + 비지배 = 총계가 **정확히** 성립한다 — 워커가 그것으로 검산한다. */
    const all=[
      {account_id:'ifrs-full_Equity',sj_div:'BS',thstrm_amount:'1,000'},
      {account_id:'ifrs-full_EquityAttributableToOwnersOfParent',sj_div:'BS',thstrm_amount:'740'},
      {account_id:'ifrs-full_NoncontrollingInterests',sj_div:'BS',thstrm_amount:'260'},
-     {account_id:'ifrs-full_ProfitLossAttributableToOwnersOfParent',sj_div:'CIS',thstrm_amount:'145',frmtrm_amount:'15'}];
+     {account_id:'ifrs-full_ProfitLoss',sj_div:'CIS',thstrm_amount:'200',frmtrm_q_amount:'20'},
+     {account_id:'ifrs-full_ProfitLossAttributableToOwnersOfParent',sj_div:'CIS',thstrm_amount:'145',frmtrm_q_amount:'15'},
+     {account_id:'ifrs-full_ProfitLossAttributableToNoncontrollingInterests',sj_div:'CIS',thstrm_amount:'55',frmtrm_q_amount:'5'}];
    global.fetch=async(u2)=>{ const url=String((u2&&u2.url)||u2); seen.push(url);
      if(/list\.json/.test(url))return new Response(JSON.stringify({status:'000',list:[{corp_code:'C'}]}),{status:200});
      if(/reprt_code=11014/.test(url))return new Response(JSON.stringify({status:'013'}),{status:200});
@@ -97,6 +102,9 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
    ok('비지배지분도 함께 돌려준다',o.nci===260,o.nci);
    ok('자본총계 필드는 그대로 남는다 (구버전 앱이 깨지지 않는다)',b.equity===1000,b.equity);
    ok('지배주주 TTM도 같은 항등식으로 낸다',o.ttm===(o.niFy+o.niYtd-o.niYtdPrev)&&o.ttm===275,JSON.stringify(o));
+   ok('전기 동기 누계는 frmtrm_q_amount에서 읽는다',o.prevField==='frmtrm_q_amount'&&o.niYtdPrev===15,JSON.stringify(o));
+   ok('지배 + 비지배 = 총계를 당기·전기·연간 모두 검산한다',
+      o.check&&o.check.cur===true&&o.check.prv===true&&o.check.fy===true,JSON.stringify(o.check));
    ok('전체계정을 고른 보고서·재무구분으로만 부른다',
       seen.filter(u3=>/fnlttSinglAcntAll/.test(u3)).every(u3=>/fs_div=CFS/.test(u3)),
       seen.filter(u3=>/fnlttSinglAcntAll/.test(u3)).join(' | '));
@@ -125,6 +133,70 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
    global.fetch=prev;
    ok('조회 실패는 0이 아니라 null + 사유',b2.owners.equity===null&&/전체계정 조회 결과가 없습니다/.test(b2.owners.why||''),
       JSON.stringify(b2.owners)); }
+
+ /* ★ (v7.8) v7.7의 **실제 결함**을 못 박는다.
+  * `cash('')`가 0을 돌려줘서(`Number('')===0`) 없는 전기 동기 누계가 0이 되고
+  * `fy + ytd − 0`으로 TTM이 부풀었다 — 실측 풍산 165,444,669,160 → 229,644,320,039(+38.8%).
+  * 빈 값·없는 필드·숫자 아닌 값은 전부 **null**이어야 하고, 진짜 "0"은 0이어야 한다. */
+ { const prev=global.fetch;
+   const mk=(ownRow,totPrev)=>async(u2)=>{ const url=String((u2&&u2.url)||u2);
+     if(/list\.json/.test(url))return new Response(JSON.stringify({status:'000',list:[{corp_code:'C'}]}),{status:200});
+     if(/reprt_code=11014/.test(url))return new Response(JSON.stringify({status:'013'}),{status:200});
+     if(/fnlttSinglAcntAll/.test(url))return new Response(JSON.stringify({status:'000',list:[
+       {account_id:'ifrs-full_Equity',sj_div:'BS',thstrm_amount:'1,000'},
+       {account_id:'ifrs-full_EquityAttributableToOwnersOfParent',sj_div:'BS',thstrm_amount:'1,000'},
+       {account_id:'ifrs-full_ProfitLoss',sj_div:'CIS',thstrm_amount:'200',frmtrm_q_amount:(totPrev===undefined?'20':totPrev)},
+       ownRow,
+       {account_id:'ifrs-full_ProfitLossAttributableToNoncontrollingInterests',sj_div:'CIS',thstrm_amount:'0',frmtrm_q_amount:'0'}]}),{status:200});
+     return new Response(JSON.stringify({status:'000',list:[
+       {fs_div:'CFS',sj_div:'BS',account_nm:'자본총계',thstrm_amount:'1,000',currency:'KRW'},
+       {fs_div:'CFS',sj_div:'IS',account_nm:'당기순이익(손실)',thstrm_amount:'200',frmtrm_amount:'20'}]}),{status:200}); };
+   const ask=async (ownRow,totPrev)=>{ global.fetch=mk(ownRow,totPrev);
+     return (await (await call('/dartfin?code=000660',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'K'})).json()).owners; };
+
+   /* 전기 동기 누계 필드가 **없는** 행 — v7.7이 여기서 0을 썼다 */
+   const o1=await ask({account_id:'ifrs-full_ProfitLossAttributableToOwnersOfParent',sj_div:'CIS',thstrm_amount:'200'});
+   ok('없는 전기 동기 누계는 0이 아니라 null',o1.niYtdPrev===null,JSON.stringify(o1));
+   /* 비지배지분 행이 **없고** 지배지분 = 총계인 회사(실측 삼성바이오로직스·LG이노텍 모양)는
+    * 정상이므로 **받아들여야** 한다 — 검산을 무조건 실패로 두면 이쪽이 통째로 막힌다. */
+   ok('비지배 행이 없고 지배지분 = 총계면 받아들인다',o1.equity===1000&&!o1.why,JSON.stringify(o1));
+   ok('그러면 TTM을 내지 않고 사유를 적는다',o1.ttm===null&&/전기 동기 누계 없음/.test(o1.niWhy||''),JSON.stringify(o1));
+   /* 빈 문자열·대시도 같다 */
+   for(const bad of ['','-',' ','N/A']){
+     const o=await ask({account_id:'ifrs-full_ProfitLossAttributableToOwnersOfParent',sj_div:'CIS',thstrm_amount:'200',frmtrm_q_amount:bad});
+     ok('전기 동기 누계 '+JSON.stringify(bad)+' 는 null',o.niYtdPrev===null&&o.ttm===null,JSON.stringify(o));
+   }
+   /* 진짜 0은 0이다 — 결측과 0을 뒤집어 놓으면 반대 방향으로 틀린다 */
+   /* 전기 동기가 전부 0인 해 — 지배 0 + 비지배 0 = 총계 0 으로 항등식이 성립해야 한다 */
+   const o0=await ask({account_id:'ifrs-full_ProfitLossAttributableToOwnersOfParent',sj_div:'CIS',thstrm_amount:'200',frmtrm_q_amount:'0'},'0');
+   ok('진짜 0은 0으로 읽는다',o0.niYtdPrev===0&&o0.ttm===(o0.niFy+200-0),JSON.stringify(o0));
+   /* 음수·쉼표 음수를 null로 떨어뜨리면 적자 기업의 후행 EPS가 통째로 사라진다
+    * (실측 LG에너지솔루션 지배주주 −0.38조). 부호를 반드시 살린다. */
+   const oN=await ask({account_id:'ifrs-full_ProfitLossAttributableToOwnersOfParent',sj_div:'CIS',thstrm_amount:'200',frmtrm_q_amount:'-1,234'},'-1,234');
+   ok('음수 금액을 부호까지 읽는다',oN.niYtdPrev===-1234&&oN.ttm===(oN.niFy+200+1234),JSON.stringify(oN));
+   /* frmtrm_q_amount 가 없고 frmtrm_amount 만 있으면 차선으로 받는다 */
+   const oF=await ask({account_id:'ifrs-full_ProfitLossAttributableToOwnersOfParent',sj_div:'CIS',thstrm_amount:'200',frmtrm_amount:'20'});
+   ok('frmtrm_amount 만 있으면 그것을 쓰고 어느 필드인지 남긴다',
+      oF.niYtdPrev===20&&oF.prevField==='frmtrm_amount',JSON.stringify(oF));
+   /* 비지배 행을 **못 찾았는데** 지배지분 ≠ 총계인 경우. '비지배지분이 없는 회사'가 아니라
+    * '비지배 행을 놓친 것'이다 — 검산 없이 통과시키면 그 차액이 조용히 사라진다. */
+   { const prev2=global.fetch;
+     global.fetch=async(u2)=>{ const url=String((u2&&u2.url)||u2);
+       if(/list\.json/.test(url))return new Response(JSON.stringify({status:'000',list:[{corp_code:'C'}]}),{status:200});
+       if(/reprt_code=11014/.test(url))return new Response(JSON.stringify({status:'013'}),{status:200});
+       if(/fnlttSinglAcntAll/.test(url))return new Response(JSON.stringify({status:'000',list:[
+         {account_id:'ifrs-full_Equity',sj_div:'BS',thstrm_amount:'1,000'},
+         {account_id:'ifrs-full_EquityAttributableToOwnersOfParent',sj_div:'BS',thstrm_amount:'740'}]}),{status:200});
+       return new Response(JSON.stringify({status:'000',list:[
+         {fs_div:'CFS',sj_div:'BS',account_nm:'자본총계',thstrm_amount:'1,000',currency:'KRW'}]}),{status:200}); };
+     const ob=(await (await call('/dartfin?code=000660',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'K'})).json()).owners;
+     global.fetch=prev2;
+     ok('비지배 행이 없는데 지배지분 ≠ 총계면 쓰지 않는다',
+        ob.equity===null&&/≠ 자본총계/.test(ob.why||''),JSON.stringify(ob)); }
+   /* 항등식이 깨지면 쓰지 않는다 — 행을 잘못 집은 것이다 */
+   const oX=await ask({account_id:'ifrs-full_ProfitLossAttributableToOwnersOfParent',sj_div:'CIS',thstrm_amount:'199',frmtrm_q_amount:'20'});
+   ok('지배 + 비지배 ≠ 총계면 쓰지 않는다',oX.ttm===null&&/≠ 당기순이익/.test(oX.niWhy||''),JSON.stringify(oX));
+   global.fetch=prev; }
 
  const g=raw=>({raw});
  const basis=(shares,implied,fx=1,quoteCurrency='USD')=>module.revenueBasis({financialCurrency:'USD',totalRevenue:g(1000)}, {sharesOutstanding:g(shares),impliedSharesOutstanding:g(implied)}, {currency:'USD'}, {currency:quoteCurrency,regularMarketPrice:g(10),marketCap:g(10000)},fx);
