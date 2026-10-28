@@ -3041,7 +3041,7 @@ function stripHTML(k,cfv){
   /* 띠는 전부 장식이다 — 같은 값이 실행 칸과 툴팁에 글자로 있다. 스크린리더에서 뺀다. */
   let out='<div class="strip" aria-hidden="true"><div class="track"></div>';
   /* (v6.4) '가치 구간'(지정가 ~ 무성장 가치) 띠를 버렸다. 지정가가 더 이상 무성장 가치 **아래**가
-   * 아니므로(가치 축이 현재 적정가로 바뀌어 실측 53/60이 무성장 가치보다 위) 그 구간은 어떤 뜻도
+   * 아니므로(가치 축이 현재 적정가로 바뀌어 배포 실측 42/60이 무성장 가치보다 위) 그 구간은 어떤 뜻도
    * 갖지 않는다. 뜻이 사라진 그림을 폭만 바꿔 남기면 독자가 없는 관계를 읽는다 — 눈금 둘만 남긴다. */
   if(cfv&&cfv.fv!=null)
     out+='<div class="tick cfv" style="left:'+P(cfv.fv).toFixed(2)+'%" title="무성장 가치 '+money(cfv.fv)+' — 성장 0을 넣은 하방 앵커입니다(지정가 기준이 아님)"></div>';
@@ -4694,7 +4694,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.4.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.4.2 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
