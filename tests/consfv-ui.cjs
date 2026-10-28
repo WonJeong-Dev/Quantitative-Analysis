@@ -442,6 +442,26 @@ console.log('\n[10c] 범례·장부 — 바뀐 정의가 화면과 데이터에 
   ok('GL_COLS('+names.length+')과 glRow('+n+')의 길이가 같다', names.length===n);
   ok('glRow가 가치 축을 기록한다', /cv&&cv\.anchor/.test(body), body.slice(-80)); }
 
+console.log('\n[10d] 목록 헤더 — 열 이름과 열 내용이 한 정의에서 나오는가');
+/* ★ v5.8이 행의 열을 「판정 · 실행 · 신뢰도 · 52주 범위」로 바꾸고 index.html의 헤더도 고쳤는데,
+ * app.js의 LISTHEAD(v4.33)가 남아 **매 탭 전환마다 옛 이름으로 덮어썼다.** 그래서 배포 화면의
+ * 제안 지정가 칸 위에는 「적정목표가 · 여력」이, 신뢰도 칸 위에는 「규칙 후보등급」이 적혀 있었다
+ * (2026-10-28 실측). 이름의 출처가 둘이면 반드시 갈라진다(§22-⑲) — 하나로 줄이고 여기서 고정한다. */
+{ /* 이름 맵이 되살아나거나, syncBoardCols가 다시 헤더를 그리면 여기서 깨진다.
+   * (주석에 적힌 'LISTHEAD'라는 낱말이 아니라 **정의와 쓰기**를 본다.) */
+  ok('헤더 이름 맵이 되살아나지 않았다', !/LISTHEAD\s*=/.test(T), (T.match(/LISTHEAD\s*=[^\n]{0,40}/)||[''])[0]);
+  const sb=T.slice(T.indexOf('function syncBoardCols(){'));
+  ok('syncBoardCols는 헤더를 다시 그리지 않는다', sb.slice(0,sb.indexOf('\n}')).indexOf('innerHTML')<0);
+  const i0=T.indexOf('class="listhead"'), i1=T.indexOf('>',i0)+1, i2=T.indexOf('<div id="list"',i1);
+  const hd=T.slice(i1,i2), cells=(hd.match(/<div/g)||[]).length;
+  const tpl=((T.match(/\.listhead,\.row \.main\{display:grid;grid-template-columns:([^;]+);/)||[])[1]||'');
+  const colN=tpl.replace(/\([^)]*\)/g,'').trim().split(/\s+/).filter(Boolean).length;
+  ok('헤더 칸('+cells+')과 격자 열('+colN+')의 수가 같다', cells===colN&&cells===8, tpl);
+  ok('지정가 칸의 이름은 실행이다', /실행 — 지정가 · 닿을 확률/.test(hd), hd);
+  ok('52주 띠 칸의 이름은 가치 눈금이다', /52주 범위 · 가치 눈금/.test(hd), hd);
+  ok('옛 이름이 배포본 헤더에 남아 있지 않다',
+     hd.indexOf('적정목표가')<0&&hd.indexOf('규칙 후보등급')<0&&hd.indexOf('가격매력')<0, hd); }
+
 console.log('\n────────────────────────────');
 console.log(pass+' passed · '+fail+' failed');
 process.exit(fail?1:0);

@@ -199,19 +199,20 @@ const SORT_NA_ETF=['grade','quality','upside'];
  * 주식 탭으로 돌아가면 원래 고른 기준이 그대로 살아난다. */
 const effSort=()=>{ const s=S.ui&&S.ui.sort||'grade';
   return (tabType()==='etf'&&SORT_NA_ETF.includes(s))?'score':s; };
-/* (v4.33) 탭마다 존재하는 컬럼이 다르다. .listhead는 v4.32까지 정적 HTML이어서
- * ETF 탭에서도 '종합 · 가격매력 / 적정목표가 · 여력 / 규칙 후보등급' 세 헤더가 그대로 남았고,
- * 정작 값은 각각 매력만 · 빈칸 · '가격 위치' 배지였다. 헤더와 그리드는 반드시 함께 바꾼다 —
- * 한쪽만 바꾸면 칸이 밀린다. */
-const LISTHEAD={
-  stock:[['#'],['종목'],['현재가'],['종합 · 가격매력'],['적정목표가 · 여력'],['규칙 후보등급','c'],['RSI','c'],['포지션 (52주 범위)'],['']],
-  etf  :[['#'],['종목'],['현재가'],['가격매력'],['RSI','c'],['포지션 (52주 범위)'],['']]
-};
+/* (v6.4) ★ LISTHEAD를 지웠다 — **헤더 이름의 출처는 index.html 하나뿐이다.**
+ *
+ * v4.33이 탭별 컬럼 차이(ETF는 적정목표가·매수등급이 구조적으로 없었다) 때문에 헤더를 JS로
+ * 옮겼다. v5.8이 행의 열을 「판정 · 실행 · 신뢰도 · 52주 범위」로 통일하고 ETF 전용 격자도
+ * 없애면서(styles.css 주석에 그 사실이 적혀 있다) 그 이유는 사라졌는데, **이 맵이 남아
+ * 매 탭 전환마다 옛 이름으로 헤더를 덮어썼다.** 그래서 배포 화면에는 v5.8부터 2026-10-28까지
+ * 열 이름이 한 칸씩 밀린 채 떠 있었다 — 제안 지정가 칸 위에 「적정목표가 · 여력」,
+ * 신뢰도 칸 위에 「규칙 후보등급」, 52주 띠 위에 「RSI」. 게다가 stock 목록은 9칸인데 격자는
+ * 8열이라 마지막 칸이 격자 밖으로 흘렀다.
+ * 정적 HTML과 JS가 같은 이름을 두 벌 갖고 있었던 것이 원인이다(§22-⑲). 한 벌만 남긴다 —
+ * 검사가 배포본의 헤더 칸 수와 격자 열 수를 직접 세어 맞춘다. */
 function syncBoardCols(){
-  const etf=(tabType()==='etf'), bv=$('#boardView'), hd=$('.listhead'); if(!bv||!hd)return;
-  bv.classList.toggle('etfcols',etf);
-  hd.innerHTML=LISTHEAD[etf?'etf':'stock']
-    .map(c=>'<div'+(c[1]==='c'?' style="text-align:center"':'')+'>'+(c[0]||'')+'</div>').join('');
+  const etf=(tabType()==='etf'), bv=$('#boardView'); if(!bv)return;
+  bv.classList.toggle('etfcols',etf);   // 격자 값은 주식과 같다(호환용) — styles.css 참조
 }
 function syncSortSel(){
   const etf=(tabType()==='etf'), sel=$('#sortSel'); if(!sel)return;
@@ -4499,7 +4500,7 @@ function selectTab(t){
   S.view=led?'ledger':'board';
   if(!led)S.tab=t;
   syncSortSel();                 // (v4.27) 탭마다 고를 수 있는 기준이 다르다
-  syncBoardCols();               // (v4.33) 탭마다 존재하는 컬럼이 다르다
+  syncBoardCols();               // (v6.4) 탭별 격자 클래스만 — 헤더 이름은 index.html 하나뿐이다
   $$('nav.tabs .tab').forEach(x=>x.classList.toggle('on',
     x.dataset.tab===(led?'ledger':S.tab)));
   const bv=$('#boardView'), lv=$('#ledgerView');
@@ -4520,7 +4521,7 @@ document.addEventListener('keydown',e=>{
 });
 $('#sortSel').addEventListener('change',e=>{S.ui.sort=e.target.value;render();});
 syncSortSel();   /* (v4.27) 초기 1회 — 탭별 가능 기준이 다르다 */
-syncBoardCols(); /* (v4.33) 초기 1회 — 헤더가 첫 화면부터 탭과 맞아야 한다 */
+syncBoardCols(); /* 초기 1회 — 격자 클래스를 첫 화면부터 탭과 맞춘다 */
 $('#searchIn').addEventListener('input',e=>{S.ui.search=e.target.value;renderSoon();});
 $('#btnRefresh').addEventListener('click',()=>{refreshAll(true);toast('시세와 재무 데이터를 새로 조회합니다');});
 
@@ -4693,7 +4694,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.4.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.4.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
