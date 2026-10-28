@@ -25,12 +25,13 @@ const evidenceOf=(k,id)=>({dens:(k&&k.dens!=null)?k.dens:null,vn:(COLSTUB[id]?CO
 const cfvOf=id=>COLSTUB[id]?{limitProb:COLSTUB[id].prob,limit:COLSTUB[id].limit,n:COLSTUB[id].vn,skipped:[]}:null;
 const sizeOf=id=>COLSTUB[id]?{qty:COLSTUB[id].qty}:{qty:null};
 const riskCtx=()=>({ready:true});
+const QADomain=require('../src/domain.js');   // (v6.7) 승급 기준(PROMOTE.minDays)을 여기서 읽는다
 const M=new Function('S','esc','assetType','fundMissing','$','CONST_LOG','RULE_VER',
   'DT_Z','MA_DEV_MIN','MIN_MARGIN','SCORE_ANCHOR','RATIO_SC_MIN','RATIO_MIN_N','etSession',
-  'verdictOf','evidenceOf','cfvOf','sizeOf','riskCtx',
+  'verdictOf','evidenceOf','cfvOf','sizeOf','riskCtx','QADomain',
   src+'\n;return {diagCollect,diagRender};')
   (S,esc,assetType,fundMissing,$,[],(L.join('\n').match(/const RULE_VER='([^']+)'/)||[])[1],1.0,0.94,0.05,50,0.01,250,()=>null,   // (v5.5) 실제 RULE_VER
-   verdictOf,evidenceOf,cfvOf,sizeOf,riskCtx);
+   verdictOf,evidenceOf,cfvOf,sizeOf,riskCtx,QADomain);
 
 let pass=0,fail=0;
 const ok=(n,c)=>{ c?(pass++,console.log('  OK   '+n)):(fail++,console.log('  FAIL '+n)); };
@@ -274,6 +275,37 @@ console.log('\n[10] 칸별 정보량 — 상수가 된 칸과 끊긴 배선을 �
   for(let i=0;i<12;i++)COLSTUB['US_E'+i].qty=null;
   const d6=M.diagCollect(), q6=(d6.칸별정보량||[]).find(x=>x.칸==='수량')||{};
   ok('분모를 좁혀도 끊긴 배선은 잡는다 (빈칸 100%)', /빈 칸 100%/.test(q6.경고||''), q6.경고);
+}
+
+console.log('\n[11] 승급 전망 — 이 기계가 결론을 낼 수 있는가를 수치로 적는가 (v6.7)');
+/* ★ 그림자 장부는 2026-08-26부터 돌았는데 성숙 관측이 0건이다(v5.6.3). 화면은 그 사실만
+ * 보여줄 뿐 **왜인지** 말하지 않았다. 실측: 44문서·39거래일 · RULE_VER 7판 · 판당 평균
+ * 9거래일 · 승급 요구 250거래일 · 현행 규칙 누적 2일. 원인을 적지 않으면 영영 묻지 않게 된다. */
+{
+  const RV=(L.join('\n').match(/const RULE_VER='([^']+)'/)||[])[1];
+  S.glog={};
+  /* 규칙 7판 · 판당 평균 9거래일 · 현행 판 2일 — 실측 모양을 그대로 재현한다. */
+  let n=0;
+  const add=(rv,days)=>{ for(let i=0;i<days;i++){ n++; S.glog['d'+n]={rv:rv,d:'2026-'+String(8+Math.floor(n/28)).padStart(2,'0')+'-'+String((n%28)+1).padStart(2,'0'),rows:{}}; } };
+  ['r1','r2','r3','r4','r5','r6'].forEach(r=>add(r,9)); add(RV,2);
+  const p=M.diagCollect().승급전망;
+  ok('현행 규칙의 누적 거래일을 센다', p.현행누적거래일===2, p.현행누적거래일);
+  ok('승급 기준을 도메인에서 읽는다 (상수를 두 벌 두지 않는다)',
+     p.요구거래일===QADomain.PROMOTE.minDays, p.요구거래일);
+  ok('규칙 판수와 판당 평균 수명을 적는다', p.규칙판수===7&&p.판당평균거래일>0,
+     p.규칙판수+'판 '+p.판당평균거래일+'일');
+  ok('집계에서 빠지는 문서 비율을 적는다', p.사장비율>90, p.사장비율);
+  ok('평균 수명이 기준보다 짧으면 도달 불가라고 적는다', /도달 불가/.test(p.진단||''), p.진단);
+  ok('기준을 낮추는 것이 해법이 아님을 적는다', /기준을 낮추는 것은 해법이 아닙니다/.test(p.진단||''));
+  M.diagRender();
+  ok('화면에 그려지고 경고색이 켜진다', /승급 전망/.test(HTMLOUT)&&/도달 불가/.test(HTMLOUT)
+     &&/color:var\(--down\)[^>]*>승급 전망/.test(HTMLOUT), HTMLOUT.slice(HTMLOUT.indexOf('승급 전망')-120,HTMLOUT.indexOf('승급 전망')+60));
+  /* 충분히 쌓이면 조용해야 한다 — 늘 경고하는 줄은 읽지 않게 된다(§22-㉒). */
+  S.glog={}; n=0; add(RV,QADomain.PROMOTE.minDays+5);
+  const p2=M.diagCollect().승급전망;
+  ok('요구를 넘기면 충족이라고 적는다', /요구 충족/.test(p2.진단||''), p2.진단);
+  ok('그때는 경고색이 꺼진다', (M.diagRender(),!/color:var\(--down\)[^>]*>승급 전망/.test(HTMLOUT)));
+  S.glog={};
 }
 
 console.log('\n────────────────────────────');

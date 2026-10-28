@@ -4739,7 +4739,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.6.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.7.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -4752,6 +4752,36 @@ function diagCollect(){
     점검상태:(S.sumProg||(typeof Q!=='undefined'&&(Q.active||Q.items.length)))?'조회 진행 중 — 기존 캐시와 새 응답이 섞인 잠정 결과':'조회 대기열 완료 — 원천 값의 정확성 검증과는 별개',
     수집시각:rows.map(r=>({종목:r.nm,시세:r.k.priceTs||null,재무:r.ch.fund&&r.ch.fund.ts||null,
       애널리스트:r.ch.ana&&r.ch.ana.ts||null,시세단위:'Unix seconds',재무단위:'Unix milliseconds'})),
+    /* (v6.7) ★ 승급 도달 전망 — **이 기계가 결론을 낼 수 있는가**를 수치로 적는다.
+     * 그림자 장부는 2026-08-26부터 돌았는데 성숙 관측이 0건이다(v5.6.3). 화면은 그 사실만
+     * 보여줄 뿐 **왜인지**를 말하지 않았다. 실측 2026-10-28: 장부 44문서·39거래일인데
+     * RULE_VER이 7판 바뀌어 한 판의 평균 수명이 **9거래일**이고, 승급은 **250거래일**을
+     * 요구한다(PROMOTE.minDays). 집계는 `rv===RULE_VER`로 거르므로 현행 규칙의 누적은
+     * **2일**이고, 규칙이 바뀔 때마다 0으로 돌아간다.
+     * ★ 기준을 낮추는 것은 해법이 아니다 — 평균 수명 9거래일은 어떤 합리적 기준(20·60일)
+     *   보다도 짧다. 바꿔야 할 것은 기준이 아니라 **무엇을 그 기준에 거는가**다.
+     * ★ 이 값은 판정에 쓰이지 않는다. 다만 적지 않으면 '0건'의 원인을 영영 묻지 않게 된다. */
+    승급전망:(function(){
+      const docs=Object.values(S.glog||{}).filter(d=>d&&d.d);
+      const byRv={};
+      for(const d of docs){ const r=d.rv||'?'; (byRv[r]=byRv[r]||new Set()).add(d.d); }
+      const cur=(byRv[RULE_VER]||new Set()).size;
+      const vers=Object.keys(byRv), lives=vers.map(v=>byRv[v].size);
+      const avg=lives.length?(lives.reduce((a,b)=>a+b,0)/lives.length):0;
+      const need=(typeof QADomain!=='undefined'&&QADomain.PROMOTE)?QADomain.PROMOTE.minDays:null;
+      const all=new Set(docs.map(d=>d.d)).size;
+      const 불가=(need!=null&&vers.length>0&&avg>0&&avg<need);
+      return {현행규칙:RULE_VER, 현행누적거래일:cur, 요구거래일:need,
+        규칙판수:vers.length, 판당평균거래일:+avg.toFixed(1), 전구간거래일:all,
+        /* 집계가 `rv===RULE_VER`로 거르므로, 현행 규칙이 아닌 문서는 전부 집계에서 빠진다. */
+        사장비율:(docs.length?Math.round((docs.length-docs.filter(d=>d.rv===RULE_VER).length)/docs.length*100):0),
+        진단:(need==null)?'승급 기준을 읽지 못했습니다'
+          :(cur>=need?('요구 충족 — '+cur+'/'+need+'거래일')
+            :(불가?('현행 속도로는 도달 불가 — 규칙 한 판이 평균 '+avg.toFixed(1)+'거래일 유지되는데 승급은 '
+                   +need+'거래일을 요구합니다. 기준을 낮추는 것은 해법이 아닙니다(평균 수명이 그보다도 짧습니다). '
+                   +'규칙을 동결하거나, 판정 규칙을 입력으로 쓰지 않는 arm 세트를 따로 사전등록해야 합니다.')
+                   :('누적 중 — '+cur+'/'+need+'거래일')))};
+    })(),
     /* (v6.5) ★ 칸별 정보량 — **각 칸이 실제로 정보를 갖고 있는가**를 실데이터 전수로 잰다.
      * 2026-10-28까지 세 결함이 화면에 오래 떠 있었다: 목록 헤더가 한 칸 밀린 채 3주 ·
      * 제안 지정가가 60종목 중 47개에서 무용(도달확률 중위 1.5%) · 미국 주식 21종목의 수량
@@ -5060,6 +5090,13 @@ function diagRender(){
     +'있습니다. <b>/summary?sym=NVDA</b>를 직접 열어 해당 키를 확인하세요. '
     +'<b>CapEx=0은 미수신</b>입니다. 기업의 실제 투자가 0이라는 뜻은 아닙니다</span>',
     ['실적','애널액션','가이던스','개정','현금흐름'].some(k2=>d.이벤트채널[k2]===0));
+  /* (v6.7) 승급 도달 전망 — '성숙 관측 0건'의 **원인**을 같은 자리에서 읽게 한다. */
+  g+=row('승급 전망',(function(){const p2=d.승급전망||{};
+      return '현행 '+esc2(p2.현행규칙)+' 누적 <b>'+p2.현행누적거래일+'</b>/'+(p2.요구거래일==null?'—':p2.요구거래일)
+        +'거래일 · 규칙 '+p2.규칙판수+'판(판당 평균 <b>'+p2.판당평균거래일+'</b>거래일) · 전 구간 '+p2.전구간거래일
+        +'거래일 · 집계에서 빠진 문서 <b>'+p2.사장비율+'%</b>'
+        +'<br><span style="color:var(--muted)">'+esc2(p2.진단)+'</span>';
+    })(),/도달 불가/.test((d.승급전망||{}).진단||''));
   /* (v6.5) 상수가 된 칸과 끊긴 배선을 한 줄에서 본다 — 배포 직후 가장 먼저 읽을 줄이다. */
   g+=row('칸별 정보량',(function(){const A=d.칸별정보량||[];
       if(!A.length)return '<span style="color:var(--muted)">—</span>';
