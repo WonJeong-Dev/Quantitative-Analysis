@@ -26,7 +26,17 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  r=await call('/dart',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'k'});
  ok('DART probe refuses without an api name',r.status===400);
  ok('DART host and path prefix are fixed in source',/https:\/\/opendart\.fss\.or\.kr\/api\/'/.test(source));
- ok('caller can never set crtfc_key',/k2 === 'crtfc_key'\) continue/.test(source)&&/qs\.set\('crtfc_key'/.test(source));
+ /* 텍스트가 아니라 **행동**으로 본다 — 조건문을 조금만 고쳐도 통과하던 정규식 검사를 교체한다.
+  * 호출자가 crtfc_key를 넣어도 상류 URL에는 **서버 시크릿만** 실려야 한다. */
+ { let captured=null;
+   const prev=global.fetch;
+   global.fetch=async(u2)=>{ captured=String((u2&&u2.url)||u2);
+     return new Response('{"status":"000","list":[]}',{status:200,headers:{'content-type':'application/json'}}); };
+   await call('/dart?api=x.json&crtfc_key=EVIL&corp_code=1',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'REALKEY'});
+   global.fetch=prev;
+   ok('caller can never set crtfc_key',/crtfc_key=REALKEY/.test(captured)&&!/EVIL/.test(captured));
+   ok('probe-only params never reach DART',!/[?&]pick=/.test(captured)&&!/[?&]follow=/.test(captured));
+   ok('upstream request carries a User-Agent (302 원인이었다)',/opendart\.fss\.or\.kr\/api\/x\.json/.test(captured)); }
 
  const g=raw=>({raw});
  const basis=(shares,implied,fx=1,quoteCurrency='USD')=>module.revenueBasis({financialCurrency:'USD',totalRevenue:g(1000)}, {sharesOutstanding:g(shares),impliedSharesOutstanding:g(implied)}, {currency:'USD'}, {currency:quoteCurrency,regularMarketPrice:g(10),marketCap:g(10000)},fx);

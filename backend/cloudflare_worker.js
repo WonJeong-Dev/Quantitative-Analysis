@@ -102,7 +102,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 /* (v7.1) ★ 워커를 바꿀 때마다 올린다. v7.0에서 /dart를 더하고도 VER을 그대로 둬서,
  * /health가 'ver 7.0'을 돌려줘도 **그 7.0이 어느 7.0인지 알 수 없었다** — 배포됐는지
  * 확인할 방법이 없는 상태였다. 관측 장치가 두 상태를 구분하지 못하면 관측이 아니다(§22-㉒). */
-const VER = '7.3';
+const VER = '7.4';
 
 /* ============ (v6.9) CORS — `*`를 버리고 허용 Origin만 반사한다 ============
  * v6.8은 `Allow-Origin: *` + `Allow-Headers: *`였다. 인증이 없던 시절엔 어차피 공개라
@@ -965,10 +965,12 @@ async function route(request, env, u) {
         if (!key) return json({ error: 'DART_API_KEY secret이 설정되지 않았습니다',
           받는법: 'opendart.fss.or.kr 에서 인증키를 발급한 뒤 워커 시크릿 DART_API_KEY로 등록하세요' }, 500);
         const api = String(u.searchParams.get('api') || '').replace(/[^A-Za-z0-9._-]/g, '');
+        const pick = String(u.searchParams.get('pick') || '').split(',')
+          .map(x => x.replace(/[^A-Za-z0-9_]/g, '')).filter(Boolean).slice(0, 8);
         if (!api) return json({ error: "api 파라미터가 필요합니다 (예: api=fnlttSinglAcnt.json)" }, 400);
         const qs = new URLSearchParams();
         for (const [k2, v2] of u.searchParams) {
-          if (k2 === 'api' || k2 === 'crtfc_key') continue;       // 키는 호출자가 못 정한다
+          if (k2 === 'api' || k2 === 'crtfc_key' || k2 === 'pick' || k2 === 'follow') continue;  // 키는 호출자가 못 정한다
           if (String(v2).length > 200) return json({ error: 'parameter too long: ' + k2 }, 400);
           qs.set(k2, v2);
         }
@@ -1001,6 +1003,13 @@ async function route(request, env, u) {
           필드목록: (list && list.length) ? Object.keys(list[0]) : null,
           첫행: (list && list.length) ? list[0] : null,
           둘째행: (list && list.length > 1) ? list[1] : null,
+          /* (v7.4) pick=a,b,c 를 주면 **그 필드만** 전 행에 대해 돌려준다.
+           * 주요계정은 30행인데 첫 두 행만 보여서는 '어떤 계정이 있는가'를 알 수 없다 —
+           * 자본총계·당기순이익이 어느 이름으로 오는지, 지배주주지분이 따로 있는지가
+           * 파서의 전제다. 그렇다고 전 행을 통째로 흘리지 않는다: 필드 8개 · 행 200개 상한. */
+          행목록: (list && pick.length)
+            ? list.slice(0, 200).map(r2 => { const o = {}; for (const k4 of pick) if (r2[k4] != null) o[k4] = r2[k4]; return o; })
+            : undefined,
           본문앞부분: list ? undefined : txt.slice(0, 300) });
       }
       if (u.pathname === '/krxshrs') {
