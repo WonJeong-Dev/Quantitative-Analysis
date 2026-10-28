@@ -122,32 +122,62 @@ console.log('\n[5b] 정상화 EPS — 단독 케이스와 app.js 정의와의 �
   ok('app.js의 0.92는 손대지 않았다(판정 불변)', /eNow=epsFwd\*0\.92/.test(T));
 }
 
-console.log('\n[6] buyPlan — 가치 축과 확률 축의 교차');
-const bp=o=>D.buyPlan(Object.assign({},base,{annVol:V,h:H},o));
-/* 이익력 100/15×12=80 · 장부 100/1.25=80 → 2종 중앙값 80. 중앙도달가 87.67 > 80 → 가치가 제약 */
-{ const r=bp({perTtm:15,perFwd:15,pbr:1.25,fcfPS:7});
-  ok('중앙도달가 > 보수적정가 → 가치가 제약', r.bind==='value', r.bind+' fv='+r.fv+' pf='+r.probFloor);
-  ok('제안 지정가 = 무성장 가치', near(r.limit,80,1e-9), r.limit);
-  ok('상태 far (개연성 하락으로도 가치 미달)', r.state==='far', r.state);
+console.log('\n[6] buyPlan — 가치 축(현재 적정가)과 확률 축의 교차');
+/* (v6.4) 가치 축은 **현재 적정가(valueAnchor)**다 — 무성장 가치가 아니다. 무성장 가치는
+ * 판독(state) · 그림자 장부(cfvState) · 가격 띠 눈금에만 남는다.
+ * 표본: 무성장 가치 80(이익력 100/15×12=80 · 장부 100/1.25=80의 중앙값) ·
+ *       중앙도달가 87.665(변동성 0.40) / 67.372(변동성 1.2). */
+const bp=o=>D.buyPlan(Object.assign({},base,{annVol:V,h:H,valueAnchor:95},o));
+const PF40=87.66504688168718, PF120=67.37199506839102;
+{ const r=bp({perTtm:15,perFwd:15,pbr:1.25,fcfPS:7,valueAnchor:85});
+  ok('가치 축이 더 낮으면 가치가 제약', r.bind==='value', r.bind+' anchor='+r.anchor+' pf='+r.probFloor);
+  ok('제안 지정가 = 현재 적정가', near(r.limit,85,1e-9), r.limit);
+  /* ★ 이것이 v6.4의 전부다 — 지정가가 무성장 가치 **위**에 있어도 된다. v6.3까지는 구조적으로
+   * 불가능했고(limit=min(fv,·)), 그래서 지정가가 중위 −48%의 하방 앵커에 묶여 있었다. */
+  ok('무성장 가치는 지정가의 입력이 아니다', near(r.fv,80,1e-9)&&r.limit>r.fv, 'fv='+r.fv+' limit='+r.limit);
+  ok('판독은 여전히 무성장 가치 축 (far)', r.state==='far', r.state);
   ok('제안가의 도달확률을 함께 낸다', r.limitProb>0&&r.limitProb<0.5, r.limitProb);
 }
-{ const r=bp({perTtm:15,perFwd:15,pbr:1.25,fcfPS:7,annVol:1.2});  // 변동성 큼 → 도달가 67.4 < 80
-  ok('변동성 크면 확률 축이 제약', r.bind==='prob', r.bind+' pf='+r.probFloor);
-  ok('상태 wait (기다리면 가치 이하 도달)', r.state==='wait', r.state);
+{ const r=bp({perTtm:15,perFwd:15,pbr:1.25,fcfPS:7});           // 가치 축 95 > 중앙도달가 87.67
+  ok('도달가가 더 낮으면 확률이 제약', r.bind==='prob', r.bind+' pf='+r.probFloor);
+  ok('제안 지정가 = 중앙도달가', near(r.limit,PF40,1e-9), r.limit);
   ok('제안가 도달확률 ≈ 50%', near(r.limitProb,0.5,1e-6), r.limitProb);
 }
-{ const r=bp({price:70,perTtm:7,perFwd:7,pbr:0.875,fcfPS:4.9}); // 현재가가 이미 싸다
-  ok('현재가 ≤ 보수적정가면 상태 at', r.state==='at', r.state+' fv='+r.fv);
+{ const r=bp({perTtm:15,perFwd:15,pbr:1.25,fcfPS:7,annVol:1.2}); // 도달가 67.37
+  ok('변동성이 커지면 지정가가 내려간다', near(r.limit,PF120,1e-9)&&r.bind==='prob', r.limit);
+  ok('판독 wait (기다리면 가치 이하 도달)', r.state==='wait', r.state);
+}
+{ const r=bp({price:70,perTtm:7,perFwd:7,pbr:0.875,fcfPS:4.9});  // 현재가가 이미 싸다
+  ok('현재가 ≤ 무성장 가치면 판독 at', r.state==='at', r.state+' fv='+r.fv);
 }
 { const r=bp({perTtm:15,perFwd:15,pbr:1.25,fcfPS:7,annVol:null});
   ok('변동성 없으면 지정가를 만들지 않는다', r.limit===null&&r.probFloor===null);
   ok('무성장 가치는 그래도 나온다', near(r.fv,80,1e-9), r.fv);
+  /* 판독의 산출 조건도 v5.7 그대로다 — 확률 축(중앙도달가)이 정의에 들어가므로 변동성이
+   * 없으면 판독도 없다. 여기서 'at'을 내보내기 시작하면 장부의 H arm 표본이 조용히 달라진다. */
+  ok('판독도 내지 않는다 (확률 축이 정의에 들어간다)', r.state===null, r.state);
   ok('이유를 문장으로 남긴다', /변동성 미확보/.test(r.why||''), r.why);
 }
-{ const r=D.buyPlan({price:100,annVol:V,h:H,quality:65,ceil:3,fairPerNow:12,fairPsrNow:1.5,vm:{}});
-  ok('방법이 없으면 why에 그 사실을 적는다', /무성장 가치 산출 불가/.test(r.why||''), r.why);
-  ok('지정가도 null', r.limit===null);
+/* ★ v6.4의 실질 이득 — 무성장 가치가 없어도 지정가는 난다. v6.3까지는 여기서 곧바로 null을
+ * 돌려, 실측 60종목 중 13개(SK하이닉스·삼성전자·TSLA 등)가 지정가 없이 남아 있었다. */
+{ const r=D.buyPlan({price:100,annVol:V,h:H,quality:65,ceil:3,fairPerNow:12,fairPsrNow:1.5,vm:{},valueAnchor:95});
+  ok('무성장 가치가 없어도 지정가는 난다', near(r.limit,PF40,1e-9), r.limit);
+  ok('무성장 가치 없음은 사유로 남는다', /무성장 가치 산출 불가/.test(r.why||''), r.why);
+  ok('판독은 내지 않는다 (무성장 가치가 없다)', r.state===null, r.state);
 }
+/* 거꾸로, 가치 축이 없으면 확률만으로 지정가를 만들지 않는다 — '닿을 만한 가격'일 뿐
+ * '싸다'는 근거가 없다. 축 하나가 조용히 빠지는 것을 허용하면 min()이 min이 아니게 된다. */
+{ const r=bp({perTtm:15,perFwd:15,pbr:1.25,fcfPS:7,valueAnchor:null});
+  ok('가치 축이 없으면 지정가도 없다', r.limit===null&&r.bind===null, r.limit);
+  ok('그 사유를 적는다', /현재 적정가 미확보/.test(r.why||''), r.why);
+  ok('중앙도달가 자체는 그대로 낸다', near(r.probFloor,PF40,1e-9), r.probFloor);
+  ok('0 이하의 가치 축은 없는 것으로 본다', bp({perTtm:15,perFwd:15,pbr:1.25,valueAnchor:0}).limit===null);
+}
+{ const r=bp({perTtm:15,perFwd:15,pbr:1.25,fcfPS:7,valueAnchor:85,anchorIndep:false});
+  ok('가치 축의 독립 근거 유무를 그대로 실어 보낸다', r.anchorIndep===false, r.anchorIndep);
+  ok('안 주면 null — 모름과 거짓을 구분한다(§22-⑫)', bp({perTtm:15,perFwd:15,pbr:1.25}).anchorIndep===null);
+}
+
 
 console.log('\n[7] 단조성 — 입력이 좋아지면 값이 커진다');
 {

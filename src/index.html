@@ -57,9 +57,8 @@
   </div>
 
   <details class="legend-panel"><summary>차트 범례와 읽는 법</summary><div class="striplegend">
-    <span class="lg"><i style="background:#0e7490"></i>무성장 가치 <small>(성장이 멈췄다고 볼 때의 값 — <b>하방 앵커</b>이며 매수 기준선이 아님)</small></span>
-    <span class="lg"><i style="background:#0e7490;opacity:.55"></i>제안 지정가 <small>(가치 + 도달확률 교차)</small></span>
-    <span class="lg"><i style="background:#0e7490;opacity:.32"></i>가치 구간 <small>(지정가 ~ 무성장 가치)</small></span>
+    <span class="lg"><i style="background:#0e7490"></i>제안 지정가 <small>(<b>현재 적정가</b> · 60거래일 50% 도달가 중 낮은 쪽)</small></span>
+    <span class="lg"><i style="background:#0e7490;opacity:.42"></i>무성장 가치 <small>(성장이 멈췄다고 볼 때의 값 — <b>하방 앵커</b>이며 지정가 기준이 아님)</small></span>
     <span class="lg"><i style="background:#fff;border:2px solid #555;border-radius:50%"></i>현재가</span>
     <span class="lg" style="opacity:.75">판정 <b>● 추천</b> = 관문 통과 + 등급 상·중 · <b>◐ 관망</b> = 관문 통과, 등급 하 · <b>○ 탈락</b> = 관문에서 <b>걸림</b> · <b>⊘ 평가 불가</b> = 평가할 데이터가 없어 <b>판정을 내리지 않음</b>(나쁘다는 뜻이 아님)</span>
     <span class="lg" style="opacity:.75">한 행의 <b>%는 세 가지</b>입니다 — 현재가 아래 <b>등락률</b> · 지정가 아래 <b>도달 확률</b>(그 가격에 닿을 확률) · 오른쪽 <b>신뢰도</b>(필요한 입력 중 도착한 비율, 판정이 맞을 확률이 아님)</span>
@@ -68,7 +67,7 @@
 
   </details>
   <div class="listhead">
-    <div>#</div><div>종목</div><div>현재가</div><div>판정</div><div>실행 — 지정가 · 닿을 확률</div><div style="text-align:right">신뢰도</div><div>52주 범위 · 가치 구간</div><div></div>
+    <div>#</div><div>종목</div><div>현재가</div><div>판정</div><div>실행 — 지정가 · 닿을 확률</div><div style="text-align:right">신뢰도</div><div>52주 범위 · 가치 눈금</div><div></div>
   </div>
   <div id="list"></div>
   </div><!-- /#boardView -->

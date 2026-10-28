@@ -595,18 +595,38 @@
     return out;
   }
 
-  /* 무성장 가치(가치 축)와 개연성 하락가(확률 축)를 **곱하지 않고 교차**시킨다.
-   * 둘은 다른 종류의 양이다 — 하나로 뭉개면 어느 쪽이 제약인지 사라진다(§22-⑫).
-   * 제안 지정가 = min(두 값): '가치로 정당하고(≤보수적정가) 닿을 만한(≤중앙도달가) 가장 높은 가격'.
-   * 상태 셋을 구분한다:
-   *   at   현재가 ≤ 보수적정가            이미 가치 이하
-   *   wait 중앙도달가 ≤ 보수적정가 < 현재가  기다리면 절반의 확률로 가치 이하 도달
-   *   far  보수적정가 < 중앙도달가 < 현재가  개연성 있는 하락으로도 가치에 못 미친다 */
+  /* 가치 축과 확률 축을 **곱하지 않고 교차**시킨다. 둘은 다른 종류의 양이다 —
+   * 하나로 뭉개면 어느 쪽이 제약인지 사라진다(§22-⑫).
+   * 제안 지정가 = min(가치 축, 중앙도달가): '가치로 정당하고 닿을 만한 가장 높은 가격'.
+   *
+   * ★ (v6.4) 가치 축을 **무성장 가치 → 현재 적정가(valueAnchor)** 로 교체했다.
+   *   무성장 가치는 성장률 0을 넣은 **하방 앵커**다. 실측 60종목에서 현재가보다 중위 −48.5%
+   *   아래에 있었고, 그것을 매수 기준선으로 쓰니 지정가의 60거래일 도달확률이 중위 1.5%,
+   *   47/60이 사실상 무용(35개 10% 미만 · 13개 무성장 가치 없어 지정가 자체가 없음)이었다.
+   *   같은 교차를 현재 적정가로 하면 60/60에 지정가가 생기고 도달확률 중위 50%,
+   *   현재가 대비 중위 −16.7%, 바인딩이 확률 53 / 가치 7로 갈린다 — 그제서야 '가치 제약'과
+   *   '확률 제약'의 구분이 정보를 갖는다. 범례는 v5.8부터 "하방 앵커이며 매수 기준선이 아님"
+   *   이라고 적고 있었는데 코드만 그 말을 따르지 않았다.
+   * ★ 대가를 숨기지 않는다: 현재 적정가는 애널 목표가를 주 앵커로 쓰는 값이라 지정가가 전망과
+   *   다시 엮인다. 무성장 가치의 '목표가 미사용'은 그 값 자체에만 남는다 — 그래서 호출자가
+   *   가치 축의 근거와 독립성(anchorIndep)을 화면에 적는다.
+   * ★ 무성장 가치(fv)는 지우지 않는다. 판독(state) · 그림자 장부 H arm(cfvState) · 가격 띠
+   *   눈금이 그대로 쓴다. 지정가의 입력에서만 빠진다.
+   *
+   * 판독(state) 셋 — **무성장 가치 축의 판독이고, 정의는 v5.7 그대로다**:
+   *   at   현재가 ≤ 무성장 가치               이미 가치 이하
+   *   wait 중앙도달가 ≤ 무성장 가치 < 현재가    기다리면 절반의 확률로 가치 이하 도달
+   *   far  무성장 가치 < 중앙도달가 < 현재가    개연성 있는 하락으로도 가치에 못 미친다 */
   function buyPlan(inp){
     inp=inp||{};
     const price=num(inp.price), annVol=num(inp.annVol), h=num(inp.h);
+    /* 이 모듈의 num()은 0·음수를 통과시킨다(price도 바깥에서 >0을 따로 본다). 가치 축에
+     * 0이 들어오면 min()이 0을 집어 '지정가 0원'을 내므로 양수만 받는다 — 없는 값으로 본다. */
+    const anchorRaw=num(inp.valueAnchor);
+    const anchor=(anchorRaw!=null&&anchorRaw>0)?anchorRaw:null;
     const c=conservativeFV(inp);
     const out={fv:c.fv,n:c.n,used:c.used,skipped:c.skipped,h:h,annVol:annVol,
+               anchor:anchor,anchorIndep:(inp.anchorIndep==null)?null:!!inp.anchorIndep,
                sigmaH:null,probFloor:null,limit:null,limitProb:null,bind:null,state:null,why:null};
     if(annVol!=null&&annVol>0&&h>0&&price>0){
       out.sigmaH=annVol*Math.sqrt(h/252);
@@ -614,12 +634,18 @@
     }else{
       out.why='변동성 미확보 — 도달확률을 낼 수 없습니다(일간 수익률 21봉 이상 필요)';
     }
-    if(c.fv==null){ out.why=(out.why?out.why+' / ':'')+'무성장 가치 산출 불가 — 쓸 수 있는 방법이 없습니다'; return out; }
+    /* (v6.4) 무성장 가치가 없어도 지정가는 낸다 — 더 이상 지정가의 입력이 아니다.
+     * 사유는 그래도 남긴다: 판독과 장부가 이 값을 쓰므로 '없음'은 그 자체로 정보다(§22-⑫). */
+    if(c.fv==null)out.why=(out.why?out.why+' / ':'')+'무성장 가치 산출 불가 — 쓸 수 있는 방법이 없습니다';
+    if(anchor==null)out.why=(out.why?out.why+' / ':'')+'현재 적정가 미확보 — 가치 축이 없어 지정가를 만들지 않습니다';
     if(out.probFloor==null)return out;
-    out.limit=Math.min(c.fv,out.probFloor);
-    out.bind=(c.fv<=out.probFloor)?'value':'prob';
+    /* ★ 판독의 산출 위치·조건·식을 바꾸지 않는다. 그림자 장부 H arm이 cfvState를 입력으로 쓰므로
+     * 정의가 흔들리면 과거 표본과 지금 표본이 **다른 것**을 재게 된다(§22-⑤). */
+    if(c.fv!=null)out.state=(price<=c.fv)?'at':((out.probFloor<=c.fv)?'wait':'far');
+    if(anchor==null)return out;
+    out.limit=Math.min(anchor,out.probFloor);
+    out.bind=(anchor<=out.probFloor)?'value':'prob';
     out.limitProb=touchProb(price,out.limit,annVol,h);
-    out.state=(price<=c.fv)?'at':((out.probFloor<=c.fv)?'wait':'far');
     return out;
   }
 

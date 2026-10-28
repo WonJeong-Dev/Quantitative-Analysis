@@ -2251,7 +2251,12 @@ const GL_COLS=['tier','tierNoCap','A','Q','upside','downside','n','gate',
   /* (v5.9.3) 무성장 가치 3열 — **끝에 붙인다**(가운데 삽입은 과거 문서의 순서를 민다).
    * 이 값들은 판정에 쓰이지 않지만, 기록해 두지 않으면 2027년에 「무성장 가치가 쓸모 있었는가」를
    * 영영 물을 수 없다. 수집하고 안 그리는 것이 아니라, 그리려면 먼저 수집해야 한다. */
-  'cfvFv','cfvLimit','cfvState'];
+  'cfvFv','cfvLimit','cfvState',
+  /* (v6.4) cfvAnchor = 지정가의 가치 축(현재 적정가). 이 열이 null인 행은 **지정가 정의가
+   * 달랐던 구간**(v6.3 이하: min(무성장 가치, 50% 도달가))이다. 같은 이름의 열(cfvLimit)이
+   * 조용히 다른 뜻을 갖지 않도록, 정의가 바뀐 사실을 데이터 자체에 남긴다(§22-⑤).
+   * cfvState는 정의가 그대로다 — 그림자 장부 H arm의 입력이므로 손대지 않았다. */
+  'cfvAnchor'];
 function glRow(k,id){
   if(!k)return null;
   const cv=(id!=null)?cfvOf(id):null;
@@ -2272,7 +2277,7 @@ function glRow(k,id){
     (k.ugdDn90!=null?k.ugdDn90:null), (k.revNet!=null?k.revNet:null),
     r4(k.estE), r0n(k.estR), r0n(k.capexQ), r0n(k.capexY), r0n(k.fcf),
     (d.nRaw!=null?d.nRaw:null), r4(k.ratioPct), r1(k.upsideEff), (k.downIndep==null?null:(k.downIndep?1:0)), (k.barApp?1:0),
-    r4(cv&&cv.fv), r4(cv&&cv.limit), ((cv&&cv.state)||null)];
+    r4(cv&&cv.fv), r4(cv&&cv.limit), ((cv&&cv.state)||null), r4(cv&&cv.anchor)];
 }
 /* 문서 자신의 cols로 읽는다 — 스키마가 늘어도 과거 문서가 조용히 밀리지 않는다. */
 function glGet(doc,row,name){
@@ -2585,6 +2590,14 @@ function cfvOf(id){
      * 그대로 쓴다 — 새 임계가 아니라 기존 천장의 재사용(§20). 두 곳이 갈라지면
      * tests/consfv-ui.cjs가 배포본의 clamp 리터럴을 직접 읽어 실패시킨다(§22-⑲). */
     perCeil:FAIR_PER_MAX, psrCeil:FAIR_PSR_MAX,
+    /* (v6.4) ★ 지정가의 **가치 축 = 현재 적정가(fvNow)**. 무성장 가치가 아니다.
+     * 무성장 가치는 성장 0의 하방 앵커라 현재가보다 중위 −48.5% 아래였고, 그것을 매수
+     * 기준선으로 쓰니 60종목 중 47개의 지정가가 60거래일 도달확률 10% 미만이었다(상세 사유는
+     * domain.js buyPlan 주석). 무성장 가치는 판독·장부·띠 눈금에 그대로 남는다.
+     * ★ 대가: fvNow는 애널 목표가(×0.80 · 가중 0.50·anaConf)를 주 앵커로 쓰므로 지정가가
+     *   전망과 다시 엮인다. 숨기지 않는다 — k.fvBasis와 독립성(downIndep=nowIndep)을
+     *   상세 패널에 적어 가치 축이 무엇에 기댔는지 보이게 한다. */
+    valueAnchor:k.fvNow, anchorIndep:(k.downIndep==null?null:!!k.downIndep),
     curMismatch:!!k.curMismatch,   // (v5.9.7) 통화가 섞이면 PBR 비율을 믿을 수 없다
     vm:effVM(id)
   });
@@ -2859,12 +2872,15 @@ function sizeOf(id,cfv,rc){
 function exHTML(k,cfv,sz){
   if(!k)return '';
   if(k.assetType==='etf')
-    return '<div class="p none" title="ETF는 재무제표가 없어 무성장 가치를 만들 수 없습니다 — 결함이 아니라 구조입니다">지정가 없음 (ETF)</div>';
-  if(!cfv||cfv.fv==null)
+    return '<div class="p none" title="ETF는 재무제표가 없어 이 엔진이 가치 축을 만들 수 없습니다 — 결함이 아니라 구조입니다">지정가 없음 (ETF)</div>';
+  /* (v6.4) 지정가의 기준이 min(현재 적정가, 50% 도달가)로 바뀌었다 — 무성장 가치는 입력이
+   * 아니다. 그래서 ① 무성장 가치가 없다는 이유로 이 칸을 비우지 않고(그러면 '지정가를 낼 수
+   * 없다'와 '가치를 못 매겼다'가 같은 말로 읽힌다), ② 지정가를 낼 수 없을 때 **무성장 가치를
+   * 지정가 자리에 대신 그리지 않는다**. v6.3까지는 변동성이 없으면 무성장 가치를 큰 숫자로 찍고
+   * 캡션에만 '도달확률 산출 불가'를 달았는데, 이 자리에 있는 숫자는 지정가로 읽힌다 —
+   * 지정가가 아닌 값을 지정가 칸에 두는 것은 없는 값을 그리는 것과 같다(§22-⑯). */
+  if(!cfv||cfv.limit==null||cfv.limitProb==null)
     return '<div class="p none" title="'+esc((cfv&&cfv.why)||'재무 입력 미수신')+'">지정가 없음</div>';
-  if(cfv.limit==null||cfv.limitProb==null)
-    return '<div class="p">'+curSym(k.currency)+fmtP(cfv.fv,k.currency)+'</div>'
-      +'<div class="pr" title="'+esc(cfv.why||'')+'">도달 확률 산출 불가 — 변동성 미확보</div>';
   /* (v5.9.9) 칩을 없앴다. 바로 왼쪽 「현재가」 칸이 **가격 다음 줄에 등락률**을 그리는데,
    * 같은 모양(가격 + 작은 % 칩)을 여기에 쓰면 도달확률이 등락률로 읽힌다 — 캡션을 붙여도
    * 생김새가 먼저 거짓말을 한다. 숫자는 **자기 이름을 데리고 다니는 한 줄**로 내린다.
@@ -2948,30 +2964,50 @@ function reviewDetailHTML(id){
 function cfvDetailHTML(id,k){
   const cfv=cfvOf(id); if(!cfv)return '';
   const C=k.currency, money=v=>curSym(C)+fmtP(v,C);
-  let g='<div class="cfvbox"><div class="cfvhd">무성장 가치 <small>재무제표만 · 애널 목표가 미사용 · 표시 전용(판정에 쓰이지 않음)</small></div>';
-  if(cfv.fv==null){
-    g+='<div class="cfvnone">산출 불가 — '+esc(cfv.why||'쓸 수 있는 방법이 없습니다')+'</div>';
-  }else{
-    const st=CFV_STATE[cfv.state]||{lab:'—',cls:'',tip:''};
-    const gap=(k.price>0)?(cfv.fv/k.price-1)*100:null;
+  /* (v6.4) 한 상자에 **성격이 다른 두 값**이 있다: 무성장 가치(재무제표만 · 목표가 미사용)와
+   * 제안 지정가(가치 축 = 현재 적정가 · 목표가를 주 앵커로 쓰는 값). 상자 제목에 '목표가
+   * 미사용'을 걸어두면 지정가까지 그런 값으로 읽힌다 — 그래서 그 말은 무성장 가치 칸으로 내렸다. */
+  let g='<div class="cfvbox"><div class="cfvhd">무성장 가치와 제안 지정가 <small>표시 전용(판정에 쓰이지 않음)</small></div>';
+  {
+    const st=CFV_STATE[cfv.state]||{lab:'—',cls:'',tip:'무성장 가치가 없어 판독할 수 없습니다'};
+    const gap=(cfv.fv!=null&&k.price>0)?(cfv.fv/k.price-1)*100:null;
+    /* 가치 축이 무엇에 기댔는지 적는다. 값만 보이면 '재무제표에서 나온 값'으로 읽히는데,
+     * 현재 적정가는 애널 목표가 할인값이 주 앵커다 — 독립 근거가 없으면 그 사실도 적는다(§22-㉕). */
+    const anch=(cfv.anchor!=null)
+      ? ('가치 축 '+money(cfv.anchor)+' <small>'+esc(k.fvBasis||'근거 미표기')+'</small>'
+         +(cfv.anchorIndep===false?' · <b>목표가 외 독립 근거 없음</b>':''))
+      : '가치 축(현재 적정가) 미확보';
     g+='<div class="cfvtop">'
-      +'<div class="cfvcell"><span class="l">무성장 가치</span><b>'+money(cfv.fv)+'</b>'
-        +'<em>'+esc(cfv.basis||(cfv.n+'종'))+(gap!=null?' · 현재가 대비 <span class="'+chgCls(gap)+'">'+fmtPct(gap)+'</span>':'')+'</em></div>'
+      +'<div class="cfvcell"><span class="l">무성장 가치</span><b>'+(cfv.fv!=null?money(cfv.fv):'—')+'</b>'
+        +'<em>'+(cfv.fv!=null
+            ? (esc(cfv.basis||(cfv.n+'종'))+' · 재무제표만(애널 목표가 미사용)'
+               +(gap!=null?' · 현재가 대비 <span class="'+chgCls(gap)+'">'+fmtPct(gap)+'</span>':''))
+            : ('산출 불가 — '+esc(cfv.why||'쓸 수 있는 방법이 없습니다')))+'</em></div>'
       +'<div class="cfvcell"><span class="l">제안 지정가</span><b>'+(cfv.limit!=null?money(cfv.limit):'—')+'</b>'
-        +'<em>'+(cfv.limitProb!=null?(CFV_H+'거래일 내 도달확률 '+(cfv.limitProb*100).toFixed(0)+'%<br>'
-            +(cfv.bind==='value'?'가치 기준이 더 낮아 이 값':'중앙 도달가가 더 낮아 이 값')):esc(cfv.why||'—'))+'</em></div>'
-      +'<div class="cfvcell"><span class="l">판독</span><b class="s-'+st.cls+'">'+st.lab+'</b><em>'+esc(st.tip)+'</em></div>'
+        +'<em>'+((cfv.limit!=null&&cfv.limitProb!=null)
+            ?(CFV_H+'거래일 내 도달확률 '+(cfv.limitProb*100).toFixed(0)+'%'
+              +' · '+(cfv.bind==='value'?'가치 축이 더 낮아 이 값':'도달가가 더 낮아 이 값')+'<br>'+anch)
+            :esc(cfv.why||'—'))+'</em></div>'
+      +'<div class="cfvcell"><span class="l">판독 <small>무성장 가치 대비</small></span>'
+        +'<b class="s-'+st.cls+'">'+st.lab+'</b><em>'+esc(st.tip)+'</em></div>'
       +'</div>';
     if(cfv.probFloor!=null)
       g+='<div class="cfvnote">같은 가정에서 '+CFV_H+'거래일 안에 <b>절반의 확률</b>로 닿는 가격은 '+money(cfv.probFloor)
         +' 입니다(현재가 '+money(k.price)+' 대비 '+fmtPct((cfv.probFloor/k.price-1)*100)+'). '
-        +'제안 지정가는 이 값과 무성장 가치 중 <b>낮은 쪽</b>입니다 — 두 조건을 동시에 만족하는 가장 높은 가격.</div>';
-    g+='<div class="cfvwrap"><table class="cfvtbl"><tr><th>방법</th><th class="num">주당가치</th><th>산출</th></tr>';
-    for(const m of cfv.used)
-      g+='<tr'+(m.ref?' class="refrow"':'')+'><td>'+esc(m.label)
-        +(m.ref?' <span class="refbadge" title="중앙값에 넣지 않습니다 — 이익 멀티플을 현금흐름에 그대로 쓰는 것은 범주 오류입니다">참고</span>':'')
-        +'</td><td class="num"><b>'+money(m.value)+'</b></td><td class="hw">'+esc(m.how)+'</td></tr>';
-    g+='</table></div>';
+        +'제안 지정가는 이 값과 <b>현재 적정가</b> 중 낮은 쪽입니다 — 두 조건을 동시에 만족하는 가장 높은 가격. '
+        +'<b>무성장 가치는 들어가지 않습니다</b>: 성장을 0으로 놓은 하방 앵커라 매수 기준선으로 쓰면 '
+        +'닿을 일이 거의 없는 가격이 나옵니다(실측 60종목 도달확률 중위 1.5% · 47종목이 무용).</div>';
+    /* 방법별 내역은 무성장 가치가 **난 경우에만** 그린다. 참고(ref) 방법만 남아 중앙값이
+     * 없을 수도 있는데(FCF 단독), 그때 표를 열면 머리행만 있는 빈 표가 된다. 여는 태그와
+     * 닫는 태그를 따로 조건에 걸면 그 경우 행이 표 밖으로 새어 나간다 — 블록째로 감싼다. */
+    if(cfv.fv!=null){
+      g+='<div class="cfvwrap"><table class="cfvtbl"><tr><th>방법</th><th class="num">주당가치</th><th>산출</th></tr>';
+      for(const m of cfv.used)
+        g+='<tr'+(m.ref?' class="refrow"':'')+'><td>'+esc(m.label)
+          +(m.ref?' <span class="refbadge" title="중앙값에 넣지 않습니다 — 이익 멀티플을 현금흐름에 그대로 쓰는 것은 범주 오류입니다">참고</span>':'')
+          +'</td><td class="num"><b>'+money(m.value)+'</b></td><td class="hw">'+esc(m.how)+'</td></tr>';
+      g+='</table></div>';
+    }
   }
   if(cfv.skipped&&cfv.skipped.length){
     g+='<div class="cfvskip"><b>쓰지 않은 방법</b><ul>';
@@ -3003,12 +3039,11 @@ function stripHTML(k,cfv){
   const money=v=>fmtP(v,k.currency);
   /* 띠는 전부 장식이다 — 같은 값이 실행 칸과 툴팁에 글자로 있다. 스크린리더에서 뺀다. */
   let out='<div class="strip" aria-hidden="true"><div class="track"></div>';
-  /* 가치 구간 — 제안 지정가 ~ 무성장 가치. 둘이 같은 값이면(가치가 제약) 폭이 0이라 그리지 않는다. */
-  if(cfv&&cfv.fv!=null&&cfv.limit!=null&&cfv.limit<cfv.fv)
-    out+='<div class="cfvzone" style="left:'+P(cfv.limit).toFixed(2)+'%;width:'+Math.max(P(cfv.fv)-P(cfv.limit),0.4).toFixed(2)
-      +'%" title="제안 지정가 '+money(cfv.limit)+' ~ 무성장 가치 '+money(cfv.fv)+'"></div>';
+  /* (v6.4) '가치 구간'(지정가 ~ 무성장 가치) 띠를 버렸다. 지정가가 더 이상 무성장 가치 **아래**가
+   * 아니므로(가치 축이 현재 적정가로 바뀌어 실측 53/60이 무성장 가치보다 위) 그 구간은 어떤 뜻도
+   * 갖지 않는다. 뜻이 사라진 그림을 폭만 바꿔 남기면 독자가 없는 관계를 읽는다 — 눈금 둘만 남긴다. */
   if(cfv&&cfv.fv!=null)
-    out+='<div class="tick cfv" style="left:'+P(cfv.fv).toFixed(2)+'%" title="무성장 가치 '+money(cfv.fv)+' — 재무제표만으로 낸 지금 정당한 가격"></div>';
+    out+='<div class="tick cfv" style="left:'+P(cfv.fv).toFixed(2)+'%" title="무성장 가치 '+money(cfv.fv)+' — 성장 0을 넣은 하방 앵커입니다(지정가 기준이 아님)"></div>';
   if(cfv&&cfv.limit!=null)
     out+='<div class="tick cfvlim" style="left:'+P(cfv.limit).toFixed(2)+'%" title="제안 지정가 '+money(cfv.limit)
       +(cfv.limitProb!=null?(' — '+CFV_H+'거래일 내 도달확률 '+Math.round(cfv.limitProb*100)+'%'):'')+'"></div>';
@@ -4658,7 +4693,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.3.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.4.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

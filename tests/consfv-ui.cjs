@@ -50,6 +50,9 @@ function grd(n,total,blocked){
 function put(id,o){
   S.calc[id]=Object.assign({price:100,currency:'USD',quality:65,annVol:0.40,
     perAuto:10,perFwdAuto:8,psrAuto:2,pbrAuto:1.25,fcf:700,fxq:1,
+    /* (v6.4) 지정가의 가치 축 = 현재 적정가(k.fvNow). 중앙도달가는 87.665(현재가 100·변동성 0.40)
+     * 이므로 95를 넣으면 확률이 제약, 85 이하를 넣으면 가치가 제약된다. */
+    fvNow:95,downIndep:true,fvBasis:'애널목표+펀더멘털(PER)',
     revenueBasis:{status:'reconciled',shares:100},
     tier:'중',grd:grd(11,11),qMissW:0,aMissW:0,qMiss:[],aMiss:[],
     qParts:{fin:70,growth:60,ana:80,stab:50},
@@ -121,8 +124,13 @@ v=M.verdictOf('US_NV2');
  * v6.1은 이걸 '평가 불가'로 돌렸는데, 등급이 있는 종목을 평가하지 않았다고 말하는 것은 틀렸다.
  * 평가 불가는 **관문을 못 돌린** 경우에만 쓴다(그 검사는 tests/investment.cjs가 본다). */
 ok('가치를 못 매겨도 등급이 있으면 판정한다', v.key==='rec'&&v.w==='추천', v.key+'/'+v.w);
-ok('지정가는 못 내므로 실행 칸이 그 사실을 적는다',
-   /지정가 없음/.test(M.exHTML(S.calc['US_NV2'],M.cfvOf('US_NV2'))), M.exHTML(S.calc['US_NV2'],M.cfvOf('US_NV2')).slice(0,120));
+/* (v6.4) 무성장 가치가 없어도 지정가는 난다 — 가치 축이 현재 적정가로 바뀌었기 때문이다.
+ * v6.3까지 이 자리는 '지정가 없음'이었고, 실측 60종목 중 13개가 그 상태였다. */
+{ const c2=M.cfvOf('US_NV2'), h2=M.exHTML(S.calc['US_NV2'],c2);
+  ok('무성장 가치가 없어도 지정가는 난다', c2.fv===null&&c2.limit!=null&&/class="pline"/.test(h2),
+     'fv='+c2.fv+' limit='+c2.limit);
+  ok('무성장 가치 없음은 상세 패널의 사유로 남는다',
+     /산출 불가/.test(M.cfvDetailHTML('US_NV2',S.calc['US_NV2'])), ''); }
 put('US_ETF2',{assetType:'etf',tier:'저점권'});
 ok('ETF 저점권 → 추천', M.verdictOf('US_ETF2').key==='rec');
 put('US_ETF3',{assetType:'etf',tier:'중립'});
@@ -192,7 +200,12 @@ put('US_E');
   ok('"제약" 같은 내부 용어를 쓰지 않는다', !/제약/.test(h)&&!/중앙 도달가/.test(h), h); }
 { put('US_E2',{annVol:null});
   const h=M.exHTML(S.calc['US_E2'],M.cfvOf('US_E2'));
-  ok('변동성이 없으면 지정가를 꾸며내지 않고 무성장 가치를 보인다', /도달 확률 산출 불가/.test(h)&&!/class="prob"/.test(h), h); }
+  /* (v6.4) v6.3까지는 변동성이 없으면 **무성장 가치**를 큰 숫자로 찍고 캡션에만 '도달확률 산출
+   * 불가'를 달았다. 지정가 칸에 있는 숫자는 지정가로 읽힌다 — 지정가가 아닌 값을 거기 두는 것은
+   * 없는 값을 그리는 것과 같다(§22-⑯). 이제 글자와 사유만 남는다. */
+  ok('변동성이 없으면 다른 값을 지정가 자리에 대신 그리지 않는다',
+     /지정가 없음/.test(h)&&!/class="p"/.test(h)&&!/class="pline"/.test(h), h);
+  ok('사유는 title에 남는다', /title="[^"]*변동성 미확보/.test(h), h); }
 /* (v5.9.9) 반올림과 흐림 — 0%는 '０이다'로 읽히는데 실제로는 '1% 미만'이다(§22-⑫와 같은 종류). */
 { put('US_P0',{annVol:0.02,perAuto:40,perFwdAuto:40,pbrAuto:null,fcf:null});
   const c=M.cfvOf('US_P0'), h=M.exHTML(S.calc['US_P0'],c);
@@ -210,12 +223,17 @@ put('US_E');
   ok('ETF는 구조적 이유를 적는다', /지정가 없음 \(ETF\)/.test(h)&&/결함이 아니라 구조/.test(h), h); }
 { put('US_E4',{perAuto:null,perFwdAuto:null,psrAuto:null,pbrAuto:null,fcf:null});
   const h=M.exHTML(S.calc['US_E4'],M.cfvOf('US_E4'));
-  /* (v5.8.1) 캡션은 뺐다 — 판정 칸이 이미 '값을 매길 수 없음'이라고 말한다. 같은 말을 두 번 쓰면 세 줄로 접힌다.
-     빈 칸이 아니어야 한다는 원칙은 그대로: 글자(지정가 없음)와 사유(title)가 남는다. */
-  ok('값을 못 매기면 빈 칸이 아니라 글자 + 사유 title', /지정가 없음/.test(h)&&/title="[^"]*산출 불가/.test(h), h);
-  ok('같은 사유를 두 번 쓰지 않는다', (h.match(/산출 불가/g)||[]).length===1, h);
+  ok('무성장 가치를 못 내도 지정가는 난다 (v6.4)', /class="pline"/.test(h), h.slice(0,120));
   ok('판정은 등급이 말한다 (가치 산출 실패가 판정을 뒤집지 않는다)',
      M.verdictOf('US_E4').key!=='na', M.verdictOf('US_E4').why); }
+/* 지정가를 **정말** 낼 수 없는 경우는 가치 축이 없을 때다(v6.4).
+ * (v5.8.1) 캡션은 뺐다 — 판정 칸이 이미 '값을 매길 수 없음'이라고 말한다. 같은 말을 두 번 쓰면
+ * 세 줄로 접힌다. 빈 칸이 아니어야 한다는 원칙은 그대로: 글자(지정가 없음)와 사유(title)가 남는다. */
+{ put('US_E5',{fvNow:null,downIndep:null});
+  const h=M.exHTML(S.calc['US_E5'],M.cfvOf('US_E5'));
+  ok('값을 못 매기면 빈 칸이 아니라 글자 + 사유 title',
+     /지정가 없음/.test(h)&&/title="[^"]*현재 적정가 미확보/.test(h), h);
+  ok('같은 사유를 두 번 쓰지 않는다', (h.match(/현재 적정가 미확보/g)||[]).length===1, h); }
 
 console.log('\n[6] 신뢰도 칸 — 결측을 뒤집어 상시 품질 수치로');
 put('US_V1',{qMissW:0,aMissW:0});
@@ -346,6 +364,83 @@ console.log('\n[9] 후행 EPS는 복원하지 않는다 (v5.9.14 — 폴백 제�
      !/\[/.test(((c&&c.used)||[]).map(m=>m.how).join(' ')), ((c&&c.used)||[]).map(m=>m.how).join(' ')); }
 { ok('죽은 함수가 배포본에 남아 있지 않다', T.indexOf('perTtmOf')<0, T.indexOf('perTtmOf'));
   ok('죽은 입력 키도 남아 있지 않다', T.indexOf('perTtmSrc')<0); }
+
+console.log('\n[10] 지정가의 가치 축 = 현재 적정가 (v6.4)');
+/* ★ 이 구간은 **무엇이 지정가를 만드는가**를 고정한다. v6.3까지는 min(무성장 가치, 50% 도달가)
+ * 였고, 무성장 가치가 현재가보다 중위 −48.5% 아래라 지정가의 도달확률이 중위 1.5%,
+ * 60종목 중 47개가 사실상 무용이었다. 되돌아오면 여기서 깨진다. */
+VM={per:2,pbr:2,psr:2};  // 앞 구간이 PBR 배제를 시험하며 바꿔 두었다 — 기본으로 돌린다
+put('US_AX');            // 가치 축 95 · 중앙도달가 87.665 → 확률이 제약
+{ const c=M.cfvOf('US_AX');
+  ok('배선: k.fvNow가 가치 축으로 들어간다', c.anchor===95, c.anchor);
+  ok('무성장 가치(107.5)는 지정가에 쓰이지 않는다', near(c.fv,107.5,1e-9)&&near(c.limit,87.665047,1e-5),
+     'fv='+c.fv+' limit='+c.limit);
+  ok('바인딩은 확률', c.bind==='prob', c.bind);
+  ok('배선: 독립성 플래그(k.downIndep)도 함께 간다', c.anchorIndep===true, c.anchorIndep); }
+{ put('US_AX2',{fvNow:85});
+  const c=M.cfvOf('US_AX2');
+  ok('가치 축이 더 낮으면 그 값이 지정가', near(c.limit,85,1e-9)&&c.bind==='value', c.limit+'/'+c.bind); }
+{ put('US_AX3',{perAuto:15,perFwdAuto:15,pbrAuto:1.25,fcf:null,fvNow:95});
+  const c=M.cfvOf('US_AX3'), h=M.stripHTML(S.calc['US_AX3'],c);
+  /* 무성장 가치 80 < 지정가 87.665 — v6.3에서는 구조적으로 불가능했던 배치다. */
+  ok('지정가가 무성장 가치보다 위에 올 수 있다', near(c.fv,80,1e-9)&&c.limit>c.fv, 'fv='+c.fv+' limit='+c.limit);
+  ok('그래도 눈금 둘을 모두 그린다', /tick cfv"/.test(h)&&/tick cfvlim"/.test(h), h); }
+/* 뜻이 사라진 그림은 남기지 않는다 — '가치 구간'(지정가 ~ 무성장 가치) 띠는 지정가가 가치
+ * 위에 올 수 있게 된 순간 어떤 관계도 뜻하지 않는다. CSS까지 함께 지워졌는지 본다. */
+ok("'가치 구간' 띠를 더 이상 그리지 않는다", !/class="cfvzone"/.test(M.stripHTML(S.calc['US_AX'],M.cfvOf('US_AX'))));
+ok('죽은 CSS(.cfvzone)도 배포본에 없다', T.indexOf('.cfvzone')<0, T.indexOf('.cfvzone'));
+ok('죽은 CSS(.cfvnone)도 배포본에 없다', T.indexOf('.cfvnone')<0, T.indexOf('.cfvnone'));
+
+console.log('\n[10b] 상세 패널은 가치 축이 무엇에 기댔는지 적는다');
+/* ★ 현재 적정가는 **애널 목표가(×0.80 · 가중 0.50·anaConf)를 주 앵커로 쓰는 값**이다.
+ * 무성장 가치의 '목표가 미사용'을 상자 제목에 걸어두면 지정가까지 그런 값으로 읽힌다 —
+ * 두 값의 성격 차이를 라벨로 분리했는지 검사한다(§22-㉕: 수집했으면 그려야 한다). */
+{ const h=M.cfvDetailHTML('US_AX',S.calc['US_AX']);
+  ok('가치 축의 값을 적는다', /가치 축 \$95/.test(h), (h.match(/가치 축[^<]*/)||[''])[0]);
+  ok('가치 축의 근거(k.fvBasis)를 적는다', /애널목표\+펀더멘털\(PER\)/.test(h));
+  ok('어느 축이 제약인지 적는다', /도달가가 더 낮아 이 값/.test(h));
+  ok("'목표가 미사용'은 무성장 가치 칸에만 쓴다", /재무제표만\(애널 목표가 미사용\)/.test(h)
+     && !/cfvhd[^<]*애널 목표가 미사용/.test(h), (h.match(/cfvhd[^<]*<\/div>/)||[''])[0]);
+  ok('무성장 가치가 지정가에 들어가지 않는다고 적는다', /무성장 가치는 들어가지 않습니다/.test(h));
+  ok('판독이 무성장 가치 대비라고 적는다', /판독 <small>무성장 가치 대비/.test(h)); }
+{ put('US_AX4',{fvNow:85});
+  ok('가치 축이 제약일 때도 그렇게 적는다', /가치 축이 더 낮아 이 값/.test(M.cfvDetailHTML('US_AX4',S.calc['US_AX4']))); }
+{ put('US_AX5',{downIndep:false});
+  ok('목표가 외 독립 근거가 없으면 그 사실을 적는다',
+     /목표가 외 독립 근거 없음/.test(M.cfvDetailHTML('US_AX5',S.calc['US_AX5']))); }
+ok('있으면 그 문구를 쓰지 않는다', !/독립 근거 없음/.test(M.cfvDetailHTML('US_AX',S.calc['US_AX'])));
+{ put('US_AX6',{perAuto:null,perFwdAuto:null,psrAuto:null,pbrAuto:null,fcf:null});
+  const h=M.cfvDetailHTML('US_AX6',S.calc['US_AX6']);
+  /* 참고(ref) 방법만 남아 중앙값이 없는 경우가 있다 — 그때 표를 열면 머리행만 있는 빈 표가 되고,
+   * 여는 태그만 조건에 걸면 행이 표 밖으로 샌다. 블록째 감쌌는지 본다. */
+  ok('무성장 가치가 없으면 방법 표를 열지 않는다', !/class="cfvtbl"/.test(h)&&!/<tr/.test(h), h.slice(0,160));
+  ok('그래도 지정가 칸은 값을 보인다', /제안 지정가<\/span><b>\$87\.67</.test(h), (h.match(/제안 지정가[\s\S]{0,40}/)||[''])[0]);
+  ok('무성장 가치 칸에는 사유를 적는다', /산출 불가 — /.test(h)); }
+
+console.log('\n[10c] 범례·장부 — 바뀐 정의가 화면과 데이터에 반영됐는가');
+{ const lg=T.slice(T.indexOf('class="striplegend"'), T.indexOf('class="listhead"'));
+  ok('범례가 지정가의 기준을 현재 적정가로 적는다', /제안 지정가[\s\S]{0,90}현재 적정가/.test(lg), lg.slice(0,200));
+  ok("범례에 '가치 구간'이 남아 있지 않다", lg.indexOf('가치 구간')<0);
+  ok('무성장 가치는 지정가 기준이 아니라고 적는다', /하방 앵커<\/b>이며 지정가 기준이 아님/.test(lg)); }
+{ /* 장부 열과 glRow의 길이가 어긋나면 **모든 열이 한 칸씩 밀린다** — 과거 행과 비교하는 모든
+   * 집계가 조용히 틀린다. 이름 목록과 값 목록을 배포본에서 직접 세어 맞춘다(§22-⑲). */
+  const colsSrc=T.slice(T.indexOf('const GL_COLS=['));
+  const cols=colsSrc.slice(colsSrc.indexOf('['), colsSrc.indexOf('];')+1)
+    .replace(/\/\*[\s\S]*?\*\//g,'');
+  const names=JSON.parse(cols.replace(/'/g,'"').replace(/,(\s*])/,'$1'));
+  ok("cfvAnchor를 **끝에** 붙였다 (가운데 삽입은 과거 문서를 민다)",
+     names[names.length-1]==='cfvAnchor', names.slice(-4).join(','));
+  ok('cfvState의 이름·자리는 그대로다 (그림자 장부 H arm의 입력)',
+     names[names.length-2]==='cfvState', names.slice(-3).join(','));
+  const rowSrc=T.slice(T.indexOf('function glRow(k,id){'));
+  const body=rowSrc.slice(rowSrc.indexOf('return ['), rowSrc.indexOf('];')+1)
+    .replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'');
+  let d=0,n=1;
+  for(const ch of body.slice(body.indexOf('[')+1, body.lastIndexOf(']'))){
+    if('([{'.indexOf(ch)>=0)d++; else if(')]}'.indexOf(ch)>=0)d--; else if(ch===','&&d===0)n++;
+  }
+  ok('GL_COLS('+names.length+')과 glRow('+n+')의 길이가 같다', names.length===n);
+  ok('glRow가 가치 축을 기록한다', /cv&&cv\.anchor/.test(body), body.slice(-80)); }
 
 console.log('\n────────────────────────────');
 console.log(pass+' passed · '+fail+' failed');

@@ -257,7 +257,6 @@
   .cfvcell b.s-up{color:var(--up)}.cfvcell b.s-dn{color:var(--down)}.cfvcell b.s-mid{color:var(--amber)}
   .cfvcell em{display:block;font-style:normal;font-size:10.5px;line-height:1.5;color:var(--sub);word-break:keep-all;overflow-wrap:anywhere}
   .cfvnote{margin-top:8px;font-size:11.5px;line-height:1.65;color:var(--sub)}
-  .cfvnone{font-size:12px;color:var(--amber);font-weight:700}
   .cfvwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .cfvtbl{width:100%;min-width:264px;border-collapse:collapse;margin-top:9px;font-size:11.5px}
   .cfvtbl th{text-align:left;font-size:10.5px;color:var(--sub);border-bottom:1px solid #d6ecef;padding:3px 4px}
@@ -279,10 +278,9 @@
    * 매물대·볼린저·이평 눈금은 상세 패널의 차트로 내려갔다. */
   .strip{position:relative;height:26px}
   .strip .track{position:absolute;left:0;right:0;top:11px;height:4px;border-radius:2px;background:#e6eaf2}
-  .strip .cfvzone{position:absolute;top:11px;height:4px;border-radius:2px;background:#0e7490;opacity:.32}
   .strip .tick{position:absolute;top:5px;width:2.5px;height:16px;border-radius:1px;transform:translateX(-50%)}
-  .strip .tick.cfv{background:#0e7490}
-  .strip .tick.cfvlim{background:#0e7490;opacity:.55}
+  .strip .tick.cfv{background:#0e7490;opacity:.42;top:8px;height:10px}
+  .strip .tick.cfvlim{background:#0e7490}
   .strip .pricedot{position:absolute;top:6px;width:13px;height:13px;border-radius:50%;transform:translateX(-50%);
          border:2.5px solid #fff;box-shadow:0 0 0 1px #c8d2e4}
   .striplegend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--sub);padding:2px 16px 10px}
