@@ -72,6 +72,60 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
    ok('기준일을 함께 돌려준다 (PBR이 기준일에 따라 두 배 갈린다)',/2026\.06\.30/.test(b.at||''),b.at);
    ok('손익계산서 계정을 자본총계로 집지 않는다',b.equity!==9999); }
 
+ /* (v7.7) 지배주주 귀속. 주요계정에는 지배기업 소유주지분이 **없어서**, 지금까지 자본총계와
+  * 당기순이익(둘 다 비지배지분 포함)을 모회사 주식수로 나누고 있었다 — 분자·분모 불일치다.
+  * 실측 오차: 자본 최대 26.2%(LG에너지솔루션) · 순이익 27.4%(삼성SDI).
+  * 전체계정에는 IFRS 표준 태그로 들어 있다. 경로를 바꾸지 않고 **필드만 더한다.** */
+ { const seen=[]; const prev=global.fetch;
+   const main=[
+     {fs_div:'CFS',sj_div:'BS',account_nm:'자본총계',thstrm_amount:'1,000',currency:'KRW',thstrm_dt:'2026.06.30 현재'},
+     {fs_div:'CFS',sj_div:'IS',account_nm:'당기순이익(손실)',thstrm_amount:'200',thstrm_dt:'2026.01.01 ~ 2026.06.30',frmtrm_amount:'20'}];
+   const all=[
+     {account_id:'ifrs-full_Equity',sj_div:'BS',thstrm_amount:'1,000'},
+     {account_id:'ifrs-full_EquityAttributableToOwnersOfParent',sj_div:'BS',thstrm_amount:'740'},
+     {account_id:'ifrs-full_NoncontrollingInterests',sj_div:'BS',thstrm_amount:'260'},
+     {account_id:'ifrs-full_ProfitLossAttributableToOwnersOfParent',sj_div:'CIS',thstrm_amount:'145',frmtrm_amount:'15'}];
+   global.fetch=async(u2)=>{ const url=String((u2&&u2.url)||u2); seen.push(url);
+     if(/list\.json/.test(url))return new Response(JSON.stringify({status:'000',list:[{corp_code:'C'}]}),{status:200});
+     if(/reprt_code=11014/.test(url))return new Response(JSON.stringify({status:'013'}),{status:200});
+     if(/fnlttSinglAcntAll/.test(url))return new Response(JSON.stringify({status:'000',list:all}),{status:200});
+     return new Response(JSON.stringify({status:'000',list:main}),{status:200}); };
+   const rr=await call('/dartfin?code=000660',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'K'});
+   const b=await rr.json(); global.fetch=prev;
+   const o=b.owners||{};
+   ok('지배주주지분을 돌려준다',o.equity===740,JSON.stringify(o));
+   ok('비지배지분도 함께 돌려준다',o.nci===260,o.nci);
+   ok('자본총계 필드는 그대로 남는다 (구버전 앱이 깨지지 않는다)',b.equity===1000,b.equity);
+   ok('지배주주 TTM도 같은 항등식으로 낸다',o.ttm===(o.niFy+o.niYtd-o.niYtdPrev)&&o.ttm===275,JSON.stringify(o));
+   ok('전체계정을 고른 보고서·재무구분으로만 부른다',
+      seen.filter(u3=>/fnlttSinglAcntAll/.test(u3)).every(u3=>/fs_div=CFS/.test(u3)),
+      seen.filter(u3=>/fnlttSinglAcntAll/.test(u3)).join(' | '));
+   ok('호출 수가 종목당 +2를 넘지 않는다',seen.filter(u3=>/fnlttSinglAcntAll/.test(u3)).length<=2,
+      String(seen.filter(u3=>/fnlttSinglAcntAll/.test(u3)).length)); }
+
+ /* 귀속 행이 **아예 없는** 회사(비지배지분 0)와, 조회가 **실패한** 경우를 구분한다.
+  * 둘을 같게 다루면 '비지배지분이 없다'와 '모른다'가 섞인다(§22-⑫). */
+ { const prev=global.fetch;
+   const main=[{fs_div:'CFS',sj_div:'BS',account_nm:'자본총계',thstrm_amount:'1,000',currency:'KRW'}];
+   global.fetch=async(u2)=>{ const url=String((u2&&u2.url)||u2);
+     if(/list\.json/.test(url))return new Response(JSON.stringify({status:'000',list:[{corp_code:'C'}]}),{status:200});
+     if(/reprt_code=11014/.test(url))return new Response(JSON.stringify({status:'013'}),{status:200});
+     if(/fnlttSinglAcntAll/.test(url))return new Response(JSON.stringify({status:'000',list:[
+       {account_id:'ifrs-full_Equity',sj_div:'BS',thstrm_amount:'1,000'}]}),{status:200});
+     return new Response(JSON.stringify({status:'000',list:main}),{status:200}); };
+   const b=await (await call('/dartfin?code=000660',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'K'})).json();
+   ok('귀속 행이 없으면 총계를 쓰되 그 사실을 적는다',
+      b.owners.equity===1000&&/비지배지분이 없는 것으로 보아/.test(b.owners.why||''),JSON.stringify(b.owners));
+   global.fetch=async(u2)=>{ const url=String((u2&&u2.url)||u2);
+     if(/list\.json/.test(url))return new Response(JSON.stringify({status:'000',list:[{corp_code:'C'}]}),{status:200});
+     if(/reprt_code=11014/.test(url))return new Response(JSON.stringify({status:'013'}),{status:200});
+     if(/fnlttSinglAcntAll/.test(url))return new Response(JSON.stringify({status:'013',message:'없음'}),{status:200});
+     return new Response(JSON.stringify({status:'000',list:main}),{status:200}); };
+   const b2=await (await call('/dartfin?code=000660',{},{AUTH_MODE:'report',ALLOWED_EMAILS:'a@b.c',DART_API_KEY:'K'})).json();
+   global.fetch=prev;
+   ok('조회 실패는 0이 아니라 null + 사유',b2.owners.equity===null&&/전체계정 조회 결과가 없습니다/.test(b2.owners.why||''),
+      JSON.stringify(b2.owners)); }
+
  const g=raw=>({raw});
  const basis=(shares,implied,fx=1,quoteCurrency='USD')=>module.revenueBasis({financialCurrency:'USD',totalRevenue:g(1000)}, {sharesOutstanding:g(shares),impliedSharesOutstanding:g(implied)}, {currency:'USD'}, {currency:quoteCurrency,regularMarketPrice:g(10),marketCap:g(10000)},fx);
  ok('economic share count reconciles to quote market cap',basis(500,1000).revPSQuote===1&&basis(500,1000).shareSource==='impliedSharesOutstanding');

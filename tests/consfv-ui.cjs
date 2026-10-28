@@ -512,7 +512,16 @@ console.log('\n[11] 국내 주당순자산 — DART 1차 출처 배선 (v6.9 · 
   ok('자본총계가 없으면 심지 않는다', /b&&b\.equity>0/.test(body)&&/bpsWhy='DART 자본총계 미확보/.test(body));
   ok('통화가 원화가 아니면 심지 않는다', /b\.cur!=='KRW'/.test(body)&&/원화가 아니어서 쓰지 않습니다/.test(body));
   ok('상장주식수가 없으면 심지 않는다', /상장주식수 미확보/.test(body));
-  ok('비율이 아니라 주당순자산을 저장한다', /f\.bps=b\.equity\/shares/.test(body));
+  ok('비율이 아니라 주당순자산을 저장한다', /f\.bps=eqUsed\/shares/.test(body));
+  /* (v6.12) 분자·분모 일치. 실측 11종목: 비지배지분이 자본의 최대 26.2%(LG에너지솔루션)·
+   * 순이익의 27.4%(삼성SDI)였다. 분모(주식수)는 모회사 것이므로 분자도 지배주주 몫이어야 한다. */
+  ok('자본은 지배주주지분을 먼저 쓴다', /ow\.equity!=null&&isFinite\(ow\.equity\)&&ow\.equity>0/.test(body)
+     &&/const eqUsed=\(eqOwn!=null\)\?eqOwn:b\.equity/.test(body));
+  ok('어느 기준인지 기록한다', /f\.bpsBasis=\(eqOwn!=null\)\?'owners':'total'/.test(body));
+  ok('총계로 떨어지면 사유를 남긴다', /f\.bpsBasisWhy=/.test(body));
+  ok('비지배 비율도 남긴다', /f\.nciPct=/.test(body));
+  ok('순이익도 지배주주 몫을 먼저 쓴다', /const niOwn=\(ow\.ttm!=null/.test(body)
+     &&/const niUsed=\(niOwn!=null\)\?niOwn:/.test(body));
   ok('하루에 몇 번씩 부르지 않는다 (재무제표는 분기마다 바뀐다)', /BPS_TTL/.test(body));
   ok('같은 종목을 동시에 두 번 부르지 않는다', /bpsPending/.test(body));
   const pin=require('../docs/RULEHASH.json');
@@ -520,10 +529,14 @@ console.log('\n[11] 국내 주당순자산 — DART 1차 출처 배선 (v6.9 · 
   /* (v6.10) 후행 EPS는 **compute를 고치지 않고** 들어간다 — Feff가 캐시(F)의 복사본이라
    * `epsTtm`을 심으면 기존 문으로 그대로 흐른다. PBR 때 compute를 고쳐야 했던 것은
    * 캐시에 **비율**밖에 없었기 때문이고, 여기는 같은 양이 다른 출처로 올 뿐이다. */
-  ok('후행 EPS는 캐시의 epsTtm에 심는다', /f\.epsTtm=ni\.ttm\/shares/.test(body), '');
+  ok('후행 EPS는 캐시의 epsTtm에 심는다', /f\.epsTtm=niUsed\/shares/.test(body), '');
   ok('야후 값을 덮지 않는다 (미국은 야후 경로)', /f\.epsTtm==null\|\|f\.epsTtmSrc==='dart'/.test(body));
   ok('출처와 기준을 남긴다', /f\.epsTtmSrc='dart'/.test(body)&&/epsTtmBasis/.test(body));
   ok('TTM이 없으면 사유만 남기고 심지 않는다', /f\.epsTtmWhy=ni\.why/.test(body));
+  /* (v6.12) 수집하고 안 그리면 없는 항목이다(§22-㉕) — v6.10의 epsTtmBasis가 그 상태였다 */
+  ok('PBR 칸에 어느 자본 기준인지 그린다', /const bpsNote=/.test(T)&&/지배주주지분 기준/.test(T)&&/자본총계 기준/.test(T));
+  ok('PER 칸에 후행 EPS 기준을 그린다', /const epsNote=/.test(T)&&/F\('per','PER \(비우면 자동\)'\+epsNote/.test(T));
+  ok('PBR 칸이 실제로 그 문구를 받는다', /F\('pbr','PBR \(비우면 자동\)'\+bpsNote/.test(T));
   ok('compute의 PER 경로는 손대지 않았다 (Feff.epsTtm 그대로)',
      /k\.perAuto=\(price>0&&Feff\.epsTtm!=null&&Feff\.epsTtm>0\)\?price\/Feff\.epsTtm:null/.test(T));
 }

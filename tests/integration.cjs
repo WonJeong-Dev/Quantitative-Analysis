@@ -106,3 +106,67 @@ test('fresh legacy revenue cache migrates once with cooldown; manual refresh alw
  assert.equal(vm.runInContext("summaryStale('X',false)",ctx),false);
  assert.equal(vm.runInContext("summaryStale('ETF',false)",ctx),false);
 });
+
+/* (v6.12) 지배주주 귀속 — **동작**으로 검사한다. 소스 정규식만으로는 폴백 경로가 돈다는
+ * 보장이 없고, 이 결함의 크기가 실측 26%였다(LG에너지솔루션 PBR 2.89→3.91).
+ * 분모(주식수)는 모회사 것이므로 분자도 지배주주 몫이어야 한다. */
+async function runDartBps(payload,fund){
+ const S={stocks:{KR_X:{market:'KR',code:'000660',name:'X'}},
+   cache:{KR_X:{fund:Object.assign({revenueBasis:{shares:100}},fund||{})}},
+   calc:{},settings:{proxy:'https://w.example/?url={url}'}};
+ await run(piece('const bpsPending={};','/* 애널리스트 요약 자동 조회'),
+   {S,assetType:()=>'stock',BPS_TTL:3*864e5,
+    fetchComplete:async()=>({ok:true,json:async()=>payload}),
+    saveCache:()=>{},compute:()=>({}),renderSoon:()=>{},encodeURIComponent},
+   'ensureDartBps("KR_X")');
+ return S.cache.KR_X.fund;
+}
+test('book value per share uses the parent shareholders equity when the worker reports it',async()=>{
+ /* 자본총계 1000 · 지배지분 740 · 비지배 260 (LG에너지솔루션 실측 26.2%와 같은 모양) */
+ const f=await runDartBps({equity:1000,cur:'KRW',at:'2026.06.30 현재',year:2026,rpt:'11012',fs:'CFS',
+   ni:{ttm:200,ytdDt:'2026.01.01 ~ 2026.06.30',fyYear:2025},
+   owners:{equity:740,nci:260,ttm:145}});
+ assert.equal(f.bps,7.4,'총계 10이 아니라 지배지분 7.4여야 한다');
+ assert.equal(f.bpsBasis,'owners');
+ assert.equal(f.bpsBasisWhy,null);
+ assert.equal(f.nciPct,26);
+ assert.equal(f.epsTtm,1.45,'총계 2가 아니라 지배주주 1.45여야 한다');
+ assert.match(f.epsTtmBasis,/지배주주순이익/);
+ assert.equal(f.epsTtmOwn,true);
+});
+test('book value per share falls back to total equity and says so when attribution is absent',async()=>{
+ /* 구버전 워커(owners 필드 없음) — 지금과 똑같이 동작하되 **기준을 밝혀야** 한다 */
+ const f=await runDartBps({equity:1000,cur:'KRW',at:'2026.06.30 현재',year:2026,rpt:'11012',fs:'CFS',
+   ni:{ttm:200,ytdDt:'d',fyYear:2025}});
+ assert.equal(f.bps,10);
+ assert.equal(f.bpsBasis,'total');
+ assert.match(f.bpsBasisWhy,/지배주주지분/);
+ assert.equal(f.nciPct,null,'모르는 값을 0으로 적지 않는다');
+ assert.equal(f.epsTtm,2);
+ assert.match(f.epsTtmBasis,/당기순이익\(총계\)/);
+ assert.equal(f.epsTtmOwn,false);
+});
+test('attribution reason from the worker is carried to the screen verbatim',async()=>{
+ const f=await runDartBps({equity:1000,cur:'KRW',year:2026,rpt:'11012',fs:'CFS',ni:{ttm:null,why:'전기 동기 누계 없음'},
+   owners:{equity:null,nci:null,ttm:null,why:'전체계정 조회 결과가 없습니다 (013)'}});
+ assert.equal(f.bpsBasis,'total');
+ assert.equal(f.bpsBasisWhy,'전체계정 조회 결과가 없습니다 (013)');
+ assert.equal(f.epsTtm,undefined,'TTM이 없으면 심지 않는다');
+ assert.equal(f.epsTtmWhy,'전기 동기 누계 없음');
+});
+test('a zero or negative parent equity is not trusted over the total', async()=>{
+ /* 0·음수는 '지배지분이 0'이 아니라 **읽기 실패**로 본다 — 0으로 나누면 PBR이 무한이 된다 */
+ for(const bad of [0,-5,null,NaN]){
+  const f=await runDartBps({equity:1000,cur:'KRW',year:2026,rpt:'11012',fs:'CFS',ni:{ttm:200,fyYear:2025},
+    owners:{equity:bad,nci:0,ttm:150}});
+  assert.equal(f.bps,10,'owners.equity='+bad+' 인데 그것을 썼다');
+  assert.equal(f.bpsBasis,'total');
+ }
+});
+test('a negative parent profit is used as is — the loss is the parents, not the groups', async()=>{
+ /* LG에너지솔루션 실측: 총계 −0.33조인데 지배주주는 −0.38조 — 총계를 쓰면 손실이 **작아** 보인다 */
+ const f=await runDartBps({equity:1000,cur:'KRW',year:2026,rpt:'11012',fs:'CFS',
+   ni:{ttm:-33,fyYear:2025},owners:{equity:800,nci:200,ttm:-38}});
+ assert.equal(f.epsTtm,-0.38);
+ assert.equal(f.epsTtmOwn,true);
+});

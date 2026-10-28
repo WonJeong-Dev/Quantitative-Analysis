@@ -3372,6 +3372,19 @@ function detailHTML(id){
   const fnd=(S.cache[id]&&S.cache[id].fund)||{};
   const autoHint=(v,unit)=>v!=null&&isFinite(v)?('자동 '+(+v).toFixed(0)+(unit||'')):'';
   const autoHint2=(v)=>v!=null&&isFinite(v)?('자동 '+(+v).toFixed(2)):'';   // (v4.28) 배수는 소수 2자리
+  /* (v6.12) **어느 자본·어느 순이익을 분자로 썼는지 적는다.** 수집하고 그리지 않으면 없는
+   * 항목이다(§22-㉕) — v6.10의 epsTtmBasis가 그 상태였다.
+   * 측정된 차이가 자본 최대 26.2%(LG에너지솔루션)·순이익 27.4%(삼성SDI)여서 '어느 기준인가'가
+   * 값 자체만큼 중요하다. 총계 기준으로 떨어진 경우에는 **그 사실과 이유**를 적는다. */
+  const bpsNote=(fnd.bpsSrc==='dart')
+    ? ' <small class="muted">'+((fnd.bpsBasis==='owners')
+        ? ('지배주주지분 기준'+((fnd.nciPct!=null&&fnd.nciPct!==0)?(' · 비지배 '+fnd.nciPct+'%'):''))
+        : ('자본총계 기준 — '+esc(fnd.bpsBasisWhy||'지배주주지분 미확보')))
+      +(fnd.bpsAt?(' · '+esc(fnd.bpsAt)):'')+'</small>'
+    : '';
+  const epsNote=(fnd.epsTtmSrc==='dart'&&fnd.epsTtmBasis)
+    ? ' <small class="muted">후행 '+esc(fnd.epsTtmBasis)+'</small>'
+    : ((fnd.epsTtmWhy)?' <small class="muted">후행 EPS — '+esc(fnd.epsTtmWhy)+'</small>':'');
   const manual='<div class="manual">'
     +F('myFair','내 적정가 ('+curSym(C)+')','직접 산정 값')
     +F('target','애널리스트 목표가','컨센서스 목표가')
@@ -3380,8 +3393,8 @@ function detailHTML(id){
     +F('opinion','종목의견 (표시 전용·미반영)','예: 3.9')
     +F('consensus','컨센서스 rec ★점수반영 (1=강력매수)','예: 1.2')
     +F('consensusDate','컨센서스 기준일 (표시용)','예: 2026-07-16')
-    +F('per','PER (비우면 자동)',autoHint2(k.perAuto)||'예: 32.5')
-    +F('pbr','PBR (비우면 자동)',autoHint2(k.pbrAuto)||'예: 8.4')
+    +F('per','PER (비우면 자동)'+epsNote,autoHint2(k.perAuto)||'예: 32.5')
+    +F('pbr','PBR (비우면 자동)'+bpsNote,autoHint2(k.pbrAuto)||'예: 8.4')
     +F('psr','PSR (비우면 자동)',autoHint2(k.psrAuto)||'예: 18.59')
     +SelVM('vmPer','PER 신뢰도',m)+SelVM('vmPbr','PBR 신뢰도',m)+SelVM('vmPsr','PSR 신뢰도',m)
     +F('roe','ROE % (비우면 자동)',autoHint(fnd.roe,'%')||'예: 22')
@@ -4312,7 +4325,21 @@ async function ensureDartBps(id){
       if(!(b&&b.equity>0)){ f.bpsWhy='DART 자본총계 미확보'+(b&&b.error?(' — '+b.error):''); f.bpsTs=Date.now(); return false; }
       if(b.cur&&b.cur!=='KRW'){ f.bpsWhy='DART 통화 '+b.cur+' — 원화가 아니어서 쓰지 않습니다'; f.bpsTs=Date.now(); return false; }
       if(!shares){ f.bpsWhy='상장주식수 미확보 — 주당순자산을 낼 수 없습니다'; f.bpsTs=Date.now(); return false; }
-      f.bps=b.equity/shares; f.bpsAt=b.at||null; f.bpsRpt=(b.year||'')+'/'+(b.rpt||'');
+      /* ===== (v6.12) 지배주주 귀속 — 분자와 분모를 맞춘다 =====
+       * 실측(2026-10-29, 11종목 전수): 지금까지 `자본총계`(비지배지분 포함)를 **모회사
+       * 주식수**로 나누고 있었다. 분자에 자회사 소수주주의 몫이 섞여 있는데 분모에는 없다.
+       *   LG에너지솔루션 26.2% · 카카오 21.8% · 현대차 9.7% · 삼성SDI 9.5%
+       *   → PBR 2.89→3.91 · 0.88→1.12 · 0.57→0.64 · 1.56→1.73
+       * 카카오는 '장부가 이하'에서 '장부가 이상'으로 **판정이 뒤집힌다.**
+       * ★ 워커가 구버전이면 owners 필드가 없다 → 지금과 똑같이 총계로 떨어지고, 화면에
+       *   '총계 기준'이라고 적는다. 값을 조용히 바꾸지 않는다(§22-⑯·㉕). */
+      const ow=b.owners||{};
+      const eqOwn=(ow.equity!=null&&isFinite(ow.equity)&&ow.equity>0)?+ow.equity:null;
+      const eqUsed=(eqOwn!=null)?eqOwn:b.equity;
+      f.bpsBasis=(eqOwn!=null)?'owners':'total';
+      f.bpsBasisWhy=(eqOwn!=null)?null:(ow.why||'워커가 지배주주지분을 주지 않습니다 — 자본총계 기준');
+      f.nciPct=(b.equity>0&&ow.nci!=null&&isFinite(ow.nci))?+(ow.nci/b.equity*100).toFixed(2):null;
+      f.bps=eqUsed/shares; f.bpsAt=b.at||null; f.bpsRpt=(b.year||'')+'/'+(b.rpt||'');
       f.bpsFs=b.fs||null; f.bpsSrc='dart'; f.bpsWhy=null; f.bpsTs=Date.now();
       /* (v6.10) 후행 EPS — 워커가 낸 TTM 순이익을 같은 주식수로 나눈다.
        * ★ compute는 손대지 않는다. `Feff`가 캐시(F)의 복사본이라 `epsTtm`을 심으면
@@ -4322,11 +4349,18 @@ async function ensureDartBps(id){
        * ★ 야후가 준 값을 덮지 않는다 — 미국 종목은 야후 경로가 맞다. 국내는 실측 0/11이라
        *   빈자리에만 들어간다. 출처를 남겨 어느 쪽인지 화면이 말할 수 있게 한다. */
       const ni=b.ni||{};
-      if(ni.ttm!=null&&isFinite(ni.ttm)&&(f.epsTtm==null||f.epsTtmSrc==='dart')){
-        f.epsTtm=ni.ttm/shares; f.epsTtmSrc='dart';
-        f.epsTtmAt=ni.ytdDt||null; f.epsTtmBasis=(ni.fyYear!=null?(ni.fyYear+' 연간 + 당기 누계 − 전기 동기 누계'):'연간');
+      /* (v6.12) 순이익도 같은 불일치였다. 실측: 삼성SDI 27.4% · 현대차 12.7% · 카카오 9.2% ·
+       * LG엔솔 −14.9%(모회사 손실이 총계보다 **크다** — 총계를 쓰면 손실이 작아 보인다). */
+      const niOwn=(ow.ttm!=null&&isFinite(ow.ttm))?+ow.ttm:null;
+      const niUsed=(niOwn!=null)?niOwn:((ni.ttm!=null&&isFinite(ni.ttm))?+ni.ttm:null);
+      if(niUsed!=null&&(f.epsTtm==null||f.epsTtmSrc==='dart')){
+        f.epsTtm=niUsed/shares; f.epsTtmSrc='dart';
+        f.epsTtmAt=ni.ytdDt||null;
+        f.epsTtmBasis=((niOwn!=null)?'지배주주순이익 · ':'당기순이익(총계) · ')
+          +(ni.fyYear!=null?(ni.fyYear+' 연간 + 당기 누계 − 전기 동기 누계'):'연간');
+        f.epsTtmOwn=(niOwn!=null);
         f.epsTtmWhy=null;
-      }else if(ni.ttm==null){ f.epsTtmWhy=ni.why||'TTM 순이익 미확보'; }
+      }else if(niUsed==null){ f.epsTtmWhy=ni.why||'TTM 순이익 미확보'; }
       saveCache(id,true,['fund']); S.calc[id]=compute(id); renderSoon();
       return true;
     }catch(e){ return false; }
@@ -4816,7 +4850,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.11.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.12.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

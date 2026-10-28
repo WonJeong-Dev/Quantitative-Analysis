@@ -102,7 +102,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 /* (v7.1) ★ 워커를 바꿀 때마다 올린다. v7.0에서 /dart를 더하고도 VER을 그대로 둬서,
  * /health가 'ver 7.0'을 돌려줘도 **그 7.0이 어느 7.0인지 알 수 없었다** — 배포됐는지
  * 확인할 방법이 없는 상태였다. 관측 장치가 두 상태를 구분하지 못하면 관측이 아니다(§22-㉒). */
-const VER = '7.6';
+const VER = '7.7';
 
 /* ============ (v6.9) CORS — `*`를 버리고 허용 Origin만 반사한다 ============
  * v6.8은 `Allow-Origin: *` + `Allow-Headers: *`였다. 인증이 없던 시절엔 어차피 공개라
@@ -1067,8 +1067,8 @@ async function route(request, env, u) {
              *     TTM = 직전 사업연도 전체 + 당기 YTD − 전기 동기 YTD
              * 같은 응답에 `frmtrm_amount`(전기 동기 YTD)가 함께 오므로 **추가 호출은 연간 하나**다.
              * 최신 보고서가 사업보고서(11011)면 그 자체가 1년치이므로 TTM = 그 값이다. */
-            const niRow = rows.find(r3 => r3.fs_div === fsd && r3.sj_div === 'IS' && /당기순이익/.test(r3.account_nm || ''));
             const cash = v => { const n3 = Number(String(v == null ? '' : v).replace(/,/g, '')); return isFinite(n3) ? n3 : null; };
+            const niRow = rows.find(r3 => r3.fs_div === fsd && r3.sj_div === 'IS' && /당기순이익/.test(r3.account_nm || ''));
             const ni = { ytd: null, ytdPrev: null, ytdDt: null, ytdPrevDt: null, fy: null, fyYear: null, ttm: null, why: null };
             if (!niRow) { ni.why = '당기순이익 행 없음'; }
             else {
@@ -1086,8 +1086,73 @@ async function route(request, env, u) {
                 else ni.ttm = ni.fy + ni.ytd - ni.ytdPrev;
               }
             }
+            /* ================= (v7.7) 지배주주 귀속 — 분자와 분모를 맞춘다 =================
+             * 실측(2026-10-29, 11종목 전수)으로 드러난 결함이다. 주요계정(fnlttSinglAcnt)에는
+             * **지배기업 소유주지분이 없다** — 그래서 지금까지 `자본총계`와 `당기순이익`(둘 다
+             * 비지배지분 포함)을 **모회사 주식수**로 나누고 있었다. 분자에는 자회사 소수주주의
+             * 몫이 섞여 있는데 분모에는 없다 — 분자·분모 불일치다(반복 유형 ①).
+             *
+             * 측정된 오차(2026.06.30 · CFS):
+             *   자본:  LG에너지솔루션 26.2% · 카카오 21.8% · 현대차 9.7% · 삼성SDI 9.5%
+             *          → PBR 2.89→3.91 · 0.88→1.12 · 0.57→0.64 · 1.56→1.73
+             *   순이익: 삼성SDI 27.4% · 현대차 12.7% · 카카오 9.2% · LG엔솔 −14.9%
+             * 카카오는 '장부가 이하(0.88)'에서 '장부가 이상(1.12)'으로 **판정이 뒤집힌다.**
+             *
+             * 전체계정(fnlttSinglAcntAll)에는 IFRS 표준 태그로 들어 있다. 그래서 **주요계정을
+             * 그대로 두고**(보고서 탐색·통화·기간·전기동기 항등식이 거기서 나온다) 고른
+             * 보고서에 대해서만 전체계정을 한 번 더 불러 귀속 행을 읽는다. 호출은 종목당 +2.
+             *
+             * ★ 경로를 바꾸지 않고 **필드를 더한다.** 구버전 앱은 새 필드를 모르고 지금처럼
+             *   동작하고, 새 앱은 워커가 구버전이면 필드가 없어 총계로 떨어진다 — 어느 쪽을
+             *   먼저 배포해도 깨진 창이 생기지 않는다(v6.9 /dartequity 사고의 교훈).
+             * ★ 귀속 행이 없으면 **0으로 메우지 않는다.** null로 두고 ownersWhy에 이유를 적어
+             *   앱이 '총계 기준'임을 화면에 밝히게 한다(§22-⑫ null≠0 · ㉕ 수집하고 안 그리면 없다).
+             * ★ 전체계정은 행이 150~276개다. BS 행은 **앞쪽 40~75행**에 오므로 상한에 걸리지
+             *   않지만, 그래도 받은 행수와 전체 행수를 함께 돌려준다 — '없음'과 '잘림'을
+             *   구분하지 못하면 계측기가 거짓말을 한다(§22-㉒, pick 상한 8 때와 같은 유형). */
+            const EQ_OWN = 'ifrs-full_EquityAttributableToOwnersOfParent';
+            const EQ_NCI = 'ifrs-full_NoncontrollingInterests';
+            const NI_OWN = 'ifrs-full_ProfitLossAttributableToOwnersOfParent';
+            const allOf = async (yy2, rc2) => {
+              const aj = await jread(await dq('fnlttSinglAcntAll.json',
+                { corp_code: corp, bsns_year: String(yy2), reprt_code: rc2, fs_div: fsd }));
+              const ls = (aj && Array.isArray(aj.list)) ? aj.list : [];
+              return { rows: ls, n: ls.length, status: aj ? aj.status : null };
+            };
+            const pickRow = (ls, id2, sjs) => ls.find(r5 =>
+              r5.account_id === id2 && (!sjs || sjs.indexOf(r5.sj_div) >= 0)) || null;
+            const owners = { equity: null, nci: null, niYtd: null, niYtdPrev: null, niFy: null, ttm: null,
+              rows: null, why: null };
+            try {
+              const A = await allOf(yy, rc);
+              owners.rows = A.n;
+              if (!A.n) { owners.why = '전체계정 조회 결과가 없습니다 (' + (A.status || '?') + ')'; }
+              else {
+                const eo = pickRow(A.rows, EQ_OWN, ['BS']), en = pickRow(A.rows, EQ_NCI, ['BS']);
+                owners.equity = eo ? cash(eo.thstrm_amount) : null;
+                owners.nci = en ? cash(en.thstrm_amount) : null;
+                /* 귀속 행이 아예 없는 회사도 있다(비지배지분이 없으면 행을 내지 않는다).
+                 * 그때는 자본총계 = 지배주주지분이므로 **총계를 그대로 귀속값으로 쓴다.**
+                 * 단 그 판단의 전제는 'BS 행을 전부 받았다'이므로 조건을 명시한다. */
+                const bsN = A.rows.filter(r5 => r5.sj_div === 'BS').length;
+                if (owners.equity == null && bsN > 0 && A.n < 200) { owners.equity = num2; owners.why = '지배지분 행 없음 — 비지배지분이 없는 것으로 보아 총계를 씁니다'; }
+                else if (owners.equity == null) owners.why = '지배지분 행을 찾지 못했습니다 (행 ' + A.n + ')';
+                const no = pickRow(A.rows, NI_OWN, ['IS', 'CIS']);
+                if (no) {
+                  owners.niYtd = cash(no.thstrm_amount);
+                  owners.niYtdPrev = cash(no.frmtrm_amount);
+                  if (rc === '11011') { owners.niFy = owners.niYtd; owners.ttm = owners.niYtd; }
+                  else if (owners.niYtd != null && owners.niYtdPrev != null) {
+                    const B = await allOf(yy - 1, '11011');
+                    const nf = B.n ? pickRow(B.rows, NI_OWN, ['IS', 'CIS']) : null;
+                    owners.niFy = nf ? cash(nf.thstrm_amount) : null;
+                    if (owners.niFy != null) owners.ttm = owners.niFy + owners.niYtd - owners.niYtdPrev;
+                  }
+                }
+              }
+            } catch (e2) { owners.why = '전체계정 조회 실패: ' + String(e2).slice(0, 80); }
             return json({ code, corp, equity: num2, fs: fsd, cur: e.currency || null,
-              at: e.thstrm_dt || null, term: e.thstrm_nm || null, year: yy, rpt: rc, tried, ni });
+              at: e.thstrm_dt || null, term: e.thstrm_nm || null, year: yy, rpt: rc, tried, ni, owners });
           }
         }
         return json({ code, corp, error: '자본총계를 찾지 못했습니다', tried }, 200);

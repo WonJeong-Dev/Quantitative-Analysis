@@ -11,7 +11,11 @@ const PIN=path.join(__dirname,'..','docs','WORKERHASH.json');
 const src=fs.readFileSync(SRC,'utf8');
 const ver=(src.match(/const VER = '([^']+)'/)||[])[1]||null;
 const hash=crypto.createHash('sha256').update(src,'utf8').digest('hex').slice(0,16);
-const out={주석:'워커 소스가 바뀌면 VER을 올리고 `node scripts/workerhash.cjs --write`로 다시 찍는다',ver,hash};
+/* (v6.11) 받는 경로도 함께 찍는다 — 경로가 사라졌는지를 네트워크 없이 보려면 기준이 필요하다.
+ * tests/worker-contract.cjs 가 이 목록과 현재 소스를 대조한다. */
+const paths=[...new Set([...src.matchAll(/pathname\s*===\s*'(\/[a-z][a-z0-9-]*)'/g)].map(m=>m[1]))].sort();
+const out={주석:'워커 소스가 바뀌면 VER을 올리고 `node scripts/workerhash.cjs --write`로 다시 찍는다. '
+  +'paths는 워커가 받는 경로 — 경로를 지우려면 한 판 동안 별칭을 남기거나 앱을 먼저 배포한 뒤 다시 찍는다',ver,hash,paths};
 if(process.argv.includes('--write')){ fs.writeFileSync(PIN,JSON.stringify(out,null,2)+'\n'); console.log('wrote '+PIN); }
-console.log(JSON.stringify({ver,hash}));
-module.exports={ver,hash,PIN,SRC};
+console.log(JSON.stringify({ver,hash,paths}));
+module.exports={ver,hash,paths,PIN,SRC};
