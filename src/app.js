@@ -1339,7 +1339,19 @@ function compute(id,simPrice){
   k.epsFwdEff=(Feff.epsFwd!=null&&isFinite(Feff.epsFwd))?Feff.epsFwd:null;   // (v4.35) 판단 감사 로그용
   k.psrAuto=(price>0&&Feff.revPS!=null&&Feff.revPS>0)?price/Feff.revPS
            :(revenueReady?revenueProof.psrQuote:null);
-  k.pbrAuto=(F.pbrY!=null&&isFinite(F.pbrY)&&fxq!=null&&fxq>0)?F.pbrY/fxq:null;
+  /* (v6.9) ★ 주당순자산이 있으면 **현재가로 직접 나눈다** — 바로 위 주석이
+   * "PBR은 주당순자산을 받지 않으므로 야후 값을 환산만 한다"고 적고 있었는데, 그 제약이
+   * 사라졌다. 야후는 KRX 티커에 priceToBook을 **한 건도** 주지 않는다(실측 0/11).
+   * 그래서 국내 11종목은 장부가 축이 통째로 막혀 있었고, SK하이닉스·삼성전자는 무성장
+   * 가치가 아예 없었다. 이제 DART 보고서의 자본총계 ÷ 상장주식수를 캐시에 심는다(F.bps).
+   * ★ 비율이 아니라 **주당순자산**을 저장하는 이유: 그래야 PER·PSR과 같이 장중 가격에
+   *   반응한다. 야후 스냅샷 비율은 조회 시점 가격에 굳어 움직이지 않는다.
+   * ★ 야후 값은 폴백으로 남긴다 — 미국 종목은 여전히 그 경로다. */
+  const bpsQ=(F.bps!=null&&isFinite(F.bps)&&F.bps>0)?+F.bps:null;
+  k.bpsQ=bpsQ; k.bpsAt=F.bpsAt||null;
+  k.pbrAuto=(price>0&&bpsQ!=null)?price/bpsQ
+           :((F.pbrY!=null&&isFinite(F.pbrY)&&fxq!=null&&fxq>0)?F.pbrY/fxq:null);
+  k.pbrSrc=(price>0&&bpsQ!=null)?'dart':((k.pbrAuto!=null)?'yahoo':null);
   // 교차검증용 원값 — 자기점검 패널에서 야후 스냅샷과 재계산값의 정합을 눈으로 본다.
   k.psrY=(F.psrY!=null&&isFinite(F.psrY))?+F.psrY:null;
   k.psrNoFx=(price>0&&F.revPS!=null&&F.revPS>0)?price/F.revPS:null;
@@ -3852,7 +3864,14 @@ const CONST_LOG=[
 function constNow(){ const m={}; for(const r of CONST_LOG)m[r.k]=r; return m; }
 /* ★ 판정 로직 버전. 이 값이 바뀌면 그 이전 로그와 이후 로그를 **같은 평균에 넣으면 안 된다**.
  * 판정에 영향을 주는 변경(임계값·게이트·등급식)이 있을 때만 올린다 — 표시 전용 변경은 그대로 둔다. */
-const RULE_VER='v6.1';   /* (v6.0) 판정 변경 — 상승여력의 기준을 '적정가 혼합'에서 '애널 목표가'로.
+const RULE_VER='v6.2';   /* (v6.2) 판정 변경 — 국내 종목의 PBR이 **처음으로 생긴다.**
+                          * 야후는 KRX 티커에 priceToBook을 한 건도 주지 않아(실측 0/11) 국내
+                          * 11종목의 장부가 축이 통째로 막혀 있었다. DART 보고서의 자본총계를
+                          * 상장주식수로 나눠 주당순자산을 캐시에 심고, compute가 현재가로 직접
+                          * 나눈다(PER·PSR과 같은 방식). 입력이 늘어 **판정이 달라진다** — 그래서
+                          * 올린다. 대가는 실측했다: 현행 v6.1의 누적 판정 로그는 **2거래일**뿐이다
+                          * (판당 평균 6.3거래일 · 🩺 승급 전망 참조). 지금이 가장 싼 시점이다.
+                          * (v6.0) 판정 변경 — 상승여력의 기준을 '적정가 혼합'에서 '애널 목표가'로.
   * v4.4가 모든 종목에 ×0.5를 넣으면서 v4.3 눈금의 임계 20/25/30을 다시 보지 않아 실효 임계가
   * 40/50/60이 돼 있었다(실측: 60종목 전부 기준일 불명, tgtF.f의 서로 다른 값이 단 2개).
   * 임계는 그대로 두고 **임계가 보는 양**을 이름이 약속하는 것으로 되돌린다.
@@ -4258,6 +4277,43 @@ function newsSectionHTML(id,st){
   return '<div class="dsec">새 소식 <small>구글뉴스 최신 헤드라인 — 정성 이벤트는 사람이 판단</small></div>'
     +'<div class="newsbox" data-id="'+esc(id)+'">'+newsInnerHTML(id,st)+'</div>';
 }
+/* (v6.9) ★ 국내 종목의 주당순자산 — DART 1차 출처.
+ * 야후는 KRX 티커에 후행 재무를 주지 않는다(PBR 0/11 · 후행 EPS 0/11, 실측 2026-10-28).
+ * 워커 /dartequity 가 보고서의 **자본총계**를 돌려주고, 여기서 상장주식수로 나눠 캐시에 심는다.
+ * ★ 기준일이 결정적이다 — 같은 종목의 자본총계가 2025.12.31 120.7조 → 2026.06.30 262.7조였다.
+ *   낡은 사업보고서를 쓰면 PBR이 4.2배 대신 9.1배로 나온다. 워커가 최신 보고서를 역순 탐색한다.
+ * ★ 통화·주식수가 맞지 않으면 **심지 않는다.** 모르는 값을 지어내면 PBR이 조용히 몇 배 틀린다.
+ * 캐시 3일: 재무제표는 분기(약 60거래일)마다 바뀌므로 넉넉히 보수적이다(새 임계가 아니라 주기의 하한). */
+const BPS_TTL=3*864e5;
+const bpsPending={};
+async function ensureDartBps(id){
+  const st=S.stocks[id]; if(!st||st.market!=='KR'||assetType(st)==='etf')return false;
+  const f=(S.cache[id]||{}).fund; if(!f)return false;
+  if(f.bps!=null&&f.bpsTs&&(Date.now()-f.bpsTs)<BPS_TTL)return false;
+  if(bpsPending[id])return bpsPending[id];
+  const code=String(st.code||st.symbol||'').replace(/[^0-9]/g,'').slice(0,6);
+  if(code.length!==6)return false;
+  const p=S.settings.proxy; if(!p||!p.includes('{url}'))return false;
+  const base=p.split('?')[0].replace(/\/+$/,''); if(!/^https:\/\//.test(base))return false;
+  bpsPending[id]=(async()=>{
+    try{
+      const r=await fetchComplete(base+'/dartequity?code='+encodeURIComponent(code));
+      if(!r.ok)return false;
+      const b=await r.json();
+      const rb=f.revenueBasis||{}, shares=(rb.shares>0)?+rb.shares:null;
+      /* 셋 중 하나라도 어긋나면 심지 않고 **사유만** 남긴다(§22-⑯). */
+      if(!(b&&b.equity>0)){ f.bpsWhy='DART 자본총계 미확보'+(b&&b.error?(' — '+b.error):''); f.bpsTs=Date.now(); return false; }
+      if(b.cur&&b.cur!=='KRW'){ f.bpsWhy='DART 통화 '+b.cur+' — 원화가 아니어서 쓰지 않습니다'; f.bpsTs=Date.now(); return false; }
+      if(!shares){ f.bpsWhy='상장주식수 미확보 — 주당순자산을 낼 수 없습니다'; f.bpsTs=Date.now(); return false; }
+      f.bps=b.equity/shares; f.bpsAt=b.at||null; f.bpsRpt=(b.year||'')+'/'+(b.rpt||'');
+      f.bpsFs=b.fs||null; f.bpsSrc='dart'; f.bpsWhy=null; f.bpsTs=Date.now();
+      saveCache(id,true,['fund']); S.calc[id]=compute(id); renderSoon();
+      return true;
+    }catch(e){ return false; }
+    finally{ delete bpsPending[id]; }
+  })();
+  return bpsPending[id];
+}
 /* 애널리스트 요약 자동 조회 — 개인 워커의 /summary 엔드포인트 (야후 quoteSummary,
  * 쿠키·크럼 인증을 워커가 서버 측에서 대행). 값 변화가 느려 3일 캐시. */
 /* (v4.11) 요약 조회 필요 여부 — 아래 두 곳이 같은 식을 쓰게 한 곳에 모은다.
@@ -4434,6 +4490,7 @@ async function fetchSummary(id,force,quiet){
     if(!S.cache[id])S.cache[id]={};
     S.cache[id].ana=ana;
     if(fund&&(fund.roe!=null||fund.margin!=null||fund.revG!=null||fund.epsG!=null||fund.de!=null||fund.epsFwd!=null||fund.revPS!=null)) S.cache[id].fund=fund;
+    ensureDartBps(id);   // (v6.9) 국내 종목의 주당순자산 — 야후가 주지 않는 값(실측 0/11)
     /* (v4.29) 통화가 다르면 환율이 필요하다. 순서가 중요하다:
      *  ① 워커가 이미 확정해 보냈으면(F.fx) 그대로 쓴다 — 브라우저는 아무것도 더 하지 않는다.
      *     같은 통화쌍을 쓰는 다른 종목이 곧바로 쓰도록 S.fx에도 심어 둔다.
@@ -4739,7 +4796,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.8.5 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.9.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

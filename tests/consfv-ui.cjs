@@ -494,6 +494,31 @@ console.log('\n[10d] 목록 헤더 — 열 이름과 열 내용이 한 정의에
      hd.indexOf('적정목표가')<0&&hd.indexOf('규칙 후보등급')<0&&hd.indexOf('가격매력')<0
      &&hd.indexOf('신뢰도')<0&&hd.indexOf('닿을 확률')<0, hd); }
 
+console.log('\n[11] 국내 주당순자산 — DART 1차 출처 배선 (v6.9 · 규칙 v6.2)');
+/* ★ 야후는 KRX 티커에 priceToBook을 **한 건도** 주지 않는다(실측 0/11, 2026-10-28).
+ * 그래서 국내 11종목은 장부가 축이 통째로 막혀 있었고 SK하이닉스·삼성전자는 무성장 가치가
+ * 아예 없었다. DART 보고서의 자본총계 ÷ 상장주식수를 캐시에 심고, compute가 **현재가로 직접**
+ * 나눈다 — 비율을 저장하면 조회 시점 가격에 굳어 장중에 안 움직인다. */
+{
+  ok('compute가 주당순자산(F.bps)을 읽는다', /const bpsQ=\(F\.bps!=null/.test(T));
+  ok('현재가로 직접 나눈다 (스냅샷 비율이 아니다)', /k\.pbrAuto=\(price>0&&bpsQ!=null\)\?price\/bpsQ/.test(T));
+  ok('야후 값은 폴백으로 남는다 (미국 종목 경로)', /F\.pbrY!=null&&isFinite\(F\.pbrY\)&&fxq!=null&&fxq>0\)\?F\.pbrY\/fxq/.test(T));
+  ok('출처를 기록한다', /k\.pbrSrc=/.test(T)&&/'dart'/.test(T)&&/'yahoo'/.test(T));
+  ok('기준일도 함께 둔다 (어느 시점 자본총계인지 모르면 믿을 수 없다)', /k\.bpsAt=F\.bpsAt/.test(T));
+  const col=T.slice(T.indexOf('async function ensureDartBps'));
+  const body=col.slice(0,col.indexOf('\n}'));
+  ok('국내 주식에만 건다', /st\.market!=='KR'/.test(body)&&/assetType\(st\)==='etf'/.test(body));
+  /* 셋 중 하나라도 어긋나면 **심지 않고 사유만** 남긴다 — 지어내면 PBR이 조용히 몇 배 틀린다. */
+  ok('자본총계가 없으면 심지 않는다', /b&&b\.equity>0/.test(body)&&/bpsWhy='DART 자본총계 미확보/.test(body));
+  ok('통화가 원화가 아니면 심지 않는다', /b\.cur!=='KRW'/.test(body)&&/원화가 아니어서 쓰지 않습니다/.test(body));
+  ok('상장주식수가 없으면 심지 않는다', /상장주식수 미확보/.test(body));
+  ok('비율이 아니라 주당순자산을 저장한다', /f\.bps=b\.equity\/shares/.test(body));
+  ok('하루에 몇 번씩 부르지 않는다 (재무제표는 분기마다 바뀐다)', /BPS_TTL/.test(body));
+  ok('같은 종목을 동시에 두 번 부르지 않는다', /bpsPending/.test(body));
+  const pin=require('../docs/RULEHASH.json');
+  ok('판정 입력이 늘었으므로 RULE_VER을 올렸다 (v6.2)', pin.ruleVer==='v6.2', pin.ruleVer);
+}
+
 console.log('\n────────────────────────────');
 console.log(pass+' passed · '+fail+' failed');
 process.exit(fail?1:0);
