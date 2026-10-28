@@ -4707,7 +4707,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.5.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.5.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -4730,8 +4730,14 @@ function diagCollect(){
     칸별정보량:(function(){
       const st=rows.filter(r=>r.k&&r.k.assetType!=='etf'&&r.k.price!=null);
       const rc=(typeof riskCtx==='function')?riskCtx():null;
-      const col=(name,f)=>{
-        const v=st.map(r=>{ try{ const x=f(r); return (x==null||x==='')?null:String(x); }catch(e){ return null; } });
+      /* (v6.5.1) ★ 칸마다 **모집단이 다르다.** 첫 실측에서 이 계측기가 거짓 양성 둘을 냈다 —
+       * 「등급 빈칸 52%」와 「수량 빈칸 52%」. 탈락 종목은 등급도 수량도 **없는 것이 정상**이고
+       * (관문을 못 넘었으니 후보가 아니다), 그 31종목을 분모에 넣으면 정상 상태가 경고로 뜬다.
+       * 경고를 울리는 계측기가 정상에서 울리면 아무도 읽지 않게 된다(§22-㉒).
+       * 그래서 칸마다 "이 칸에 값이 **있어야 하는** 행"을 함께 적는다. */
+      const col=(name,f,pop)=>{
+        const base=pop?st.filter(r=>{ try{ return !!pop(r); }catch(e){ return false; } }):st;
+        const v=base.map(r=>{ try{ const x=f(r); return (x==null||x==='')?null:String(x); }catch(e){ return null; } });
         const fill=v.filter(x=>x!=null);
         const c={}; for(const x of fill)c[x]=(c[x]||0)+1;
         const top=Object.keys(c).sort((a,b)=>c[b]-c[a])[0];
@@ -4745,12 +4751,15 @@ function diagCollect(){
       };
       return [
         col('판정',r=>{const x=verdictOf(r.id);return x?x.w:null;}),
-        col('등급',r=>r.k.tier||null),
+        /* 등급·수량의 모집단은 **관문을 넘은 종목**이다 — 탈락에 등급이 없는 것은 결함이 아니다. */
+        col('등급',r=>r.k.tier||null,r=>!!r.k.tier),
         col('신뢰도',r=>{const e=evidenceOf(r.k);return e&&e.dens!=null?e.dens+'%':null;}),
         col('도달확률',r=>{const c2=cfvOf(r.id);return (c2&&c2.limitProb!=null)?(Math.round(c2.limitProb*100)+'%'):null;}),
         col('지정가',r=>{const c2=cfvOf(r.id);return (c2&&c2.limit!=null)?Math.round(c2.limit):null;}),
-        col('수량',r=>{ if(!r.k.tier)return null; const s2=sizeOf(r.id,cfvOf(r.id),rc);
-          return (s2&&s2.qty!=null)?(s2.qty>0?'제안':'0주'):null; })
+        /* 수량은 **주수 자체**를 센다. '제안/0주'로 접으면 값이 둘뿐이라 늘 상수로 보인다 —
+         * 계측기가 자기 요약 때문에 경고하는 꼴이 된다. 배선이 끊기면 빈칸 비율이 잡아낸다. */
+        col('수량',r=>{ const s2=sizeOf(r.id,cfvOf(r.id),rc); return (s2&&s2.qty!=null)?s2.qty:null; },
+          r=>!!r.k.tier)
       ];
     })(),
     상수부채:CONST_LOG.filter(r=>/부채/.test(String(r.cls||''))).map(r=>r.k+'='+r.v+' ['+r.ver+']'),

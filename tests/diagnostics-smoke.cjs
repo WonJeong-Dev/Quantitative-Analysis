@@ -249,6 +249,30 @@ console.log('\n[10] 칸별 정보량 — 상수가 된 칸과 끊긴 배선을 �
   const d4=M.diagCollect(), C4=d4.칸별정보량||[];
   ok('표본 10 미만에서는 경고하지 않는다', C4.every(x=>x.경고==null),
      JSON.stringify(C4.map(x=>x.칸+':'+x.경고)));
+
+  /* ★ (v6.5.1) 칸마다 모집단이 다르다. 첫 실측에서 이 계측기가 **정상 상태에 경고를 냈다** —
+   * 탈락 종목(등급·수량이 없는 것이 정상)을 분모에 넣어 「등급 빈칸 52%」가 떴다.
+   * 경고가 정상에서 울리면 아무도 읽지 않게 된다(§22-㉒). 탈락을 섞어도 조용해야 한다. */
+  for(const k of Object.keys(S.stocks)){ delete S.stocks[k]; delete S.calc[k]; delete S.cache[k]; }
+  for(const k of Object.keys(COLSTUB))delete COLSTUB[k];
+  for(let i=0;i<24;i++){ const id='US_E'+i, passed=(i<12);
+    S.stocks[id]={market:'US',symbol:'E'+i,name:'E'+i};
+    S.cache[id]={fund:{roe:10},ana:{ts:Date.now()}};
+    S.calc[id]={assetType:'stock',price:100+i,tier:passed?['상','중','하'][i%3]:null,dens:40+i*2};
+    COLSTUB[id]={w:passed?'추천':'탈락',prob:0.2+i*0.01,limit:90+i,qty:passed?(10+i):null}; }
+  const d5=M.diagCollect(), by5=n=>(d5.칸별정보량||[]).find(x=>x.칸===n)||{};
+  ok('등급의 분모는 관문을 넘은 종목뿐이다 (탈락 12종 제외)',
+     by5('등급').표본===12&&by5('등급').채움===12&&by5('등급').경고==null,
+     '표본 '+by5('등급').표본+' 채움 '+by5('등급').채움+' 경고 '+by5('등급').경고);
+  ok('수량도 같은 분모를 쓴다', by5('수량').표본===12&&by5('수량').경고==null,
+     '표본 '+by5('수량').표본+' 경고 '+by5('수량').경고);
+  ok('수량은 주수 자체를 센다 (제안/0주로 접지 않는다)', by5('수량').서로다른값===12,
+     by5('수량').서로다른값);
+  ok('판정은 전 종목이 분모다', by5('판정').표본===24, by5('판정').표본);
+  /* 분모가 맞아도 **배선이 끊기면** 여전히 잡아야 한다 — 통과 종목의 수량을 전부 없앤다. */
+  for(let i=0;i<12;i++)COLSTUB['US_E'+i].qty=null;
+  const d6=M.diagCollect(), q6=(d6.칸별정보량||[]).find(x=>x.칸==='수량')||{};
+  ok('분모를 좁혀도 끊긴 배선은 잡는다 (빈칸 100%)', /빈 칸 100%/.test(q6.경고||''), q6.경고);
 }
 
 console.log('\n────────────────────────────');
