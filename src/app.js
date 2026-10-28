@@ -2739,9 +2739,16 @@ function topShare(parts,w,labels){
   }
   return (tw>0&&best)?{share:Math.round(best.w/tw*100),label:best.label}:null;
 }
-function evidenceOf(k){
+/* (v6.6) ★ 「신뢰도」 칸은 상수여서 쓸모없었던 것이 아니라, **재는 것과 읽히는 것이 달랐다.**
+ * dens는 **점수 성분**(종합점수·가격매력도)의 도착률만 잰다. 가치 입력(후행 EPS·PBR·주당매출)
+ * 은 한 톨도 들어가 있지 않다. 실측 2026-10-28: 60종목 중 56개(93%)가 「신뢰도 100%」였고,
+ * **그중 13종목은 무성장 가치를 만들 방법이 하나도 없었다** — SK하이닉스·삼성전자·삼성SDI·
+ * LG에너지솔루션 … 「신뢰도 100%」와 「가치 근거 0종」이 같은 행에 나란히 떠 있었다.
+ * ★ 둘을 하나로 뭉개지 않는다(§22-⑫). 가치 근거는 **개수**로, 점수 입력은 **비율**로 따로 적는다.
+ *   뭉개면 어느 쪽이 비었는지 사라지고, 그게 바로 지금까지 일어난 일이다. */
+function evidenceOf(k,id){
   if(!k)return null;
-  if(k.assetType==='etf')return {dens:null,lop:null,why:'ETF는 재무 성분이 구조적으로 없어 밀도를 내지 않습니다'};
+  if(k.assetType==='etf')return {dens:null,vn:null,vskip:[],lop:null,why:'ETF는 재무 성분이 구조적으로 없어 밀도를 내지 않습니다'};
   const mw=Math.max(k.qMissW||0,k.aMissW||0);
   const parts=[];
   if(k.qMissW>0)parts.push('종합점수 '+k.qMissW+'% ('+(k.qMiss||[]).join(' · ')+')');
@@ -2750,7 +2757,11 @@ function evidenceOf(k){
   const ta=topShare(k.aParts,S.settings.aw||AW_DEF,AW_LABELS);
   const cand=[tq&&Object.assign({src:'종합점수'},tq),ta&&Object.assign({src:'가격매력도'},ta)].filter(Boolean);
   const lop=cand.length?cand.slice().sort((a,b)=>b.share-a.share)[0]:null;
+  /* 가치 근거 = 무성장 가치가 실제로 쓴 방법의 수(참고 제외). 0이면 재무제표로는
+   * 이 종목의 값을 전혀 매기지 못한 것이다 — 점수 입력이 다 와 있어도 그렇다. */
+  const cv=(id!=null&&typeof cfvOf==='function')?cfvOf(id):null;
   return {dens:Math.max(0,Math.min(100,100-mw)),lop:lop,
+          vn:(cv?cv.n:null), vskip:((cv&&cv.skipped)||[]).map(m=>m.label+' — '+m.why),
           why:parts.join(' / ')||'결측 없음'};
 }
 /* ==========================================================================
@@ -2904,11 +2915,24 @@ function exHTML(k,cfv,sz){
    *   가격이다. 또렷한 숫자로 두면 실행 가능한 계획처럼 보인다. 숨기지는 않는다(§22-⑯). */
   const pp=cfv.limitProb*100, faint=pp<PROB_FAINT*100;
   const ptxt=pp<1?'<1%':(Math.round(pp)+'%');
+  /* (v6.6) ★ 캡션에서 도달확률을 앞세우지 않는다. 지정가가 min(가치 축, 50% 도달가)이므로
+   * **확률이 바인딩이면 그 값은 정확히 50%다** — 설계값이지 관측값이 아니다. 실측 2026-10-28:
+   * 60종목 중 53개(88%)가 「50%」로 똑같이 찍혀, 그 칸이 자리를 차지하고 정보를 주지 않았다.
+   * 변별력은 **얼마나 싸게 사는가**에 있다(할인율 59종). 할인율을 앞에 두고, 도달확률은
+   * 50%에서 **벗어났을 때만**(가치 축이 바인딩일 때) 덧붙인다 — 벗어난 것이 곧 정보다.
+   * 숨기는 것이 아니다: 설계값 50%는 범례가 한 번 말하고, 툴팁이 매 행에서 다시 말한다. */
+  const disc=(k.price>0)?((cfv.limit/k.price-1)*100):null;
+  const designed=(cfv.bind==='prob');
+  const tip=CFV_H+'거래일 안에 이 가격에 한 번이라도 닿을 확률은 '+ptxt+'입니다 — 실현변동성·드리프트 0 가정. '
+    +(designed?('지정가가 '+CFV_H+'거래일 50% 도달가로 정해졌으므로 이 값은 설계상 50%입니다 — 관측이 아니라 기준이라 줄에 적지 않습니다.')
+              :('가치 축(현재 적정가)이 50% 도달가보다 낮아 지정가가 그쪽으로 내려갔습니다 — 그래서 확률이 50%가 아니고, 그 사실을 줄에 적습니다.'))
+    +(faint?(' '+Math.round(PROB_FAINT*100)+'% 미만이라 흐리게 뒀습니다: 값은 맞지만 이 기간 안에 실행될 일이 거의 없습니다.'):'');
   return '<div class="pline"><span class="p'+(faint?' faint':'')+'">'
     +curSym(k.currency)+fmtP(cfv.limit,k.currency)+'</span></div>'
-    +'<div class="pr'+(faint?' faint':'')+'" title="'+esc(CFV_H+'거래일 안에 이 가격에 한 번이라도 닿을 확률 — 실현변동성·드리프트 0 가정'
-      +(faint?(' · '+Math.round(PROB_FAINT*100)+'% 미만이라 흐리게 뒀습니다: 값은 맞지만 이 기간 안에 실행될 일이 거의 없습니다'):''))+'">'
-    +CFV_H+'거래일 내 도달 확률 <b>'+ptxt+'</b></div>'
+    +'<div class="pr'+(faint?' faint':'')+'" title="'+esc(tip)+'">'
+    +(disc!=null?('현재가 대비 <b>'+fmtPct(disc)+'</b>'):'')
+    +(designed?'':((disc!=null?' · ':'')+CFV_H+'거래일 내 도달 <b>'+ptxt+'</b>'))
+    +'</div>'
     +qtyHTML(k,sz);
 }
 /* 수량 줄 — 「틀렸을 때 얼마를 잃기로 했는가」가 먼저다. 수량은 그 결과일 뿐이다. */
@@ -2926,10 +2950,10 @@ function qtyHTML(k,sz){
     +'</div>';
 }
 /* 목록 '근거' 칸 */
-function evHTML(k){
-  const e=evidenceOf(k);
+function evHTML(k,id){
+  const e=evidenceOf(k,id);
   if(!e)return '';
-  if(e.dens==null)return '<div class="n" style="color:var(--muted)"><span class="lbl">신뢰도</span> —</div><div class="s" title="'+esc(e.why)+'">ETF</div>';
+  if(e.dens==null)return '<div class="n" style="color:var(--muted)"><span class="lbl">근거</span> —</div><div class="s" title="'+esc(e.why)+'">ETF</div>';
   const on=Math.round(e.dens/20), low=e.dens<60;
   let b='<div class="bars" aria-hidden="true">';
   for(let i=0;i<5;i++)b+='<i class="'+(i<on?(low?'lo':'on'):'')+'"></i>';
@@ -2940,16 +2964,21 @@ function evHTML(k){
    * 이름만 바꾸고 뜻을 흘리면 100%를 '확실하다'로 읽게 만든다 — 툴팁이 매번 그 선을 긋는다.
    * ★ 편재(단일 근거 쏠림)는 이 숫자에 **들어가 있지 않다.** 결측 0이어도 한 값이 70%를
    *   차지할 수 있다. 그래서 편재는 아래 별도 줄로 계속 경고한다(합치면 둘 다 안 보인다). */
-  const tip='신뢰도 '+e.dens+'% — 받아야 할 입력 중 도착한 비율(중립값 50으로 대체되지 않은 비율)입니다. '
-    +'판정이 맞을 확률이 아닙니다. 비어 있는 성분: '+e.why
-    +(lop?(' / 최대 단일 근거: '+lop.src+'의 '+lop.label+' '+lop.share+'% — 이 비율은 위 숫자에 반영돼 있지 않습니다'):'');
+  const vn=e.vn, vzero=(vn===0);
+  const tip=(vn!=null?('가치 근거 '+vn+'종 — 재무제표로 이 종목의 값을 매긴 방법의 수입니다(참고 제외). '
+      +(vzero?'0종이면 재무제표만으로는 값을 전혀 매기지 못한 것입니다. ':'')
+      +(e.vskip.length?('쓰지 못한 방법: '+e.vskip.join(' / ')+'. '):'')):'')
+    +'입력 '+e.dens+'% — 점수 성분(종합점수·가격매력도) 중 도착한 비율입니다. '
+    +'가치 입력은 여기에 들어가 있지 않습니다. 판정이 맞을 확률이 아닙니다. 비어 있는 성분: '+e.why
+    +(lop?(' / 최대 단일 근거: '+lop.src+'의 '+lop.label+' '+lop.share+'% — 이 비율에 반영돼 있지 않습니다'):'');
   /* 편재는 **경고일 때만** 적는다. 늘 띄우면 또 한 줄이 늘고, 과반이 아니면 읽을 이유가 없다. */
   const warn=(lop&&lop.share>LOP_WARN)
     ? '<div class="s lop" title="'+esc(lop.src+'의 '+lop.label+'이 받은 근거의 '+lop.share+'%를 혼자 차지합니다 — 이 판정은 사실상 그 한 값의 함수입니다')+'">⚠ 단일 '+lop.share+'%</div>'
     : '';
   /* 숫자 앞에 이름표를 붙인다 — 한 행에 성격이 다른 %가 둘 있으면 둘 다 뜻을 잃는다. */
-  return '<div class="n"'+(low?' style="color:var(--amber)"':'')+' title="'+esc(tip)+'">'
-    +'<span class="lbl">신뢰도</span> '+e.dens+'%</div>'+b+warn;
+  return '<div class="n"'+(vzero?' style="color:var(--down)"':'')+' title="'+esc(tip)+'">'
+    +'<span class="lbl">근거</span> '+(vn!=null?(vn+'종'):'—')+'</div>'
+    +b+'<div class="s"'+(low?' style="color:var(--amber)"':'')+' title="'+esc(tip)+'">입력 '+e.dens+'%</div>'+warn;
 }
 /* (v5.9.2) 상세 — 보유 재심사. 보유 중일 때만 그린다. */
 function reviewDetailHTML(id){
@@ -3158,7 +3187,7 @@ function render(){
           +(warn.length?'<div class="vdwarn">'+warn.join('')+'</div>':'')
         +'</div>'
         +'<div class="ex g-ex num">'+exHTML(k,CFV,k?sizeOf(id,CFV,RC):null)+'</div>'
-        +'<div class="ev g-ev num">'+evHTML(k)+'</div>'
+        +'<div class="ev g-ev num">'+evHTML(k,id)+'</div>'
         +'<div class="g-st">'+stripHTML(k,CFV)+'</div>';
     }else{
       main+='<div class="price g-pr"><div class="p" style="color:var(--sub)">'+(err?'조회 실패':'로딩…')+'</div>'
@@ -4707,7 +4736,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.5.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.6.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -4753,8 +4782,12 @@ function diagCollect(){
         col('판정',r=>{const x=verdictOf(r.id);return x?x.w:null;}),
         /* 등급·수량의 모집단은 **관문을 넘은 종목**이다 — 탈락에 등급이 없는 것은 결함이 아니다. */
         col('등급',r=>r.k.tier||null,r=>!!r.k.tier),
-        col('신뢰도',r=>{const e=evidenceOf(r.k);return e&&e.dens!=null?e.dens+'%':null;}),
-        col('도달확률',r=>{const c2=cfvOf(r.id);return (c2&&c2.limitProb!=null)?(Math.round(c2.limitProb*100)+'%'):null;}),
+        /* (v6.6) 화면에 **있는 것**을 잰다. 칸의 내용이 바뀌면 계측 대상도 함께 바꾼다 —
+         * 안 바꾸면 계측기가 없는 칸을 재면서 영원히 경고한다. */
+        col('가치 근거',r=>{const e=evidenceOf(r.k,r.id);return e&&e.vn!=null?e.vn+'종':null;}),
+        col('입력',r=>{const e=evidenceOf(r.k,r.id);return e&&e.dens!=null?e.dens+'%':null;}),
+        col('지정가 할인',r=>{const c2=cfvOf(r.id);
+          return (c2&&c2.limit!=null&&r.k.price>0)?((c2.limit/r.k.price-1)*100).toFixed(1)+'%':null;}),
         col('지정가',r=>{const c2=cfvOf(r.id);return (c2&&c2.limit!=null)?Math.round(c2.limit):null;}),
         /* 수량은 **주수 자체**를 센다. '제안/0주'로 접으면 값이 둘뿐이라 늘 상수로 보인다 —
          * 계측기가 자기 요약 때문에 경고하는 꼴이 된다. 배선이 끊기면 빈칸 비율이 잡아낸다. */

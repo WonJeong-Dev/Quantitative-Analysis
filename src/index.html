@@ -61,13 +61,15 @@
     <span class="lg"><i style="background:#0e7490;opacity:.42"></i>무성장 가치 <small>(성장이 멈췄다고 볼 때의 값 — <b>하방 앵커</b>이며 지정가 기준이 아님)</small></span>
     <span class="lg"><i style="background:#fff;border:2px solid #555;border-radius:50%"></i>현재가</span>
     <span class="lg" style="opacity:.75">판정 <b>● 추천</b> = 관문 통과 + 등급 상·중 · <b>◐ 관망</b> = 관문 통과, 등급 하 · <b>○ 탈락</b> = 관문에서 <b>걸림</b> · <b>⊘ 평가 불가</b> = 평가할 데이터가 없어 <b>판정을 내리지 않음</b>(나쁘다는 뜻이 아님)</span>
-    <span class="lg" style="opacity:.75">한 행의 <b>%는 세 가지</b>입니다 — 현재가 아래 <b>등락률</b> · 지정가 아래 <b>도달 확률</b>(그 가격에 닿을 확률) · 오른쪽 <b>신뢰도</b>(필요한 입력 중 도착한 비율, 판정이 맞을 확률이 아님)</span>
+    <span class="lg" style="opacity:.75">한 행의 <b>%는 세 가지</b>입니다 — 현재가 아래 <b>등락률</b> · 지정가 아래 <b>현재가 대비 할인율</b> · 오른쪽 <b>입력</b>(점수 성분 중 도착한 비율, 판정이 맞을 확률이 아님)</span>
+    <span class="lg" style="opacity:.75">오른쪽 큰 숫자 <b>가치 근거</b>는 재무제표로 값을 매긴 방법의 수입니다 — <b>0종이면 재무제표만으로는 값을 전혀 매기지 못한 것</b>이고, 점수 입력이 100%여도 그럴 수 있습니다</span>
+    <span class="lg" style="opacity:.75">지정가는 <b>현재 적정가</b>와 <b>60거래일 50% 도달가</b> 중 낮은 쪽입니다 — 확률이 제약이면 도달 확률은 설계상 <b>50%</b>라 줄에 적지 않고, 가치가 제약이라 50%를 벗어날 때만 적습니다</span>
     <span class="lg" style="opacity:.75">매물대·볼린저·이평·RSI·종합점수·가격매력도·후보등급은 <b>행을 열면</b> 나옵니다</span>
   </div>
 
   </details>
   <div class="listhead">
-    <div>#</div><div>종목</div><div>현재가</div><div>판정</div><div>실행 — 지정가 · 닿을 확률</div><div style="text-align:right">신뢰도</div><div>52주 범위 · 가치 눈금</div><div></div>
+    <div>#</div><div>종목</div><div>현재가</div><div>판정</div><div>실행 — 지정가 · 할인율</div><div style="text-align:right">근거</div><div>52주 범위 · 가치 눈금</div><div></div>
   </div>
   <div id="list"></div>
   </div><!-- /#boardView -->

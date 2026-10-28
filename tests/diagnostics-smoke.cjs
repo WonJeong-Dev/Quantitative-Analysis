@@ -21,8 +21,8 @@ const $=sel=>({set innerHTML(v){HTMLOUT=v;}});
  * 맞는지 영영 확인할 수 없다 — 계측기가 조용히 아무것도 재지 않는 상태가 된다(§22-㉒). */
 const COLSTUB={};
 const verdictOf=id=>COLSTUB[id]?{w:COLSTUB[id].w}:null;
-const evidenceOf=k=>({dens:(k&&k.dens!=null)?k.dens:null});
-const cfvOf=id=>COLSTUB[id]?{limitProb:COLSTUB[id].prob,limit:COLSTUB[id].limit}:null;
+const evidenceOf=(k,id)=>({dens:(k&&k.dens!=null)?k.dens:null,vn:(COLSTUB[id]?COLSTUB[id].vn:null),vskip:[]});
+const cfvOf=id=>COLSTUB[id]?{limitProb:COLSTUB[id].prob,limit:COLSTUB[id].limit,n:COLSTUB[id].vn,skipped:[]}:null;
 const sizeOf=id=>COLSTUB[id]?{qty:COLSTUB[id].qty}:{qty:null};
 const riskCtx=()=>({ready:true});
 const M=new Function('S','esc','assetType','fundMissing','$','CONST_LOG','RULE_VER',
@@ -223,18 +223,19 @@ console.log('\n[10] 칸별 정보량 — 상수가 된 칸과 끊긴 배선을 �
     S.cache[id]={fund:{roe:10},ana:{ts:Date.now()}};
     S.calc[id]={assetType:'stock',price:100+i,tier:'중',dens:60+i*3};   // 신뢰도는 전부 다르게
     COLSTUB[id]={ w:(i<10?'추천':'관망'),        // 최빈 10/12 = 83% → 상수 경고
-                  prob:0.5,                       // 전부 50% → 100% → 상수 경고
+                  vn:1,                           // 전부 1종 → 100% → 상수 경고
+                  prob:0.5,
                   limit:90+i,                     // 전부 다름 → 경고 없음
                   qty:(i<6?10:null) };            // 절반이 빈 칸 → 빈칸 경고
   }
   const d3=M.diagCollect(), C=d3.칸별정보량||[];
   const by=n=>C.find(x=>x.칸===n)||{};
-  ok('여섯 칸을 전부 잰다', C.length===6);
-  ok('전부 같은 값이면 상수라고 적는다 (도달확률 100%)',
-     by('도달확률').서로다른값===1&&/사실상 상수/.test(by('도달확률').경고||''));
+  ok('일곱 칸을 잰다 (v6.6: 가치 근거·입력·지정가 할인)', C.length===7, C.map(x=>x.칸).join(','));
+  ok('전부 같은 값이면 상수라고 적는다 (가치 근거 100%)',
+     by('가치 근거').서로다른값===1&&/사실상 상수/.test(by('가치 근거').경고||''), by('가치 근거').경고);
   ok('83%도 상수로 본다 (임계 80%)', /83% — 사실상 상수/.test(by('판정').경고||''), by('판정').경고);
-  ok('값이 고르면 경고하지 않는다 (신뢰도 12종)',
-     by('신뢰도').서로다른값===12&&by('신뢰도').경고==null, by('신뢰도').경고);
+  ok('값이 고르면 경고하지 않는다 (입력 12종)',
+     by('입력').서로다른값===12&&by('입력').경고==null, by('입력').경고);
   ok('지정가처럼 전부 다른 칸도 경고하지 않는다', by('지정가').경고==null, by('지정가').경고);
   ok('절반이 비면 배선을 의심하라고 적는다', /빈 칸 50% — 배선 확인/.test(by('수량').경고||''), by('수량').경고);
   M.diagRender();
@@ -245,7 +246,7 @@ console.log('\n[10] 칸별 정보량 — 상수가 된 칸과 끊긴 배선을 �
     S.stocks[id]={market:'US',symbol:'D'+i,name:'D'+i};
     S.cache[id]={fund:{roe:10},ana:{ts:Date.now()}};
     S.calc[id]={assetType:'stock',price:100,tier:'중',dens:50};
-    COLSTUB[id]={w:'추천',prob:0.5,limit:90,qty:null}; }
+    COLSTUB[id]={w:'추천',vn:1,prob:0.5,limit:90,qty:null}; }
   const d4=M.diagCollect(), C4=d4.칸별정보량||[];
   ok('표본 10 미만에서는 경고하지 않는다', C4.every(x=>x.경고==null),
      JSON.stringify(C4.map(x=>x.칸+':'+x.경고)));
@@ -259,7 +260,7 @@ console.log('\n[10] 칸별 정보량 — 상수가 된 칸과 끊긴 배선을 �
     S.stocks[id]={market:'US',symbol:'E'+i,name:'E'+i};
     S.cache[id]={fund:{roe:10},ana:{ts:Date.now()}};
     S.calc[id]={assetType:'stock',price:100+i,tier:passed?['상','중','하'][i%3]:null,dens:40+i*2};
-    COLSTUB[id]={w:passed?'추천':'탈락',prob:0.2+i*0.01,limit:90+i,qty:passed?(10+i):null}; }
+    COLSTUB[id]={w:passed?'추천':'탈락',vn:1+(i%3),prob:0.2+i*0.01,limit:90+i,qty:passed?(10+i):null}; }
   const d5=M.diagCollect(), by5=n=>(d5.칸별정보량||[]).find(x=>x.칸===n)||{};
   ok('등급의 분모는 관문을 넘은 종목뿐이다 (탈락 12종 제외)',
      by5('등급').표본===12&&by5('등급').채움===12&&by5('등급').경고==null,
