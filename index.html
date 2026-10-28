@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-KCXsRj0RDR1bKiOM2c/avsuA7SWJepzhvxz53XiwLUA=' 'sha256-VFiI6ExOyCEXoMRuXTrpSmnuNf2nHVeohvSPx9FXEtE=' 'sha256-GBMIQUValcR37xUzCGVKPRWkZ8QuksRNCzn7Tz/Feb0=' 'sha256-okYgrpOYTQn4uF4FDOj+ITyJp8Wpkd+S20zkkP5GeB0=' 'sha256-7gQyP1bcfxqPs7nfQkMDQqIHf6cOzaa9PXyQW4z1h8o=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-KCXsRj0RDR1bKiOM2c/avsuA7SWJepzhvxz53XiwLUA=' 'sha256-VFiI6ExOyCEXoMRuXTrpSmnuNf2nHVeohvSPx9FXEtE=' 'sha256-hcO88QhUUWGLbRi7AyauciM5L3+IvnXkXTYiCQ3OGU4=' 'sha256-okYgrpOYTQn4uF4FDOj+ITyJp8Wpkd+S20zkkP5GeB0=' 'sha256-7gQyP1bcfxqPs7nfQkMDQqIHf6cOzaa9PXyQW4z1h8o=' https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quant Stock Board — KR·US</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3ClinearGradient%20id='bg'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%234c1d95'/%3E%3Cstop%20offset='.5'%20stop-color='%230e7490'/%3E%3Cstop%20offset='1'%20stop-color='%230f9d8a'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='pk'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fde68a'/%3E%3Cstop%20offset='1'%20stop-color='%23fb5f57'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='gl'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23fff'%20stop-opacity='.20'/%3E%3Cstop%20offset='.55'%20stop-color='%23fff'%20stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23bg)'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-opacity='.20'%20stroke-width='13'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M11%2047%20L25%2031%20L38%2039%20L51%2018'%20fill='none'%20stroke='%23fff'%20stroke-width='8.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='51'%20cy='18'%20r='8'%20fill='url(%23pk)'/%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='url(%23gl)'/%3E%3C/svg%3E">
@@ -3710,6 +3710,19 @@ async function fetchIndices(){
       const d=await fetchChart(sym,'5d');
       const chg=d.prevClose?(d.price-d.prevClose)/d.prevClose*100:null;
       S.idx[sym]={name,price:d.price,chg};
+      /* (v6.5) ★ 같은 값의 저장소가 둘이었다. 지수 바는 S.idx['KRW=X']를 읽고,
+       * 수량 제안(sizeOf)·금액 상한(roomKRW)·보유 평가(investment-ui)는 S.fx['USDKRW']를
+       * 읽는다. 그런데 S.fx의 USDKRW는 **아무도 채우지 않았다** — fxPut은 워커 펀더멘털
+       * 응답에서 만난 통화쌍(fcur≠qcur)만 넣기 때문이다(실측 S.fx = {EURUSD, TWDUSD}).
+       * 그래서 화면 맨 위에 1,340.78이 떠 있는 동안 미국 주식의 수량 칸이 전부
+       * '환율 미확보'였다 — 실측 2026-10-28: 관문 통과 29종목 중 정상 7 · 0주 1 ·
+       * 제안 없음 21(21건 전부 USD). 기능을 넣은 뒤 한 번도 작동한 적이 없었다.
+       * ★ 새 환율 경로를 만들지 않는다. 이미 받은 값을 **하나의 저장소로 합친다**(§22-⑲).
+       *   S.fx가 저장소이고 지수 바·워커·야후는 그 저장소의 출처다. */
+      /* 값이 실제로 달라졌을 때만 다시 그린다. 이 환율은 compute가 아니라 **그리는 시점**의
+       * sizeOf·roomKRW·보유 평가만 쓰므로 recalcAll은 필요 없다 — 다시 그리기만 하면 된다. */
+      if(sym==='KRW=X'){ const prev=fxOf('USD','KRW');
+        if(fxPut('USD','KRW',d.price,'idx')&&prev!==fxOf('USD','KRW'))renderSoon(); }
       renderMarketbar();
     }catch(e){}
     await sleep(200);
@@ -6201,7 +6214,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.4.2 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.5.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -6214,6 +6227,39 @@ function diagCollect(){
     점검상태:(S.sumProg||(typeof Q!=='undefined'&&(Q.active||Q.items.length)))?'조회 진행 중 — 기존 캐시와 새 응답이 섞인 잠정 결과':'조회 대기열 완료 — 원천 값의 정확성 검증과는 별개',
     수집시각:rows.map(r=>({종목:r.nm,시세:r.k.priceTs||null,재무:r.ch.fund&&r.ch.fund.ts||null,
       애널리스트:r.ch.ana&&r.ch.ana.ts||null,시세단위:'Unix seconds',재무단위:'Unix milliseconds'})),
+    /* (v6.5) ★ 칸별 정보량 — **각 칸이 실제로 정보를 갖고 있는가**를 실데이터 전수로 잰다.
+     * 2026-10-28까지 세 결함이 화면에 오래 떠 있었다: 목록 헤더가 한 칸 밀린 채 3주 ·
+     * 제안 지정가가 60종목 중 47개에서 무용(도달확률 중위 1.5%) · 미국 주식 21종목의 수량
+     * 칸이 환율 미확보로 공백. **셋 다 단위 검사는 전부 통과했다.** 단위 검사는 "이 함수가
+     * 맞는 값을 내는가"를 보지, "60종목을 늘어놓았을 때 그 칸이 쓸모가 있는가"를 보지 않는다.
+     * 재는 값은 둘뿐이다 — 서로 다른 값이 몇 개인가, 최빈값이 몇 %인가.
+     * 한 칸의 88%가 같은 값이면 그 칸은 자리를 차지하고 정보를 주지 않는다. */
+    칸별정보량:(function(){
+      const st=rows.filter(r=>r.k&&r.k.assetType!=='etf'&&r.k.price!=null);
+      const rc=(typeof riskCtx==='function')?riskCtx():null;
+      const col=(name,f)=>{
+        const v=st.map(r=>{ try{ const x=f(r); return (x==null||x==='')?null:String(x); }catch(e){ return null; } });
+        const fill=v.filter(x=>x!=null);
+        const c={}; for(const x of fill)c[x]=(c[x]||0)+1;
+        const top=Object.keys(c).sort((a,b)=>c[b]-c[a])[0];
+        const share=fill.length?c[top]/fill.length:0, blank=v.length?(v.length-fill.length)/v.length:0;
+        return {칸:name, 표본:v.length, 채움:fill.length, 서로다른값:Object.keys(c).length,
+          최빈:(top==null)?null:(top+' ×'+c[top]+' ('+Math.round(share*100)+'%)'),
+          /* 임계는 둘뿐이고 둘 다 '그 칸을 읽을 이유가 없어지는 지점'이다.
+           * 표본 10 미만에서는 재지 않는다 — 3종목에서 2개가 같은 것은 우연이다. */
+          경고:(fill.length>=10&&share>=0.80)?('최빈값 '+Math.round(share*100)+'% — 사실상 상수')
+              :((v.length>=10&&blank>=0.50)?('빈 칸 '+Math.round(blank*100)+'% — 배선 확인'):null)};
+      };
+      return [
+        col('판정',r=>{const x=verdictOf(r.id);return x?x.w:null;}),
+        col('등급',r=>r.k.tier||null),
+        col('신뢰도',r=>{const e=evidenceOf(r.k);return e&&e.dens!=null?e.dens+'%':null;}),
+        col('도달확률',r=>{const c2=cfvOf(r.id);return (c2&&c2.limitProb!=null)?(Math.round(c2.limitProb*100)+'%'):null;}),
+        col('지정가',r=>{const c2=cfvOf(r.id);return (c2&&c2.limit!=null)?Math.round(c2.limit):null;}),
+        col('수량',r=>{ if(!r.k.tier)return null; const s2=sizeOf(r.id,cfvOf(r.id),rc);
+          return (s2&&s2.qty!=null)?(s2.qty>0?'제안':'0주'):null; })
+      ];
+    })(),
     상수부채:CONST_LOG.filter(r=>/부채/.test(String(r.cls||''))).map(r=>r.k+'='+r.v+' ['+r.ver+']'),
     /* (v4.35) 워커 v6.7 짝 확인 — 이벤트 채널이 실제로 들어오고 있는가.
      * 워커가 구버전이면 전부 0으로 나오고 판단 감사의 (B)·(B*)가 영영 만들어지지 않는다.
@@ -6473,6 +6519,18 @@ function diagRender(){
     +'있습니다. <b>/summary?sym=NVDA</b>를 직접 열어 해당 키를 확인하세요. '
     +'<b>CapEx=0은 미수신</b>입니다. 기업의 실제 투자가 0이라는 뜻은 아닙니다</span>',
     ['실적','애널액션','가이던스','개정','현금흐름'].some(k2=>d.이벤트채널[k2]===0));
+  /* (v6.5) 상수가 된 칸과 끊긴 배선을 한 줄에서 본다 — 배포 직후 가장 먼저 읽을 줄이다. */
+  g+=row('칸별 정보량',(function(){const A=d.칸별정보량||[];
+      if(!A.length)return '<span style="color:var(--muted)">—</span>';
+      return A.map(x=>'<span style="display:inline-block;margin:0 14px 2px 0'
+          +(x.경고?';color:var(--down);font-weight:700':'')+'">'
+          +esc2(x.칸)+' <b>'+x.서로다른값+'</b>종'
+          +(x.최빈?(' · '+esc2(x.최빈)):'')
+          +((x.채움<x.표본)?(' · 빈칸 '+(x.표본-x.채움)+'/'+x.표본):'')
+          +(x.경고?(' ⚠ '+esc2(x.경고)):'')+'</span>').join('')
+        +'<span style="color:var(--muted)"> — 한 칸의 값이 거의 같으면 그 칸은 자리를 차지하고도 '
+        +'정보를 주지 않습니다(ETF 제외 · 표본 10 미만은 재지 않음). 빈 칸이 절반을 넘으면 배선이 끊긴 것입니다</span>';
+    })(),(d.칸별정보량||[]).some(x=>x.경고));
   g+=row('ADX 관측',d.ADX관측?esc2(JSON.stringify(d.ADX관측))
     +'<span style="color:var(--muted)"> — 표시·로그 전용 · 판정 미반영(§19.14)</span>':'—');
   /* (v5.9.10) 구조 검사가 찾아낸 네 번째 미표시 항목. 77행을 다 그리면 패널이 묻히므로
@@ -6607,7 +6665,10 @@ const isYMD=d=>{ const v=String(d||'');
  * 문서 키를 다른 날짜로 만들고, 미국 거래 기본일이 KST 날짜가 되어 분할 비교(<)가 어긋났다. */
 function lgToday(){ return sessDay(Date.now()/1000,'KR'); }
 function lgTodayFor(market){ return sessDay(Date.now()/1000,market==='US'?'US':'KR'); }
-function lgFxNow(){ const i=S.idx&&S.idx['KRW=X']; return (i&&i.price>0)?i.price:null; }
+/* (v6.5) 환율은 S.fx 하나에서만 읽는다. 종전엔 여기만 S.idx를 직접 봐서, 지수 바가
+ * 받아 오기 전(또는 실패했을 때)과 받아 온 뒤의 환율 출처가 화면마다 달랐다.
+ * S.fx는 LS에 남으므로 오프라인 부팅에서도 마지막 값이 살아 있다 — S.idx는 메모리뿐이다. */
+function lgFxNow(){ return fxOf('USD','KRW'); }
 const lgAccLabel=a=>{const kind=QADomain.accountKind(a);return ((ACCOUNTS[kind]||{}).label||kind)+(String(a||'').includes(':')?' · '+String(a).split(':').slice(1).join(':'):'');};
 function lgAccountOptions(){return [...new Set([...Object.keys(ACCOUNTS),...(S.trades||[]).map(t=>t.account||'general')])].map(a=>[a,lgAccLabel(a)]);}
 
