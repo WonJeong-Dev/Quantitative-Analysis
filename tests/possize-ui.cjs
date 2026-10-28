@@ -142,6 +142,40 @@ setup(POL_FREE,[],[{id:'KR_A',market:'KR',cur:'KRW',price:71900,vol:0.38,sector:
   ok('수량 없으면 빈 칸이 아니라 글자', /수량 제안 없음/.test(M.qtyHTML(S.calc['KR_A'],{qty:null,why:'x'})));
   ok('sz 없으면 아무것도 그리지 않는다', M.qtyHTML(S.calc['KR_A'],null)===''); }
 
+console.log('\n[8] 환율은 저장소가 하나다 (v6.5)');
+/* ★ 이 구간이 없어서 **미국 주식의 수량 제안이 기능 추가 이후 한 번도 작동하지 않았다.**
+ * 같은 값(USD/KRW)의 저장소가 둘이었다 — 지수 바는 S.idx['KRW=X'], sizeOf·roomKRW·보유
+ * 평가는 S.fx['USDKRW']. 후자는 아무도 채우지 않았다(fxPut은 워커 펀더멘털 응답에서 만난
+ * 통화쌍만 넣는다). 실측 2026-10-28 배포본: 관문 통과 29종목 중 제안 없음 21건, 전부
+ * '환율 미확보 — USD 금액을 원화로 환산할 수 없습니다'. 화면 맨 위에는 1,340.78이 떠 있었다.
+ *
+ * ★ 이 하네스의 fxOf 스텁(FX={USD:1300})이 **환율은 늘 있다고 가정**해서 검사가 통과했다.
+ *   계측기가 결함을 가린 경우다(§22-㉒). 그래서 아래 둘을 함께 본다:
+ *   ① 배포본의 배선 — 지수 바가 받은 값을 저장소로 흘려보내는가 · 저장소를 우회해 읽는 곳이 없는가
+ *   ② 환율이 없을 때 수량을 **꾸며내지 않는가** (스텁을 비워 실제로 확인한다) */
+const T8=fs.readFileSync(HTML,'utf8');
+{ const fi=T8.slice(T8.indexOf('async function fetchIndices()'));
+  const body=fi.slice(0,fi.indexOf('\n}'));
+  ok('지수 바가 받은 USD/KRW를 환율 저장소에 넣는다', /fxPut\('USD','KRW'/.test(body),
+     body.slice(0,80));
+  ok('장부 환율도 저장소에서 읽는다 (S.idx 직독 금지)',
+     /function lgFxNow\(\)\{\s*return fxOf\('USD','KRW'\);\s*\}/.test(T8),
+     (T8.match(/function lgFxNow[^\n]*/)||[''])[0]);
+  /* 환율을 읽는 자리는 fxOf 하나뿐이어야 한다 — 주석이 아니라 **코드**에서 센다. */
+  const code=T8.split('\n').filter(l=>!/^\s*[*/]/.test(l)).join('\n');
+  const direct=(code.match(/S\.idx(?:\s*&&\s*S\.idx)?\[['"]KRW=X['"]\]/g)||[]);
+  ok('환율로 쓰려고 S.idx를 직접 읽는 코드가 없다', direct.length===0, direct.join(' · ')); }
+{ /* 스텁을 비운다 — 환율이 없는 실제 상태를 재현한다. */
+  const savedUSD=FX.USD; delete FX.USD;
+  setup(POL_FREE,[],[{id:'US_FX',market:'US',cur:'USD',price:100,vol:0.4,sector:'반도체'}]);
+  const s9=M.sizeOf('US_FX',{limit:90},M.riskCtx());
+  ok('환율이 없으면 수량을 꾸며내지 않는다', s9.qty===null, JSON.stringify(s9).slice(0,90));
+  ok('그 사유를 적는다', /환율 미확보/.test(s9.why||''), s9.why);
+  FX.USD=savedUSD;
+  setup(POL_FREE,[],[{id:'US_FX',market:'US',cur:'USD',price:100,vol:0.4,sector:'반도체'}]);
+  ok('환율이 들어오면 곧바로 수량이 난다', M.sizeOf('US_FX',{limit:90},M.riskCtx()).qty>0,
+     JSON.stringify(M.sizeOf('US_FX',{limit:90},M.riskCtx())).slice(0,90)); }
+
 console.log('\n────────────────────────────');
 console.log(pass+' passed · '+fail+' failed');
 process.exit(fail?1:0);

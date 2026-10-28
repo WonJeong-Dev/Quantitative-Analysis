@@ -16,10 +16,21 @@ const fundMissing=id=>{const c=S.cache[id],st=S.stocks[id];
   const f=c&&c.fund; return !(f&&(f.roe!=null||f.epsFwd!=null||f.margin!=null)); };
 let HTMLOUT='';
 const $=sel=>({set innerHTML(v){HTMLOUT=v;}});
+/* (v6.5) 칸별 정보량이 쓰는 verdictOf·evidenceOf·cfvOf·sizeOf·riskCtx는 **이 조각 밖**에 있다.
+ * 스텁을 넣지 않으면 diagCollect의 try/catch가 전부 null로 삼켜, 임계(상수 80% · 빈칸 50%)가
+ * 맞는지 영영 확인할 수 없다 — 계측기가 조용히 아무것도 재지 않는 상태가 된다(§22-㉒). */
+const COLSTUB={};
+const verdictOf=id=>COLSTUB[id]?{w:COLSTUB[id].w}:null;
+const evidenceOf=k=>({dens:(k&&k.dens!=null)?k.dens:null});
+const cfvOf=id=>COLSTUB[id]?{limitProb:COLSTUB[id].prob,limit:COLSTUB[id].limit}:null;
+const sizeOf=id=>COLSTUB[id]?{qty:COLSTUB[id].qty}:{qty:null};
+const riskCtx=()=>({ready:true});
 const M=new Function('S','esc','assetType','fundMissing','$','CONST_LOG','RULE_VER',
   'DT_Z','MA_DEV_MIN','MIN_MARGIN','SCORE_ANCHOR','RATIO_SC_MIN','RATIO_MIN_N','etSession',
+  'verdictOf','evidenceOf','cfvOf','sizeOf','riskCtx',
   src+'\n;return {diagCollect,diagRender};')
-  (S,esc,assetType,fundMissing,$,[],(L.join('\n').match(/const RULE_VER='([^']+)'/)||[])[1],1.0,0.94,0.05,50,0.01,250,()=>null);   // (v5.5) 실제 RULE_VER
+  (S,esc,assetType,fundMissing,$,[],(L.join('\n').match(/const RULE_VER='([^']+)'/)||[])[1],1.0,0.94,0.05,50,0.01,250,()=>null,   // (v5.5) 실제 RULE_VER
+   verdictOf,evidenceOf,cfvOf,sizeOf,riskCtx);
 
 let pass=0,fail=0;
 const ok=(n,c)=>{ c?(pass++,console.log('  OK   '+n)):(fail++,console.log('  FAIL '+n)); };
@@ -198,6 +209,46 @@ console.log('\n[9] EPS 순마진 — 관측이지 오류 판정이 아니다 (v5
     ok('이 줄에 경고색이 켜지지 않는다', !/var\(--down\)/.test(seg), seg.slice(-120)); }
   ok("화면도 '불가능'이라 말하지 않는다",
      !/불가능/.test(H2.slice(H2.indexOf('EPS 순마진'), H2.indexOf('EPS 순마진')+1200)));
+}
+
+console.log('\n[10] 칸별 정보량 — 상수가 된 칸과 끊긴 배선을 전수로 잡는가 (v6.5)');
+/* ★ 이 검사가 없어서 세 결함이 화면에 오래 떠 있었다 — 헤더 밀림 3주 · 지정가 47/60 무용 ·
+ * 미국 주식 21종목 수량 공백. 셋 다 단위 검사는 전부 통과했다. 단위 검사는 "이 함수가 맞는
+ * 값을 내는가"를 보지, "60종목을 늘어놓았을 때 그 칸이 쓸모가 있는가"를 보지 않는다. */
+{
+  for(const k of Object.keys(S.stocks)){ delete S.stocks[k]; delete S.calc[k]; delete S.cache[k]; }
+  for(const k of Object.keys(COLSTUB))delete COLSTUB[k];
+  for(let i=0;i<12;i++){ const id='US_C'+i;
+    S.stocks[id]={market:'US',symbol:'C'+i,name:'C'+i};
+    S.cache[id]={fund:{roe:10},ana:{ts:Date.now()}};
+    S.calc[id]={assetType:'stock',price:100+i,tier:'중',dens:60+i*3};   // 신뢰도는 전부 다르게
+    COLSTUB[id]={ w:(i<10?'추천':'관망'),        // 최빈 10/12 = 83% → 상수 경고
+                  prob:0.5,                       // 전부 50% → 100% → 상수 경고
+                  limit:90+i,                     // 전부 다름 → 경고 없음
+                  qty:(i<6?10:null) };            // 절반이 빈 칸 → 빈칸 경고
+  }
+  const d3=M.diagCollect(), C=d3.칸별정보량||[];
+  const by=n=>C.find(x=>x.칸===n)||{};
+  ok('여섯 칸을 전부 잰다', C.length===6);
+  ok('전부 같은 값이면 상수라고 적는다 (도달확률 100%)',
+     by('도달확률').서로다른값===1&&/사실상 상수/.test(by('도달확률').경고||''));
+  ok('83%도 상수로 본다 (임계 80%)', /83% — 사실상 상수/.test(by('판정').경고||''), by('판정').경고);
+  ok('값이 고르면 경고하지 않는다 (신뢰도 12종)',
+     by('신뢰도').서로다른값===12&&by('신뢰도').경고==null, by('신뢰도').경고);
+  ok('지정가처럼 전부 다른 칸도 경고하지 않는다', by('지정가').경고==null, by('지정가').경고);
+  ok('절반이 비면 배선을 의심하라고 적는다', /빈 칸 50% — 배선 확인/.test(by('수량').경고||''), by('수량').경고);
+  M.diagRender();
+  ok('경고가 화면에 그려진다', /사실상 상수/.test(HTMLOUT)&&/배선 확인/.test(HTMLOUT));
+  /* 표본이 적으면 재지 않는다 — 3종목에서 2개가 같은 것은 우연이다. */
+  for(const k of Object.keys(S.stocks)){ delete S.stocks[k]; delete S.calc[k]; delete S.cache[k]; }
+  for(let i=0;i<5;i++){ const id='US_D'+i;
+    S.stocks[id]={market:'US',symbol:'D'+i,name:'D'+i};
+    S.cache[id]={fund:{roe:10},ana:{ts:Date.now()}};
+    S.calc[id]={assetType:'stock',price:100,tier:'중',dens:50};
+    COLSTUB[id]={w:'추천',prob:0.5,limit:90,qty:null}; }
+  const d4=M.diagCollect(), C4=d4.칸별정보량||[];
+  ok('표본 10 미만에서는 경고하지 않는다', C4.every(x=>x.경고==null),
+     JSON.stringify(C4.map(x=>x.칸+':'+x.경고)));
 }
 
 console.log('\n────────────────────────────');
