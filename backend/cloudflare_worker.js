@@ -96,7 +96,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 /* (v7.1) ★ 워커를 바꿀 때마다 올린다. v7.0에서 /dart를 더하고도 VER을 그대로 둬서,
  * /health가 'ver 7.0'을 돌려줘도 **그 7.0이 어느 7.0인지 알 수 없었다** — 배포됐는지
  * 확인할 방법이 없는 상태였다. 관측 장치가 두 상태를 구분하지 못하면 관측이 아니다(§22-㉒). */
-const VER = '7.1';
+const VER = '7.2';
 
 /* ============ (v6.9) CORS — `*`를 버리고 허용 Origin만 반사한다 ============
  * v6.8은 `Allow-Origin: *` + `Allow-Headers: *`였다. 인증이 없던 시절엔 어차피 공개라
@@ -968,13 +968,26 @@ async function route(request, env, u) {
         }
         qs.set('crtfc_key', String(key).trim());
         const url = 'https://opendart.fss.or.kr/api/' + api + '?' + qs.toString();
-        const rr = await upstreamFetch(url);
+        /* (v7.2) ★ 첫 실측에서 **경로와 무관하게 전부 302 · 본문 0바이트**였다 — 일부러 넣은
+         * 가짜 경로까지 같았다. 즉 요청이 API 로직에 닿지 못한다. 워커 fetch는 기본적으로
+         * User-Agent를 보내지 않는데, UA 없는 요청을 돌려보내는 서버가 흔하다.
+         * 그래서 ① 평범한 UA·Accept를 붙이고 ② 어디로 돌려보내는지(Location)를 그대로 적는다.
+         * 추측하지 않기 위해 **헤더를 보여주는 것**이 먼저다 — 지금 탐침은 그걸 못 했다. */
+        const rr = await upstreamFetch(url, { headers: {
+          'User-Agent': 'QA-Stock-Board/1.0 (+worker)',
+          'Accept': 'application/json,text/plain,*/*',
+          'Accept-Language': 'ko,en;q=0.8'
+        }, redirect: (u.searchParams.get('follow') === '1') ? 'follow' : 'manual' });
         const txt = await rr.text();
+        const hdr = {};
+        for (const k3 of ['location', 'content-type', 'content-length', 'set-cookie', 'server']) {
+          const v3 = rr.headers.get(k3); if (v3) hdr[k3] = String(v3).slice(0, 300);
+        }
         /* 탐침이므로 **구조만** 돌려준다. 전 종목 재무를 그대로 흘리지 않는다. */
         let j = null, perr = null;
         try { j = JSON.parse(txt); } catch (e) { perr = String(e); }
         const list = (j && Array.isArray(j.list)) ? j.list : null;
-        return json({ api, status: rr.status, parse오류: perr,
+        return json({ api, status: rr.status, 응답헤더: hdr, 본문바이트: txt.length, parse오류: perr,
           status코드: j ? (j.status || null) : null, 메시지: j ? (j.message || null) : null,
           최상위키: j ? Object.keys(j) : null,
           행수: list ? list.length : null,
