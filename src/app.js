@@ -3498,7 +3498,19 @@ const evidence='<div class="evidence-card"><b>판단 근거와 데이터</b><p>�
               +(k.psrY!=null?' · 야후 원값 '+k.psrY.toFixed(2)+' ÷ 환율 = '+(k.psrY/k.fxq).toFixed(2):''))
             :'<span style="color:var(--amber);font-weight:700">환율 미확보로 PSR을 비워 뒀습니다</span> — 워커를 v6.5로 갱신하면 서버가 환율까지 확정해 보냅니다')+'</div>':'')
       +'</div>':'')
-    +(vm.note?'<div class="vmnote">사업분야 분석 — '+esc(vm.note)+'</div>':'')
+    +(vm.note?'<div class="vmnote">사업분야 분석 — '+esc(vm.note)+'</div>'
+      /* (v6.13.1) **판단이 없는 상태를 말한다.** vmHeuristic은 섹터가 8개 패턴에 하나도 안
+       * 걸리면 {per:1,pbr:1,psr:1}·note:null을 돌려준다 — 그러면 종전엔 화면에 **아무것도**
+       * 안 나와서, 지표 신뢰도가 '판단된 1'인지 '판단이 없어서 1'인지 구분할 수 없었다.
+       * v6.13이 자산 축을 열면서 이 기본값이 **판정을 만들기 시작했다**(실측 스트래티지:
+       * 미분류 기본값 pbr=1로 자산 축이 열려 '평가 불가'→'하'). 그래서 알린다.
+       * ★ 적정가 근거에 펀더멘털이 실제로 들어간 종목만 — 실측 77종목 중 2건(풍산·스트래티지),
+       *   ETF 17건은 걸리지 않는다. 정상에 침묵하고 이상에 말한다. */
+      :((!VM_META[id]&&/펀더멘털/.test(k.fvBasis||''))
+         ? '<div class="vmnote" style="border-color:var(--amber)"><b>사업분야 미분류</b> — '
+           +'지표 신뢰도가 판단값이 아니라 기본값(전부 「참고」)이고, 그 기본값이 위 적정가 근거에 쓰였습니다. '
+           +'아래 <b>PER·PBR·PSR 신뢰도</b>에서 지정하면 그 값이 쓰입니다.</div>'
+         : ''))
     /* (v5.9.16) 한 장(252거래일)이던 차트를 **250 + 14 두 장**으로 나눴다.
      * 한 장일 때 최근 2주의 움직임은 1년 축에 눌려 사실상 보이지 않았다. 축을 나누면
      * 같은 데이터가 두 가지 질문에 답한다 — 어디쯤 와 있나(250) / 지금 무슨 일이 있나(14).
@@ -4891,7 +4903,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.13.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.13.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),

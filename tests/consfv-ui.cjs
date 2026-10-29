@@ -550,6 +550,22 @@ console.log('\n[11] 국내 주당순자산 — DART 1차 출처 배선 (v6.9 · 
      /k\.perAuto=\(price>0&&Feff\.epsTtm!=null&&Feff\.epsTtm>0\)\?price\/Feff\.epsTtm:null/.test(T));
 }
 
+console.log('\n[12] (v6.13.1) 판단 없는 지표 신뢰도를 화면이 말한다');
+/* vmHeuristic은 섹터가 어느 패턴에도 안 걸리면 {1,1,1}·note:null을 돌려준다. 종전엔 화면에
+ * 아무것도 안 나와 '판단된 1'과 '판단이 없어서 1'을 구분할 수 없었다. v6.13이 자산 축을
+ * 열면서 그 기본값이 판정을 만들기 시작했으므로(실측 스트래티지) 그 상태만 알린다. */
+{
+  ok('미분류 상태를 알리는 분기가 있다', /사업분야 미분류/.test(T));
+  /* 조건: VM_META 미등재 **그리고** 적정가 근거에 펀더멘털이 실제로 들어갔을 때만 */
+  ok('VM_META 등재 종목에는 뜨지 않는다', /!VM_META\[id\]&&/.test(T));
+  ok('펀더멘털이 쓰이지 않은 종목(ETF 등)에는 뜨지 않는다', /\/펀더멘털\/\.test\(k\.fvBasis\|\|''\)/.test(T));
+  ok('기존 사업분야 분석 문구는 그대로 남는다', /사업분야 분석 — '\+esc\(vm\.note\)/.test(T));
+  /* 할 일을 적는다 — 알리기만 하고 고칠 곳을 말하지 않으면 읽은 사람이 할 수 있는 것이 없다 */
+  ok('고칠 위치를 가리킨다', /PER·PBR·PSR 신뢰도<\/b>에서 지정/.test(T));
+  /* 판정 폐포는 건드리지 않았다 — 표시 전용 변경이다 */
+  ok('RULE_VER은 v6.3 그대로', require('../docs/RULEHASH.json').ruleVer==='v6.3');
+}
+
 console.log('\n────────────────────────────');
 console.log(pass+' passed · '+fail+' failed');
 process.exit(fail?1:0);
