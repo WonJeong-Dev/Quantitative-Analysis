@@ -2517,6 +2517,68 @@ async function glBoot(){
 
 /* ---------------- 렌더 ---------------- */
 let renderTimer=null, renderPending=false;
+
+/* ================= (v6.14) 갱신 중 상호작용 보호 =================
+ * 증상: 갱신 중 거래기록 등에서 목록을 가로로 밀거나 글자를 선택하면 **1건 갱신마다**
+ * 위치·선택이 초기화되어, 갱신이 끝날 때까지 아무것도 다룰 수 없었다.
+ *
+ * 원인(실측): `host.innerHTML = g`는 요소를 **버리고 새로 만든다.** 재현 측정에서
+ * `.lgscroll`의 scrollLeft가 150 → **0**이 되고, 확인용으로 넣은 인라인 스타일도 사라지며
+ * 교체 전후 요소가 다른 객체였다(t !== t2). 텍스트 선택도 같은 이유로 사라진다.
+ * 갱신 1건마다 renderSoon()이 180ms 뒤에 그리므로 이 파괴가 초당 몇 번씩 반복됐다.
+ *
+ * 두 겹으로 막는다. 한 겹만으로는 부족하다:
+ *  ① **상호작용 중에는 미룬다** — 끌고 있는 중이거나 글자를 선택해 둔 상태면 그리지 않는다.
+ *     이미 있던 입력칸 보호(focusout·compositionend)와 **같은 방식**이다. 새 장치가 아니다.
+ *  ② **그래도 그려야 할 때는 위치를 되돌린다** — 트랙패드 두 손가락 스크롤은 포인터 이벤트를
+ *     내지 않으므로 ①이 잡지 못한다. 되돌리기가 없으면 손을 뗀 순간 미뤘던 렌더가 돌면서
+ *     방금 끌어 둔 위치를 다시 0으로 만든다. ②가 ①을 쓸모 있게 만든다. */
+let uiPointer=false;
+document.addEventListener('pointerdown',()=>{ uiPointer=true; },true);
+for(const ev of ['pointerup','pointercancel'])
+  document.addEventListener(ev,()=>{ uiPointer=false; uiFlush(); },true);
+/* pointerup을 놓치면(창 밖에서 손을 뗌 등) 플래그가 영구히 켜져 갱신이 멈춘다.
+ * 타이머나 새 상수를 두지 않고, **버튼이 눌려 있지 않다는 사실 자체**로 스스로 풀린다. */
+document.addEventListener('pointermove',e=>{
+  if(uiPointer&&e.buttons===0){ uiPointer=false; uiFlush(); } },true);
+window.addEventListener('blur',()=>{ if(uiPointer){ uiPointer=false; uiFlush(); } });
+document.addEventListener('selectionchange',()=>{
+  const sel=window.getSelection&&window.getSelection();
+  if(!sel||sel.isCollapsed)uiFlush(); });
+/* 끌고 있거나, 이 화면 안에 글자를 선택해 둔 상태인가. */
+function uiBusy(host){
+  if(uiPointer)return true;
+  const sel=window.getSelection&&window.getSelection();
+  return !!(sel&&!sel.isCollapsed&&sel.anchorNode&&host&&host.contains(sel.anchorNode));
+}
+/* 미뤄 둔 렌더를 흘려보낸다. 미뤄 둔 것이 없으면 아무 일도 하지 않는다. */
+function uiFlush(){
+  if(lgPending&&S.view==='ledger'){ lgPending=false; setTimeout(()=>{ if(S.view==='ledger')renderLedger(); },30); }
+  else if(renderPending&&S.view!=='ledger'){ renderPending=false; setTimeout(render,30); }
+}
+/* 스크롤 위치 보존. 키는 **호스트 안의 등장 순서**다 — 요소마다 id를 붙이면 뷰 10여 곳을
+ * 모두 고쳐야 하고, 개수가 달라지면(=구조가 바뀐 것) 되돌리지 않는다. 틀린 칸에 되돌리는
+ * 것이 아무것도 안 하는 것보다 나쁘다(§22-⑫ 모르면 손대지 않는다). */
+const UI_SCROLLERS='.lgscroll,.cfvwrap,.marketbar';
+function scrollSnap(host){
+  if(!host)return null;
+  const els=[...host.querySelectorAll(UI_SCROLLERS)];
+  return {n:els.length, pos:els.map(el=>[el.scrollLeft,el.scrollTop]), y:window.scrollY};
+}
+function scrollRestore(host,snap){
+  if(!host||!snap)return;
+  const els=[...host.querySelectorAll(UI_SCROLLERS)];
+  if(els.length===snap.n)for(let i=0;i<els.length;i++){
+    const p=snap.pos[i];
+    if(p[0])els[i].scrollLeft=p[0];
+    if(p[1])els[i].scrollTop=p[1];
+  }
+  /* 페이지 세로 위치는 내용이 짧아지는 순간 브라우저가 잘라낸다. 되돌릴 수 있을 때만 —
+   * 돌려놓을 높이가 없는데 scrollTo를 부르면 화면이 위로 튄다. */
+  if(snap.y>0&&Math.abs(window.scrollY-snap.y)>1
+     &&(document.documentElement.scrollHeight-window.innerHeight)>=snap.y)
+    window.scrollTo(0,snap.y);
+}
 function renderSoon(){ clearTimeout(renderTimer); renderTimer=setTimeout(render,180); }
 document.addEventListener('focusout',()=>{ if(renderPending){renderPending=false; setTimeout(render,60);} });
 
@@ -3151,6 +3213,9 @@ function stripHTML(k,cfv){
 function render(){
   const ae=document.activeElement;
   if(ae&&ae.closest&&ae.closest('.detail')&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA')){ renderPending=true; return; }
+  /* (v6.14) 목록을 끌고 있거나 글자를 선택해 둔 동안에는 그리지 않는다. 거래기록과 같은 처방이고,
+   * 보드에서도 펼친 행의 가로 표(.cfvwrap)와 텍스트 선택이 같은 이유로 초기화됐다. */
+  if(S.view!=='ledger'&&uiBusy($('#list'))){ renderPending=true; return; }
   renderCounts(); updTabCounts();   // (v4.20) 탭 배지도 함께 갱신
   /* (v4.30) 거래기록은 별도 화면이다. 시세 갱신·구독 변화가 부르는 render()를 그대로
    * 재사용해 같은 주기로 갱신된다 — 갱신 경로를 두 벌 만들면 한쪽만 낡는다. */
@@ -3166,6 +3231,7 @@ function render(){
   const HOLD=holdMap();        // (v4.30) 거래기록과 보드를 잇는다
   let dividerShown=false;
   const RC=riskCtx();        // (v5.9) 원장 합산은 렌더당 한 번 — 행마다 다시 접지 않는다
+  const snap=scrollSnap(list);        // (v6.14) 교체 전 위치를 떠 둔다
   list.innerHTML=ids.map((id,i)=>{
     const st=S.stocks[id], k=S.calc[id], open=!!S.ui.open[id];
     const err=(S.fetchErr||{})[id];
@@ -3254,6 +3320,7 @@ function render(){
   /* (v5.9.16) 캔버스가 둘이므로 querySelector(첫 하나)면 14일 패널이 빈 채로 남는다. */
   ids.forEach(id=>{ if(S.ui.open[id]){
     list.querySelectorAll('canvas[data-id="'+CSS.escape(id)+'"]').forEach(cv=>drawChart(cv,id)); } });
+  scrollRestore(list,snap);          // (v6.14) 캔버스가 자리를 잡은 뒤에 되돌린다
 }
 
 /* ---------------- 상세 패널 ---------------- */
@@ -4903,7 +4970,7 @@ function diagCollect(){
   return {
     투자정책:{설정여부:!!S.settings?.investmentPolicy,시나리오수:Object.keys(S.settings?.investmentScenarios||{}).length,
       사전검증:(S.settings?.investmentPlans||[]).map(p=>({id:p.id,시장:p.market,거래일:p.horizon,시작:p.at,규칙:p.rule,모집단:p.rows.length,관측보존:!!p.outcomes}))},
-    빌드:'v6.13.1 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
+    빌드:'v6.14.0 (규칙 '+RULE_VER+' · DT_Z='+DT_Z+' · MA_DEV_MIN='+MA_DEV_MIN+' · MIN_MARGIN='+MIN_MARGIN+' · 앵커='+SCORE_ANCHOR+')',
     /* (v5.5) 데이터 안전 관측 — 읽기 실패한 캐시(쓰기는 필드 단위라 덮이지 않음) · 공개 프록시 경유(저장 안 함) */
     캐시로드실패:(typeof cacheLoadFailed!=='undefined')?[...cacheLoadFailed].filter(id=>S.stocks[id]).map(nm):[],
     공개경유:Object.keys(S.pubData||{}).filter(id=>S.stocks[id]).map(nm),
@@ -5901,6 +5968,8 @@ function lgFocusKey(ae){
 function renderLedger(){
   const host=$('#lgBody'); if(!host)return;
   if(S.lg.sub==='tool'&&host.querySelector('#importCommit'))return;
+  /* (v6.14) 끌고 있거나 글자를 선택해 둔 동안에는 그리지 않는다 — 손을 떼면 uiFlush가 흘려보낸다 */
+  if(uiBusy(host)){ lgPending=true; return; }
   const ae=document.activeElement;
   const inHost=!!(ae&&host.contains(ae)&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
   let rs=null;
@@ -5923,7 +5992,9 @@ function renderLedger(){
   else                  g=lgViewTool();
   const invalid=positions().filter(p=>!p.valid);
   if(invalid.length)g='<div class="lgalert" role="status"><b>원장 확인 필요 · '+invalid.length+'개 포지션</b><br>'+invalid.map(p=>esc(p.name+' · '+lgAccLabel(p.account)+' — '+p.issues.join(', '))).join('<br>')+'<br>이 항목은 자산 합계·확정 손익·성과 통계에서 제외됩니다. 거래내역에서 당일 순번과 수량을 확인하세요.</div>'+g;
+  const snap=scrollSnap(host);         // (v6.14) 교체 전 위치를 떠 둔다
   host.innerHTML=g;
+  scrollRestore(host,snap);            // (v6.14) 같은 구조면 되돌린다
   if(rs){ const el=host.querySelector('['+rs.fk.a+'="'+rs.fk.k+'"]');
     if(el){ el.focus(); if(rs.pos!=null){ try{ el.setSelectionRange(rs.pos,rs.pos); }catch(e){} } } }
 }
