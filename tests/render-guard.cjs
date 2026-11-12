@@ -156,8 +156,13 @@ console.log('\n[8] 선택이 풀리는 순간 미뤘던 렌더가 흘러간다')
 console.log('\n[9] 배선 — 두 렌더 경로가 모두 보호를 쓴다');
 {
   ok('거래기록: 바쁘면 미룬다', /if\(uiBusy\(host\)\)\{ lgPending=true; return; \}/.test(src));
-  ok('거래기록: 교체 전후로 위치를 뜨고 되돌린다',
-     /const snap=scrollSnap\(host\);[\s\S]{0,80}host\.innerHTML=g;\s*\n\s*scrollRestore\(host,snap\);/.test(src));
+  /* (v6.15) 같은 하위탭이면 바뀐 곳만 고친다(morphInto). 통째 교체는 하위탭이 바뀔 때와 tool 탭뿐이다.
+   * 순서 기준 되돌리기(v6.14)는 같은 하위탭일 때만 — 다른 표의 스크롤을 이어 붙이지 않는다. */
+  ok('거래기록: 같은 하위탭일 때만 위치를 떠 둔다', /const snap=sameSub\?scrollSnap\(host\):null;/.test(src));
+  ok('거래기록: 같은 하위탭이면 바뀐 곳만 고친다',
+     /if\(sameSub&&sub!=='tool'&&host\.firstChild\)morphInto\(host,g\);\s*\n\s*else host\.innerHTML=g;/.test(src));
+  ok('거래기록: 그린 하위탭을 기억한다', /lgLastSub=sub;\s*\n\s*scrollRestore\(host,snap\);/.test(src));
+  ok('거래기록: 살아 있는 입력칸의 캐럿은 건드리지 않는다', /if\(el&&el!==document\.activeElement\)\{ el\.focus\(\);/.test(src));
   ok('보드: 바쁘면 미룬다', /if\(S\.view!=='ledger'&&uiBusy\(\$\('#list'\)\)\)\{ renderPending=true; return; \}/.test(src));
   ok('보드: 교체 전 위치를 뜬다', /const snap=scrollSnap\(list\);/.test(src));
   ok('보드: 캔버스 뒤에 되돌린다', /drawChart\(cv,id\)\); \} \}\);\s*\n\s*scrollRestore\(list,snap\);/.test(src));
